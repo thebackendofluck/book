@@ -1,0 +1,99 @@
+# threshold.conf — Managed by Ansible
+# Generated for: {{ inventory_hostname }} ({{ sensor_zone | default('unset') }} zone)
+# Generated: {{ ansible_date_time.iso8601 }}
+#
+# Purpose: Suppress alert noise from known-good infrastructure and tune
+# detection thresholds to iGaming traffic patterns.
+#
+# Directives:
+#   suppress  — never generate an alert for matching traffic
+#   threshold — limit alert rate (type: limit, both, or threshold)
+#   event_filter — log only N events per time window (less aggressive than suppress)
+#
+# Syntax:
+#   suppress gen_id <gid>, sig_id <sid>, track by_src|by_dst|by_both, ip <cidr>
+#   threshold gen_id <gid>, sig_id <sid>, type both|limit|threshold,
+#             track by_src|by_dst|by_both, count <n>, seconds <t>
+
+##############################################################################
+# INFRASTRUCTURE SUPPRESSIONS
+# Suppress alerts for your own scanning / monitoring tools so they don't
+# flood the SIEM and obscure genuine detections.
+##############################################################################
+
+# Internal vulnerability scanner (Nessus / Qualys / OpenVAS)
+suppress gen_id 1, sig_id 2010935, track by_src, ip 10.0.100.20     # Qualys scanner
+suppress gen_id 1, sig_id 2010935, track by_src, ip 10.0.100.21     # Nessus scanner
+
+# Prometheus / Nagios health probes
+suppress gen_id 1, sig_id 2001219, track by_src, ip 10.0.100.30     # monitoring node
+suppress gen_id 1, sig_id 2001220, track by_src, ip 10.0.100.30
+
+# Load balancer health checks (suppress TCP noise from HAProxy / NGINX)
+suppress gen_id 1, sig_id 2210044, track by_src, ip 10.0.0.0/24     # load balancer VIP range
+suppress gen_id 1, sig_id 2210045, track by_src, ip 10.0.0.0/24
+
+##############################################################################
+# CDN SUPPRESSIONS
+# Traffic from CDN edge nodes triggers geo-based and rate rules.
+# Suppress by CDN IP ranges (keep updated via threat intel feed).
+##############################################################################
+
+# Cloudflare
+suppress gen_id 1, sig_id 9000700, track by_src, ip 104.16.0.0/12
+suppress gen_id 1, sig_id 9000700, track by_src, ip 172.64.0.0/13
+suppress gen_id 1, sig_id 9000700, track by_src, ip 198.41.128.0/17
+
+# Fastly
+suppress gen_id 1, sig_id 9000700, track by_src, ip 151.101.0.0/16
+
+##############################################################################
+# PAYMENT PROCESSOR SUPPRESSIONS
+# Stripe, Adyen, PaySafe — legitimate high-frequency API callers.
+# Only suppress the API scraping rule (9000700); keep all fraud detection rules.
+##############################################################################
+
+# Stripe
+suppress gen_id 1, sig_id 9000700, track by_src, ip 3.18.12.63
+suppress gen_id 1, sig_id 9000700, track by_src, ip 3.130.192.231
+
+# Adyen
+suppress gen_id 1, sig_id 9000700, track by_src, ip 185.14.187.0/25
+
+##############################################################################
+# IGAMING-SPECIFIC RATE LIMITING
+# Use `threshold` to reduce noise from high-volume legitimate patterns
+# while keeping the rule active for genuine bursts.
+##############################################################################
+
+# Bonus claim rule — 10 claims per IP per 60s is the alert trigger;
+# reduce noise during marketing promotions by raising the window.
+threshold gen_id 1, sig_id 9000001, type both,
+  track by_src, count 10, seconds 60
+
+# AML deposit monitoring — alert once per IP per 30 minutes, not per packet.
+threshold gen_id 1, sig_id 9000100, type limit,
+  track by_src, count 1, seconds 1800
+
+# Credential stuffing — alert immediately (no threshold reduction).
+# Keep sig 9000200 at its default sensitivity.
+
+# API scraping — allow up to 500 GETs/min before alerting (CDNs already suppressed).
+threshold gen_id 1, sig_id 9000700, type both,
+  track by_src, count 500, seconds 60
+
+##############################################################################
+# NOISY ET OPEN RULES
+# Suppress specific signatures that generate excessive false positives in
+# an iGaming environment.  Disable the rule entirely via suricata-update
+# if it provides no value.
+##############################################################################
+
+# ET INFO rules — informational only; suppress all by default.
+# Enable selectively if your threat model requires them.
+# suppress gen_id 1, sig_id 2013028  # ET INFO Observed DNS Query to ...
+# suppress gen_id 1, sig_id 2016778  # ET INFO HTTP Request to a *.tk domain
+
+# Torrent-related (irrelevant in DC environment)
+suppress gen_id 1, sig_id 2008581, track by_src, ip 0.0.0.0/0
+suppress gen_id 1, sig_id 2008582, track by_src, ip 0.0.0.0/0

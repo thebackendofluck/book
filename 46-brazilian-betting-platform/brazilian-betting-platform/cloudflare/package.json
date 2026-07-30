@@ -1,0 +1,57 @@
+{
+  "name": "bet-brazil-cloudflare-workers",
+  "version": "1.0.0",
+  "description": "Brazilian Betting Platform \u2014 Cloudflare Workers backend (SIGAP compliant)",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --local",
+    "build": "tsc --noEmit",
+    "deploy": "wrangler deploy",
+    "deploy:all": "bash scripts/deploy.sh",
+    "deploy:staging": "wrangler deploy --env staging",
+    "deploy:production": "wrangler deploy --env production",
+    "smoke": "bash scripts/smoke-test.sh",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "type-check": "tsc --noEmit",
+    "lint": "eslint src tests --ext .ts",
+    "db:create": "wrangler d1 create bet_brazil_db",
+    "db:migrate:local": "wrangler d1 execute bet_brazil_db --local --file schema.sql",
+    "db:migrate:remote": "wrangler d1 execute bet_brazil_db --file schema.sql",
+    "kv:create:sessions": "wrangler kv:namespace create PLAYER_SESSIONS",
+    "kv:create:odds": "wrangler kv:namespace create ODDS_CACHE",
+    "kv:create:limits": "wrangler kv:namespace create RATE_LIMITS",
+    "r2:create": "wrangler r2 bucket create kyc-documents-br"
+  },
+  "keywords": [
+    "cloudflare",
+    "workers",
+    "betting",
+    "igaming",
+    "brazil",
+    "sigap",
+    "pix",
+    "typescript"
+  ],
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240208.0",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "@vitest/coverage-v8": "^3.0.8",
+    "eslint": "^8.57.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.0.8",
+    "wrangler": ">=4.59.1"
+  },
+  "overrides": {
+    "esbuild": ">=0.25.0",
+    "undici": ">=6.21.2",
+    "vite": ">=6.4.2",
+    "wrangler": ">=4.59.1",
+    "brace-expansion": ">=2.0.2",
+    "picomatch": ">=2.3.2"
+  }
+}

@@ -1,0 +1,16 @@
+{
+    "request": {
+        "method": "GET",
+        "url": "/license.php?akey=AcmetoCasinoStg&skey=a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6"
+    },
+    "response": {
+        "status": 200,
+        "body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><license expires=\"{{now offset='1 days' timezone='UTC' format=\"yyyy-MM-dd'T'HH:mm:ss'Z'\"}}\">BASE64_ENCODED_LICENSE_CONTENT_PLACEHOLDER</license>",
+        "delayDistribution": {
+            "type": "lognormal",
+            "median": 500,
+            "sigma": 0.4
+        },
+        "transformers": ["response-template"]
+    }
+}

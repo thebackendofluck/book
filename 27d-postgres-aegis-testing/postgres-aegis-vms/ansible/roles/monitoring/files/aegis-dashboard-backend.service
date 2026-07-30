@@ -1,0 +1,22 @@
+[Unit]
+Description=postgres-aegis dashboard backend API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=root
+WorkingDirectory=/opt/aegis-monitoring
+Environment=AEGIS_MON_DIR=/opt/aegis-monitoring
+Environment=SHARD_A_WRITER=10.0.42.30
+Environment=SHARD_B_WRITER=10.0.42.32
+Environment=HSM_CONNECTOR=http://127.0.0.1:12345
+ExecStartPre=/usr/bin/pip3 install -q fastapi uvicorn httpx
+ExecStart=/usr/bin/uvicorn dashboard_backend:app --host 0.0.0.0 --port 8765 --workers 2
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

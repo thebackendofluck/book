@@ -1,0 +1,67 @@
+# wrangler.acmevegas.toml — AcmeVegas brand Worker configuration
+#
+# Deploys the shared TypeScript codebase as the AcmeVegas casino brand.
+# AcmeVegas is positioned as the premium brand targeting VIP players
+# in MGA-licenced and UK-licenced markets.
+#
+# Deploy:
+#   npx wrangler deploy --config wrangler.acmevegas.toml
+#
+# Chapter 44, Section 12: Multi-Brand Deployment (verbatim example from chapter)
+# KV namespaces provisioned during initial portfolio deploy:
+#   neonpalace-sessions → 9bdf4a62a18b41ea85bf73b724b47b23
+
+name                = "acmevegas-api"
+main                = "src/index.ts"
+compatibility_date  = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+ENVIRONMENT   = "development"
+PLATFORM_NAME = "AcmeVegas Casino"
+
+# ─── D1 Database ─────────────────────────────────────────────────────────────
+# Per the resource isolation matrix (Section 12), each brand in production
+# must have its own D1 database.  The shared DB ID below is the PoC value;
+# replace with a dedicated acmevegas-db in production.
+#
+# Production setup:
+#   npx wrangler d1 create acmevegas-db
+#   npx wrangler d1 migrations apply acmevegas-db
+
+[[d1_databases]]
+binding       = "DB"
+database_name = "acmetocasino-db"                       # shared DB in PoC
+database_id   = "a2a40f31-e9c4-49fb-96a8-1c2ef8b8d70c" # replace in production
+
+# ─── KV Namespaces ───────────────────────────────────────────────────────────
+# neonpalace-sessions namespace was provisioned during initial portfolio rollout.
+# In production, rename to acmevegas-sessions for clarity.
+
+[[kv_namespaces]]
+binding    = "CACHE"
+id         = "f3402e71217142949c225532256c0577" # shared CACHE in PoC; replace in production
+
+[[kv_namespaces]]
+binding    = "SESSIONS"
+id         = "9bdf4a62a18b41ea85bf73b724b47b23" # neonpalace-sessions (from initial provisioning)
+
+# ─── R2 Bucket ───────────────────────────────────────────────────────────────
+
+[[r2_buckets]]
+binding     = "STORAGE"
+bucket_name = "acmetocasino-kyc-docs"  # shared R2 in PoC; use acmevegas-kyc-docs in production
+
+# ─── Custom domain route ─────────────────────────────────────────────────────
+
+[[routes]]
+pattern   = "cloudflare.cloud-acmevegas.com/*"
+zone_name = "cloud-acmevegas.com"
+
+# ─── Secrets (set per brand) ──────────────────────────────────────────────────
+# npx wrangler secret put JWT_SECRET           --config wrangler.acmevegas.toml
+# npx wrangler secret put ENCRYPTION_KEY       --config wrangler.acmevegas.toml
+# npx wrangler secret put NETENT_API_KEY       --config wrangler.acmevegas.toml
+# npx wrangler secret put EVOLUTION_API_KEY    --config wrangler.acmevegas.toml
+# npx wrangler secret put PRAGMATIC_API_KEY    --config wrangler.acmevegas.toml
+# npx wrangler secret put PAYMENT_PROCESSOR_KEY --config wrangler.acmevegas.toml

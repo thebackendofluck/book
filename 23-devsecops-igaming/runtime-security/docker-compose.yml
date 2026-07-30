@@ -1,0 +1,236 @@
+# Companion code for "The Backend of Luck" - Chapter 23, DevSecOps for iGaming.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# =============================================================================
+# Falco + Falcosidekick Runtime Security Monitoring Stack
+# =============================================================================
+# Deploys Falco for container runtime security monitoring with Falcosidekick
+# for alert routing to Slack, PagerDuty, Elasticsearch, and other outputs.
+#
+# Designed for iGaming platform development and staging environments.
+# For production Kubernetes, use the Falco Helm chart instead.
+#
+# Usage:
+#   docker compose up -d
+#   docker compose logs -f falco
+#
+# Prerequisites:
+#   - Docker with compose v2+
+#   - Kernel headers installed (for Falco eBPF driver)
+#   - Custom rules mounted from falco-rules.yaml
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # Falco — Runtime Security Engine
+  # ---------------------------------------------------------------------------
+  falco:
+    image: falcosecurity/falco:0.37.1
+    container_name: falco-igaming
+    restart: unless-stopped
+    privileged: true
+    pid: host
+    volumes:
+      # Kernel and OS access for syscall monitoring
+      - /var/run/docker.sock:/host/var/run/docker.sock:ro
+      - /proc:/host/proc:ro
+      - /boot:/host/boot:ro
+      - /lib/modules:/host/lib/modules:ro
+      - /usr:/host/usr:ro
+      - /etc:/host/etc:ro
+      # Custom iGaming rules
+      - ./falco-rules.yaml:/etc/falco/rules.d/igaming-rules.yaml:ro
+      # Falco configuration override
+      - ./falco-config.yaml:/etc/falco/falco.yaml:ro
+    environment:
+      # Use eBPF probe instead of kernel module (more compatible)
+      FALCO_BPF_PROBE: ""
+    networks:
+      - security-monitoring
+    labels:
+      - "com.acme-casino.service=falco"
+      - "com.acme-casino.environment=development"
+      - "com.acme-casino.team=security"
+    healthcheck:
+      test: ["CMD", "falco", "--version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "1.0"
+        reservations:
+          memory: 512M
+          cpus: "0.25"
+    logging:
+      driver: json-file
+      options:
+        max-size: "100m"
+        max-file: "5"
+
+  # ---------------------------------------------------------------------------
+  # Falcosidekick — Alert Router
+  # ---------------------------------------------------------------------------
+  falcosidekick:
+    image: falcosecurity/falcosidekick:2.28.0
+    container_name: falcosidekick-igaming
+    restart: unless-stopped
+    depends_on:
+      falco:
+        condition: service_healthy
+    environment:
+      # Slack integration
+      SLACK_WEBHOOKURL: "${SLACK_WEBHOOK_URL:-}"
+      SLACK_CHANNEL: "#security-alerts"
+      SLACK_USERNAME: "Falco iGaming"
+      SLACK_FOOTER: "Falco Runtime Security — acme-casino.io"
+      SLACK_ICON: "https://falco.org/favicon.png"
+      SLACK_MINIMUMPRIORITY: "warning"
+      SLACK_OUTPUTFORMAT: "all"
+
+      # PagerDuty integration (for CRITICAL/EMERGENCY alerts)
+      PAGERDUTY_ROUTINGKEY: "${PAGERDUTY_ROUTING_KEY:-}"
+      PAGERDUTY_MINIMUMPRIORITY: "critical"
+
+      # Elasticsearch integration (for all alerts)
+      ELASTICSEARCH_HOSTPORT: "http://elasticsearch:9200"
+      ELASTICSEARCH_INDEX: "falco-igaming"
+      ELASTICSEARCH_TYPE: "_doc"
+      ELASTICSEARCH_MINIMUMPRIORITY: "notice"
+      ELASTICSEARCH_CREATEINDEXTEMPLATE: "true"
+
+      # Webhook for custom integrations
+      WEBHOOK_ADDRESS: "${CUSTOM_WEBHOOK_URL:-http://localhost:9999/webhook}"
+      WEBHOOK_MINIMUMPRIORITY: "warning"
+
+      # Prometheus metrics endpoint
+      PROMETHEUS_EXTRALABELS: "environment:${ENVIRONMENT:-development},platform:igaming"
+
+      # General settings
+      DEBUG: "false"
+      CUSTOMFIELDS: "platform:igaming,team:security"
+      TEMPLATEDFIELDS: "source:falco-igaming-{priority}"
+    ports:
+      - "127.0.0.1:2801:2801"     # Falcosidekick API
+      - "127.0.0.1:2802:2802"     # Prometheus metrics
+    networks:
+      - security-monitoring
+    labels:
+      - "com.acme-casino.service=falcosidekick"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+  # ---------------------------------------------------------------------------
+  # Falcosidekick UI — Alert Dashboard
+  # ---------------------------------------------------------------------------
+  falcosidekick-ui:
+    image: falcosecurity/falcosidekick-ui:2.2.0
+    container_name: falcosidekick-ui-igaming
+    restart: unless-stopped
+    depends_on:
+      - falcosidekick
+    environment:
+      FALCOSIDEKICK_UI_REDIS_URL: "redis:6379"
+      FALCOSIDEKICK_UI_USER: "${FALCO_UI_USER:?FALCO_UI_USER must be set}"
+      FALCOSIDEKICK_UI_PASSWORD: "${FALCO_UI_PASSWORD:?FALCO_UI_PASSWORD must be set}"
+    ports:
+      - "127.0.0.1:2500:2500"
+    networks:
+      - security-monitoring
+    labels:
+      - "com.acme-casino.service=falcosidekick-ui"
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.25"
+
+  # ---------------------------------------------------------------------------
+  # Redis — Event storage for Falcosidekick UI
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: falco-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --maxmemory 128mb
+      --maxmemory-policy allkeys-lru
+      --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
+    volumes:
+      - redis-data:/data
+    networks:
+      - security-monitoring
+    labels:
+      - "com.acme-casino.service=falco-redis"
+    deploy:
+      resources:
+        limits:
+          memory: 192M
+
+  # ---------------------------------------------------------------------------
+  # Elasticsearch — Alert storage (optional, for dev/staging)
+  # ---------------------------------------------------------------------------
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.12.0
+    container_name: falco-elasticsearch
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - cluster.name=falco-igaming
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+    ports:
+      - "127.0.0.1:9200:9200"
+    networks:
+      - security-monitoring
+    labels:
+      - "com.acme-casino.service=falco-elasticsearch"
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    profiles:
+      - full  # Only start with: docker compose --profile full up
+
+networks:
+  security-monitoring:
+    driver: bridge
+    name: igaming-security-net
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+volumes:
+  redis-data:
+    name: falco-redis-data
+  es-data:
+    name: falco-es-data

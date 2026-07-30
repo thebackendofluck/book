@@ -1,0 +1,192 @@
+/*
+ * ops-dashboard v0.11 — Material Design 3 dark palette
+ * Replicates visual of legacy https://new.acmetocasino.com/dashboard.html
+ * Dark only; no light switch. All hex literals live here.
+ */
+:root {
+  color-scheme: dark;
+
+  /* Raw MD3 palette */
+  --_primary: #f2ca50;
+  --_primary-fixed-dim: #e9c349;
+  --_primary-container: #d4af37;
+  --_on-primary: #3c2f00;
+  --_secondary: #c1c1ff;
+  --_tertiary: #eabfff;
+
+  --_surface: #111124;
+  --_surface-dim: #111124;
+  --_surface-bright: #38374c;
+  --_surface-container-lowest: #0c0c1e;
+  --_surface-container-low: #1a1a2c;
+  --_surface-container: #1e1e31;
+  --_surface-container-high: #28283c;
+  --_surface-container-highest: #333347;
+  --_surface-variant: #333347;
+
+  --_inverse-surface: #e2e0fa;
+  --_on-surface: #e2e0fa;
+  --_on-surface-variant: #d0c5af;
+  --_outline: #99907c;
+  --_outline-variant: #4d4635;
+
+  --_error: #ffb4ab;
+  --_error-container: #93000a;
+  --_success: #00e676;
+  --_warning: #ffab40;
+  --_info: #448aff;
+
+  /* Legacy aliases kept so other modules don't break */
+  --gold: var(--_primary);
+  --gold-light: var(--_primary-fixed-dim);
+  --gold-dim: var(--_primary-container);
+  --gold-glow: 0 0 20px rgba(242, 202, 80, 0.18);
+
+  /* Semantic backgrounds */
+  --color-bg-canvas: var(--_surface);
+  --color-bg-surface: var(--_surface-container);
+  --color-bg-surface-hover: var(--_surface-container-high);
+  --color-bg-subtle: var(--_surface-container-low);
+  --color-bg-muted: var(--_surface-container-high);
+  --color-bg-chrome: var(--_surface-container-lowest);
+  --color-bg-chrome-header: var(--_surface-container-lowest);
+  --color-bg-chrome-nav: var(--_surface-container-lowest);
+  --color-bg-inverse: var(--_inverse-surface);
+  --color-bg-overlay: rgba(12, 12, 30, 0.75);
+
+  /* Text */
+  --color-text-primary: var(--_on-surface);
+  --color-text-secondary: var(--_on-surface-variant);
+  --color-text-muted: var(--_outline);
+  --color-text-bright: var(--_inverse-surface);
+  --color-text-inverse: var(--_surface);
+  --color-text-link: var(--_primary);
+
+  /* Borders */
+  --color-border: var(--_outline-variant);
+  --color-border-subtle: var(--_outline-variant);
+  --color-border-default: var(--_outline-variant);
+  --color-border-strong: var(--_outline);
+  --color-border-focus: var(--_primary);
+
+  /* Brand */
+  --color-brand: var(--_primary);
+  --color-brand-hover: var(--_primary-fixed-dim);
+  --color-brand-dim: var(--_primary-container);
+  --color-brand-fg: var(--_on-primary);
+
+  /* Intents */
+  --color-intent-danger: var(--_error);
+  --color-intent-danger-bg: rgba(255, 180, 171, 0.12);
+  --color-intent-danger-fg: var(--_inverse-surface);
+  --color-intent-success: var(--_success);
+  --color-intent-success-bg: rgba(0, 230, 118, 0.12);
+  --color-intent-success-fg: var(--_on-primary);
+  --color-intent-warning: var(--_warning);
+  --color-intent-warning-bg: rgba(255, 171, 64, 0.12);
+  --color-intent-warning-fg: var(--_on-primary);
+  --color-intent-info: var(--_info);
+  --color-intent-info-bg: rgba(68, 138, 255, 0.12);
+  --color-intent-info-fg: var(--_inverse-surface);
+
+  /* Spacing */
+  --space-xs: 0.25rem;
+  --space-sm: 0.5rem;
+  --space-md: 0.75rem;
+  --space-lg: 1rem;
+  --space-xl: 1.5rem;
+  --space-2xl: 2rem;
+  --space-3xl: 3rem;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+
+  /* Typography */
+  --font-family-headline: "Space Grotesk", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-family-body: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-family-mono: "Fira Code", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-family-heading: var(--font-family-headline);
+  --font-family-sans: var(--font-family-body);
+  --font-heading: var(--font-family-headline);
+  --font-sans: var(--font-family-body);
+  --font-mono: var(--font-family-mono);
+
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.875rem;
+  --font-size-md: 1rem;
+  --font-size-lg: 1.125rem;
+  --font-size-xl: 1.25rem;
+  --font-size-2xl: 1.5rem;
+  --font-size-3xl: 1.875rem;
+
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  --line-height-tight: 1.25;
+  --line-height-normal: 1.5;
+  --line-height-relaxed: 1.75;
+
+  /* Radii (MD3) */
+  --radius-xs: 0.125rem;
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+  --radius-full: 9999px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --shadow-md: 0 6px 16px rgba(0, 0, 0, 0.55);
+  --shadow-lg: 0 20px 40px rgba(0, 0, 0, 0.6);
+
+  /* Z-index */
+  --z-dropdown: 1000;
+  --z-sticky: 1020;
+  --z-modal: 1040;
+  --z-popover: 1050;
+  --z-toast: 1060;
+
+  /* Chrome sizing */
+  --chrome-header-h: 64px;
+  --chrome-nav-h: 48px;
+  --chrome-sidebar-w: 256px;
+  --chrome-maxw: 1440px;
+
+  /* Density */
+  --density-row-height: 2.5rem;
+  --density-padding-y: 0.5rem;
+  --density-padding-x: 0.75rem;
+  --density-gap: 0.75rem;
+  --density-font-size: 0.875rem;
+}
+
+html[data-density="compact"] {
+  --density-row-height: 2rem;
+  --density-padding-y: 0.25rem;
+  --density-padding-x: 0.5rem;
+  --density-gap: 0.5rem;
+  --density-font-size: 0.8125rem;
+}
+
+html[data-density="spacious"] {
+  --density-row-height: 3rem;
+  --density-padding-y: 0.75rem;
+  --density-padding-x: 1rem;
+  --density-gap: 1rem;
+  --density-font-size: 0.9375rem;
+}
+
+html,
+html.light {
+  color-scheme: dark;
+}
+
+.focus-ring:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}

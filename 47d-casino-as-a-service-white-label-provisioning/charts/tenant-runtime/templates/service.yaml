@@ -1,0 +1,26 @@
+# Companion code for "The Backend of Luck" - Chapter 47d, Casino as a Service.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: BUSL-1.1
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "tenant-runtime.fullname" . }}
+  namespace: {{ include "tenant-runtime.namespace" . }}
+  labels:
+    {{- include "tenant-runtime.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    {{- include "tenant-runtime.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      protocol: TCP
+      port: {{ .Values.service.port }}
+      targetPort: {{ .Values.service.targetPort }}

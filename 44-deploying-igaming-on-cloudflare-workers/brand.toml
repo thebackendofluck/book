@@ -1,0 +1,124 @@
+# brand.toml — Base brand configuration template
+#
+# This file documents every configurable field that a brand-specific
+# wrangler.<brand>.toml file must or may override.  It is not used
+# directly by Wrangler; it exists as a reference template and is checked
+# into version control alongside the per-brand configs.
+#
+# Usage:
+#   cp brand.toml wrangler.mybrand.toml
+#   # Edit: name, PLATFORM_NAME, database_id, KV namespace IDs, route
+#   npx wrangler deploy --config wrangler.mybrand.toml
+#
+# Chapter 44, Section 12: Multi-Brand Deployment
+# Architecture: One Codebase, N Workers
+
+# ─── Worker identity ────────────────────────────────────────────────────────
+
+# Replace with the brand-specific worker name.
+# Convention: <brand>-api
+name = "BRAND-api"
+
+# Entry point is always the shared codebase — never change this.
+main = "src/index.ts"
+
+# Pin the Workers runtime.  The 2024-01-01 date enables modern D1 semantics.
+# nodejs_compat is required for the crypto API patterns in utils.ts.
+compatibility_date  = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# ─── Plaintext vars ─────────────────────────────────────────────────────────
+# Non-sensitive configuration injected at runtime.
+# Secrets (JWT_SECRET, ENCRYPTION_KEY, provider API keys) are set via
+# `wrangler secret put` and NEVER appear in this file.
+
+[vars]
+ENVIRONMENT   = "production"      # "development" | "staging" | "production"
+PLATFORM_NAME = "BRAND Platform"  # Displayed in health checks and UI headers
+
+# CF_ANALYTICS_TOKEN is a read-only Cloudflare Analytics API token.
+# It is safe to include here (read-only scope, no write or deploy capabilities).
+# Generate at: dash.cloudflare.com → My Profile → API Tokens
+# CF_ANALYTICS_TOKEN = "YOUR-READ-ONLY-ANALYTICS-TOKEN"
+
+# ─── D1 Database ─────────────────────────────────────────────────────────────
+# Each brand must have its own D1 database in production.
+# Data isolation is a regulatory requirement for multi-brand portfolios.
+#
+# Create with:
+#   npx wrangler d1 create BRAND-db
+#   # or for EU data residency (GDPR):
+#   npx wrangler d1 create BRAND-db --location=EEUR
+#
+# Then copy the printed [[d1_databases]] block here and replace the id.
+
+[[d1_databases]]
+binding       = "DB"
+database_name = "BRAND-db"
+database_id   = "00000000-0000-0000-0000-000000000000"  # Replace with real ID
+
+# ─── KV Namespaces ───────────────────────────────────────────────────────────
+# Two namespaces per brand:
+#   CACHE    — game catalog cache, user object cache (5-minute TTL)
+#   SESSIONS — refresh tokens (30-day TTL)
+#
+# Create with:
+#   npx wrangler kv namespace create BRAND-cache
+#   npx wrangler kv namespace create BRAND-sessions
+#
+# The preview_id can be the same as id for small deployments; in CI environments
+# that use `wrangler dev`, a separate preview namespace prevents test data from
+# contaminating the production namespace.
+
+[[kv_namespaces]]
+binding    = "CACHE"
+id         = "00000000000000000000000000000001"  # Replace with real namespace ID
+preview_id = "00000000000000000000000000000001"
+
+[[kv_namespaces]]
+binding    = "SESSIONS"
+id         = "00000000000000000000000000000002"  # Replace with real namespace ID
+preview_id = "00000000000000000000000000000002"
+
+# ─── R2 Bucket ───────────────────────────────────────────────────────────────
+# KYC document storage.  One bucket per brand is recommended for audit isolation.
+# Create with: npx wrangler r2 bucket create BRAND-kyc-docs
+
+[[r2_buckets]]
+binding     = "STORAGE"
+bucket_name = "BRAND-kyc-docs"
+
+# ─── Custom domain route ─────────────────────────────────────────────────────
+# Traffic to the brand's domain is routed to this Worker.
+# The corresponding DNS record is a proxied A record managed by Terraform.
+# See terraform/dns.tf for the DNS resource definition.
+#
+# Pattern must match what Terraform creates in cloudflare_record.
+
+[[routes]]
+pattern   = "cloudflare.cloud-BRAND.com/*"
+zone_name = "cloud-BRAND.com"
+
+# ─── Secrets checklist ───────────────────────────────────────────────────────
+# Set each secret with: npx wrangler secret put <NAME> --config wrangler.BRAND.toml
+#
+# Required:
+#   JWT_SECRET              — 256-bit random string; unique per brand
+#   ENCRYPTION_KEY          — 64 hex characters (32 bytes); unique per brand
+#   PAYMENT_PROCESSOR_KEY   — PSP webhook signing secret
+#
+# Provider API keys (set whichever providers the brand integrates):
+#   NETENT_API_KEY
+#   EVOLUTION_API_KEY
+#   PRAGMATIC_API_KEY
+#   MICROGAMING_API_KEY
+#   PLAYNG0_API_KEY
+#
+# Cloudflare API access (for analytics proxy in analytics.ts):
+#   CF_API_TOKEN            — Read-only Workers analytics token
+#   CF_ZONE_ID              — Account ID from dash.cloudflare.com/<ACCOUNT_ID>/
+#   CF_ACCESS_AUDIENCE      — Cloudflare Access service token audience tag
+#
+# Remote HSM proxy (see remote-hsm/ for server setup):
+#   HSM_API_URL             — https://hsm-api.acmetocasino.com
+#   HSM_API_KEY             — 32-byte hex key

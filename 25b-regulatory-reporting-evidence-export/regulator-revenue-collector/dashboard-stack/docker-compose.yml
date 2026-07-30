@@ -1,0 +1,101 @@
+# Companion code for "The Backend of Luck" - Chapter 25b, Regulatory Reporting and Evidence Export.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# Self-contained stack for the regulator-revenue dashboard.
+#
+# Three services bound to LOCALHOST ONLY on the production host —
+# never exposed to the public internet directly. Nginx fronts the API.
+#
+#   postgres  127.0.0.1:5435  → time-series storage
+#   redis     127.0.0.1:6380  → API response cache
+#   api       127.0.0.1:8200  → FastAPI; nginx reverse-proxies /api/regulator-reports/*
+#
+# Ports 5435/6380/8200 chosen to avoid conflict with the host Postgres
+# already running on 5432 for the casino platform.
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: rrc-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: rrc
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+      POSTGRES_DB: regulator_reports
+    volumes:
+      - rrc_pgdata:/var/lib/postgresql/data
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/00-schema.sql:ro
+    ports:
+      - "127.0.0.1:5435:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rrc -d regulator_reports"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: rrc-redis
+    restart: unless-stopped
+    command: ["redis-server", "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru"]
+    ports:
+      - "127.0.0.1:6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build:
+      context: ./api
+    container_name: rrc-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://rrc:${POSTGRES_PASSWORD:?set in .env}@postgres:5432/regulator_reports
+      REDIS_URL: redis://redis:6379/0
+      CACHE_TTL_SECONDS: "3600"
+      ALLOW_ORIGINS: "https://thebackendofluck.com"
+    ports:
+      - "127.0.0.1:8200:8000"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # One-shot collector. Run on demand with:
+  #   docker compose run --rm collector --only NY
+  # or, for all configured states:
+  #   docker compose run --rm collector
+  collector:
+    build:
+      context: ./collector
+    profiles: ["collector"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://rrc:${POSTGRES_PASSWORD:?set in .env}@postgres:5432/regulator_reports
+    volumes:
+      # Bind-mount the collector source tree from the repo so we don't
+      # bake it into the image — the collector evolves more often than
+      # its dependencies. Read-write because the runner writes JSON +
+      # downloaded files under /src/output.
+      - ../:/src
+    command: ["--out", "/src/output"]
+
+volumes:
+  rrc_pgdata:

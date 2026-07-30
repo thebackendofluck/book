@@ -1,0 +1,41 @@
+# Companion code for "The Backend of Luck" - Chapter 23b, DevSecOps Pipeline Implementation.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# GitHub Actions: Microsoft Defender for Cloud DevOps scan.
+# Uses federated OIDC; no long-lived Azure secret is stored in GitHub.
+name: defender-devops
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  id-token: write
+  contents: read
+  security-events: write
+
+jobs:
+  defender:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - uses: microsoft/security-devops-action@latest
+        id: msdo
+      - uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: ${{ steps.msdo.outputs.sarifFile }}
+          category: defender-for-cloud

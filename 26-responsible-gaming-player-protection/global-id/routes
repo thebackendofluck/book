@@ -1,0 +1,34 @@
+# Routes - Global ID Service API
+# Play Framework routing configuration
+# These endpoints handle cross-brand identity management and flag propagation
+
+# --- User lifecycle ---
+POST    /registerUser                   controllers.GlobalIdController.registerUser
+POST    /confirmRegistration            controllers.GlobalIdController.confirmRegistration
+POST    /disableUser                    controllers.GlobalIdController.disableUser
+POST    /enableUser                     controllers.GlobalIdController.enableUser
+POST    /updateUser                     controllers.GlobalIdController.updateUser
+
+# --- Flag management ---
+GET     /getFlag/:userId/:brandId/:flagType    controllers.GlobalIdController.getUserFlag(userId:Long, brandId:Long, flagType:com.acmetocasino.globalid.FlagType.FlagType)
+POST    /setFlag                        controllers.GlobalIdController.setUserFlag
+
+# --- Cross-brand identity ---
+GET     /getLinkedUsers/:userId         controllers.GlobalIdController.getLinkedUsers(userId:Long)
+POST    /unlinkUsers                    controllers.GlobalIdController.unlinkUsers
+
+# --- Identity matching ---
+GET     /multipleMatches                controllers.GlobalIdController.getMultipleMatches
+PUT     /rematch                        controllers.GlobalIdController.rematch
+POST    /partialMatches/:userId         controllers.GlobalIdController.crossCheckUserPartially(userId:Long)
+GET     /partialMatches/:userId         controllers.GlobalIdController.fetchCrossUserPartialCheckResult(userId:Long)
+
+# --- Deposit limits (cross-brand) ---
+POST    /registerDeposit                controllers.GlobalLimits.registerDeposit
+POST    /setLimit                       controllers.GlobalLimits.setGlobalLimit
+POST    /totalDepositedBetween          controllers.GlobalLimits.totalDepositedBetween
+POST    /getLimit                       controllers.GlobalLimits.getGlobalLimit
+
+# --- Health ---
+GET     /health                         controllers.HealthCheck.health
+GET     /ping                           controllers.HealthCheck.ping

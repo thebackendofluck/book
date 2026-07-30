@@ -1,0 +1,223 @@
+# Companion code for "The Backend of Luck" - Chapter 18, Real-Time Clock Module Implementation.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: rtc-system
+  labels:
+    name: rtc-system
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: rtc-service-account
+  namespace: rtc-system
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: rtc-cluster-role
+rules:
+- apiGroups: [""]
+  resources: ["nodes", "pods"]
+  verbs: ["get", "list", "watch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: rtc-cluster-role-binding
+subjects:
+- kind: ServiceAccount
+  name: rtc-service-account
+  namespace: rtc-system
+roleRef:
+  kind: ClusterRole
+  name: rtc-cluster-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: rtc-node-agent
+  namespace: rtc-system
+spec:
+  selector:
+    matchLabels:
+      app: rtc-node-agent
+  template:
+    metadata:
+      labels:
+        app: rtc-node-agent
+    spec:
+      serviceAccountName: rtc-service-account
+      hostNetwork: true
+      hostPID: true
+      containers:
+      - name: rtc-agent
+        image: casino/rtc-node-agent:v1.0.0
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - name: host-dev
+          mountPath: /host/dev
+        - name: host-sys
+          mountPath: /host/sys
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+      volumes:
+      - name: host-dev
+        hostPath:
+          path: /dev
+      - name: host-sys
+        hostPath:
+          path: /sys
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rtc-service
+  namespace: rtc-system
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: rtc-service
+  template:
+    metadata:
+      labels:
+        app: rtc-service
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - rtc-service
+            topologyKey: kubernetes.io/hostname
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: rtc-service
+        image: casino/rtc-service:v1.0.0
+        ports:
+        - containerPort: 8080
+          name: http
+        - containerPort: 50051
+          name: grpc
+        - containerPort: 9090
+          name: metrics
+        env:
+        - name: RTC_CONSENSUS_QUORUM
+          value: "3"
+        - name: RTC_DRIFT_THRESHOLD_MS
+          value: "10"
+        - name: PROMETHEUS_ENABLED
+          value: "true"
+        volumeMounts:
+        - name: config
+          mountPath: /etc/rtc
+        - name: tmp
+          mountPath: /tmp
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+          readOnlyRootFilesystem: true
+        resources:
+          requests:
+            cpu: 500m
+            memory: 512Mi
+          limits:
+            cpu: 2000m
+            memory: 2Gi
+      volumes:
+      - name: config
+        configMap:
+          name: rtc-config
+      - name: tmp
+        emptyDir: {}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rtc-service
+  namespace: rtc-system
+spec:
+  selector:
+    app: rtc-service
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8080
+  - name: grpc
+    port: 50051
+    targetPort: 50051
+  - name: metrics
+    port: 9090
+    targetPort: 9090
+  type: ClusterIP
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: rtc-ingress
+  namespace: rtc-system
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  tls:
+  - hosts:
+    - rtc.casino-platform.com
+    secretName: rtc-tls
+  rules:
+  - host: rtc.casino-platform.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: rtc-service
+            port:
+              number: 80

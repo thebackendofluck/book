@@ -1,0 +1,76 @@
+# Companion code for "The Backend of Luck" - Chapter 27d, PostgreSQL Aegis.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "postgres-aegis.fullname" . }}
+  labels:
+    {{- include "postgres-aegis.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "postgres-aegis.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Patroni peer replication + DCS traffic (same chart).
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "postgres-aegis.selectorLabels" . | nindent 14 }}
+      ports:
+        - port: 5432
+        - port: 8008
+    # PgBouncer is the only external ingress for application traffic.
+    - from:
+        - podSelector:
+            matchLabels:
+              postgres-aegis.io/role: pgbouncer
+      ports:
+        - port: 5432
+    # Application namespaces (explicit allow-list from values.yaml).
+{{- range .Values.networkPolicy.allowedClientNamespaces }}
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ . | quote }}
+      ports:
+        - port: 6432
+{{- end }}
+  egress:
+    # DNS.
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Same-chart peers.
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "postgres-aegis.selectorLabels" . | nindent 14 }}
+    # Kubernetes API (DCS).
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 443
+        - port: 6443
+    # Wasabi S3 for backups.
+    - to: []
+      ports:
+        - port: 443
+{{- end }}

@@ -1,0 +1,22 @@
+# Companion code for "The Backend of Luck" - Chapter 19, Anti-Fraud System Deep Dive.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# NOTE: These resources depend on the cluster-wide operators (Strimzi, ECK,
+# cert-manager) being installed FIRST by apply-all.sh via Helm. Don't apply
+# this overlay standalone.
+
+resources:
+  - cert-manager-issuers.yaml
+  - strimzi-kafka.yaml
+  - schema-registry.yaml
+  - eck-elasticsearch.yaml

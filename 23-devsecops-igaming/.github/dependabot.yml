@@ -1,0 +1,213 @@
+# Companion code for "The Backend of Luck" - Chapter 23, DevSecOps for iGaming.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# Dependabot Configuration for DevSecOps Standard
+# Automated dependency updates for security and maintenance
+
+version: 2
+
+# Update schedule configuration
+updates:
+# Python Dependencies
+- package-ecosystem: "pip"
+  directory: "/"
+  schedule:
+    interval: "weekly"
+    day: "monday"
+    time: "02:00"
+    timezone: "Europe/Amsterdam"
+  open-pull-requests-limit: 10
+  commit-message:
+    prefix: "security"
+    prefix-development: "pip"
+    include: "scope"
+  labels:
+  - "dependencies"
+  - "security"
+  - "python"
+  target-branch: "main"
+  versioning-strategy: "increase-if-necessary"
+
+# JavaScript/Node.js Dependencies
+- package-ecosystem: "npm"
+  directory: "/"
+  schedule:
+    interval: "weekly"
+    day: "tuesday"
+    time: "02:00"
+    timezone: "Europe/Amsterdam"
+  open-pull-requests-limit: 10
+  commit-message:
+    prefix: "security"
+    prefix-development: "npm"
+    include: "scope"
+  labels:
+  - "dependencies"
+  - "security"
+  - "javascript"
+  target-branch: "main"
+  versioning-strategy: "increase-if-necessary"
+
+# Docker Dependencies
+- package-ecosystem: "docker"
+  directory: "/"
+  schedule:
+    interval: "weekly"
+    day: "wednesday"
+    time: "02:00"
+    timezone: "Europe/Amsterdam"
+  open-pull-requests-limit: 5
+  commit-message:
+    prefix: "security"
+    prefix-development: "docker"
+    include: "scope"
+  labels:
+  - "dependencies"
+  - "security"
+  - "docker"
+  target-branch: "main"
+
+# GitHub Actions Dependencies
+- package-ecosystem: "github-actions"
+  directory: "/"
+  schedule:
+    interval: "weekly"
+    day: "thursday"
+    time: "02:00"
+    timezone: "Europe/Amsterdam"
+  open-pull-requests-limit: 10
+  commit-message:
+    prefix: "security"
+    prefix-development: "actions"
+    include: "scope"
+  labels:
+  - "dependencies"
+  - "security"
+  - "github-actions"
+  target-branch: "main"
+
+# Terraform Dependencies
+- package-ecosystem: "terraform"
+  directory: "/"
+  schedule:
+    interval: "weekly"
+    day: "friday"
+    time: "02:00"
+    timezone: "Europe/Amsterdam"
+  open-pull-requests-limit: 5
+  commit-message:
+    prefix: "security"
+    prefix-development: "terraform"
+    include: "scope"
+  labels:
+  - "dependencies"
+  - "security"
+  - "terraform"
+  - "infrastructure"
+  target-branch: "main"
+
+# Go Modules (if applicable)
+- package-ecosystem: "gomod"
+  directory: "/"
+  schedule:
+    interval: "weekly"
+    day: "monday"
+    time: "03:00"
+    timezone: "Europe/Amsterdam"
+  open-pull-requests-limit: 10
+  commit-message:
+    prefix: "security"
+    prefix-development: "go"
+    include: "scope"
+  labels:
+  - "dependencies"
+  - "security"
+  - "go"
+  target-branch: "main"
+
+# Java Dependencies (if applicable)
+- package-ecosystem: "maven"
+  directory: "/"
+  schedule:
+    interval: "weekly"
+    day: "tuesday"
+    time: "03:00"
+    timezone: "Europe/Amsterdam"
+  open-pull-requests-limit: 10
+  commit-message:
+    prefix: "security"
+    prefix-development: "maven"
+    include: "scope"
+  labels:
+  - "dependencies"
+  - "security"
+  - "java"
+  - "maven"
+  target-branch: "main"
+
+# .NET Dependencies (if applicable)
+- package-ecosystem: "nuget"
+  directory: "/"
+  schedule:
+    interval: "weekly"
+    day: "wednesday"
+    time: "03:00"
+    timezone: "Europe/Amsterdam"
+  open-pull-requests-limit: 10
+  commit-message:
+    prefix: "security"
+    prefix-development: "nuget"
+    include: "scope"
+  labels:
+  - "dependencies"
+  - "security"
+  - "dotnet"
+  - "nuget"
+  target-branch: "main"
+
+# Rust Dependencies (if applicable)
+- package-ecosystem: "cargo"
+  directory: "/"
+  schedule:
+    interval: "weekly"
+    day: "thursday"
+    time: "03:00"
+    timezone: "Europe/Amsterdam"
+  open-pull-requests-limit: 10
+  commit-message:
+    prefix: "security"
+    prefix-development: "cargo"
+    include: "scope"
+  labels:
+  - "dependencies"
+  - "security"
+  - "rust"
+  - "cargo"
+  target-branch: "main"
+
+# PHP Dependencies (if applicable)
+- package-ecosystem: "composer"
+  directory: "/"
+  schedule:
+    interval: "weekly"
+    day: "friday"
+    time: "03:00"
+    timezone: "Europe/Amsterdam"
+  open-pull-requests-limit: 10
+  commit-message:
+    prefix: "security"
+    prefix-development: "composer"
+    include: "scope"
+  labels:
+  - "dependencies"
+  - "security"
+  - "php"
+  - "composer"
+  target-branch: "main"

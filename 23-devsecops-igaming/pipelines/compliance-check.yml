@@ -1,0 +1,362 @@
+# Companion code for "The Backend of Luck" - Chapter 23, DevSecOps for iGaming.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# Compliance check pipeline for iGaming regulated platforms.
+#
+# Runs GLI-GSF (Gaming Laboratories International — Gaming Security Framework)
+# and PCI DSS (Payment Card Industry Data Security Standard) automated checks
+# on every push to protected branches and on a nightly schedule.
+#
+# The pipeline blocks merges when any GLI or PCI control fails.  Evidence
+# artifacts are uploaded to the compliance datastore for auditor access.
+#
+# Reference: Chapter 23 — DevSecOps for iGaming / Compliance as Code
+#
+# Secrets required (GitHub Actions):
+#   SNYK_TOKEN              — Snyk API token for SCA scanning
+#   AWS_COMPLIANCE_ROLE_ARN — IAM role with write access to compliance S3 bucket
+#   COMPLIANCE_BUCKET       — S3 bucket name for evidence artifacts
+#   SLACK_COMPLIANCE_WEBHOOK — Slack webhook for compliance failure alerts
+
+name: Compliance Gate — GLI-GSF / PCI DSS
+
+on:
+  push:
+    branches:
+      - main
+      - staging
+      - "release/**"
+  pull_request:
+    branches:
+      - main
+  schedule:
+    # Nightly full scan at 02:00 UTC
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: "Compliance profile to run"
+        required: true
+        default: "full"
+        type: choice
+        options:
+          - full
+          - pci-only
+          - gli-only
+          - infrastructure-only
+
+env:
+  PYTHON_VERSION: "3.12"
+  COMPLIANCE_PROFILE: ${{ github.event.inputs.profile || 'full' }}
+
+jobs:
+  # --------------------------------------------------------------------------
+  # Dependency and supply-chain checks (SCA + SBOM)
+  # --------------------------------------------------------------------------
+  supply-chain:
+    name: Supply Chain — SCA + SBOM
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Generate SBOM (Software Bill of Materials)
+        uses: anchore/sbom-action@v0
+        with:
+          format: cyclonedx-json
+          output-file: sbom.json
+          upload-artifact: true
+
+      - name: Snyk SCA — dependency vulnerabilities
+        uses: snyk/actions/python@0.4.0
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: >
+            --severity-threshold=high
+            --fail-on=upgradable
+            --all-projects
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ github.sha }}
+          path: sbom.json
+          retention-days: 365
+
+  # --------------------------------------------------------------------------
+  # Container image scanning (Trivy)
+  # --------------------------------------------------------------------------
+  container-scan:
+    name: Container Security — Trivy
+    runs-on: ubuntu-latest
+    if: >
+      env.COMPLIANCE_PROFILE == 'full' ||
+      env.COMPLIANCE_PROFILE == 'infrastructure-only'
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image under test
+        run: docker build -t igaming-platform:${{ github.sha }} .
+        # Only runs when a Dockerfile is present; skip gracefully otherwise
+
+      - name: Trivy container scan
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: "igaming-platform:${{ github.sha }}"
+          format: sarif
+          output: trivy-results.sarif
+          severity: "CRITICAL,HIGH"
+          ignorefile: scripts/chapter-23/config/igaming-exclusions.conf
+          exit-code: "1"
+
+      - name: Upload Trivy results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-results.sarif
+
+  # --------------------------------------------------------------------------
+  # PCI DSS compliance checks (Chef InSpec / Cinc Auditor)
+  # --------------------------------------------------------------------------
+  pci-dss-checks:
+    name: PCI DSS — InSpec Profile
+    runs-on: ubuntu-latest
+    if: >
+      env.COMPLIANCE_PROFILE == 'full' ||
+      env.COMPLIANCE_PROFILE == 'pci-only'
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Cinc Auditor
+        run: |
+          curl -L https://omnitruck.cinc.sh/install.sh | \
+            sudo bash -s -- -P cinc-auditor -v 6
+
+      - name: Run PCI DSS InSpec profile
+        run: |
+          cinc-auditor exec \
+            scripts/chapter-23/compliance-as-code/ \
+            --controls pci-dss \
+            --reporter json:pci-report.json cli \
+            --input compliance_mode=ci \
+            || true   # collect results even on failure; gate below
+
+      - name: Gate on PCI DSS critical controls
+        run: |
+          python3 - <<'EOF'
+          import json, sys
+          with open("pci-report.json") as f:
+              report = json.load(f)
+          failures = [
+              c for c in report.get("profiles", [{}])[0].get("controls", [])
+              if c.get("results", [{}])[0].get("status") == "failed"
+              and c.get("impact", 0) >= 1.0
+          ]
+          if failures:
+              print(f"PCI DSS gate FAILED: {len(failures)} critical control(s) failed:")
+              for c in failures:
+                  print(f"  - {c['id']}: {c.get('title', '')}")
+              sys.exit(1)
+          print(f"PCI DSS gate PASSED: 0 critical failures")
+          EOF
+
+      - name: Upload PCI DSS report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pci-dss-report-${{ github.sha }}
+          path: pci-report.json
+          retention-days: 365
+
+  # --------------------------------------------------------------------------
+  # GLI-GSF compliance checks (OPA / Rego)
+  # --------------------------------------------------------------------------
+  gli-gsf-checks:
+    name: GLI-GSF — OPA Policy Gate
+    runs-on: ubuntu-latest
+    if: >
+      env.COMPLIANCE_PROFILE == 'full' ||
+      env.COMPLIANCE_PROFILE == 'gli-only'
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install OPA (Open Policy Agent)
+        run: |
+          curl -L -o /usr/local/bin/opa \
+            https://openpolicyagent.org/downloads/v0.69.0/opa_linux_amd64_static
+          chmod +x /usr/local/bin/opa
+
+      - name: Generate deployment manifest for policy evaluation
+        run: |
+          python3 scripts/chapter-23/compliance-as-code/pci-dss-checks.py \
+            --output-format json \
+            > deployment-manifest.json
+
+      - name: Evaluate GLI-GSF Rego policies
+        run: |
+          opa eval \
+            --data scripts/chapter-23/config/gambling-rules.yml \
+            --input deployment-manifest.json \
+            --format pretty \
+            "data.igaming.compliance.deny" \
+            > gli-results.txt
+          cat gli-results.txt
+
+      - name: Gate on GLI-GSF violations
+        run: |
+          python3 - <<'EOF'
+          import json, sys
+          with open("gli-results.txt") as f:
+              content = f.read().strip()
+          if content and content != "[]":
+              violations = json.loads(content)
+              if violations:
+                  print(f"GLI-GSF gate FAILED: {len(violations)} policy violation(s):")
+                  for v in violations:
+                      print(f"  - {v}")
+                  sys.exit(1)
+          print("GLI-GSF gate PASSED: 0 policy violations")
+          EOF
+
+      - name: Upload GLI-GSF results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gli-gsf-report-${{ github.sha }}
+          path: gli-results.txt
+          retention-days: 365
+
+  # --------------------------------------------------------------------------
+  # Infrastructure-as-code scanning (Checkov)
+  # --------------------------------------------------------------------------
+  iac-scan:
+    name: IaC Compliance — Checkov
+    runs-on: ubuntu-latest
+    if: >
+      env.COMPLIANCE_PROFILE == 'full' ||
+      env.COMPLIANCE_PROFILE == 'infrastructure-only'
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Checkov IaC scan
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: .
+          framework: terraform,dockerfile,kubernetes
+          output_format: sarif
+          output_file_path: checkov-results.sarif
+          soft_fail: false
+          check: >
+            CKV_AWS_111,CKV_AWS_116,CKV_AWS_145,
+            CKV_DOCKER_2,CKV_DOCKER_3,CKV_DOCKER_5,
+            CKV_K8S_8,CKV_K8S_14,CKV_K8S_28
+
+      - name: Upload Checkov SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: checkov-results.sarif
+
+  # --------------------------------------------------------------------------
+  # Upload compliance evidence to S3 (audit datastore)
+  # --------------------------------------------------------------------------
+  upload-evidence:
+    name: Upload Compliance Evidence
+    runs-on: ubuntu-latest
+    needs:
+      - supply-chain
+      - pci-dss-checks
+      - gli-gsf-checks
+    if: always() && github.ref == 'refs/heads/main'
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: compliance-evidence/
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_COMPLIANCE_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Upload evidence to S3 compliance bucket
+        run: |
+          EVIDENCE_PATH="evidence/${{ github.repository }}/${{ github.sha }}/$(date +%Y-%m-%d)/"
+          aws s3 sync compliance-evidence/ \
+            "s3://${{ secrets.COMPLIANCE_BUCKET }}/${EVIDENCE_PATH}" \
+            --sse aws:kms \
+            --metadata \
+              "commit=${{ github.sha }},workflow=${{ github.run_id }},date=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "Evidence uploaded to s3://${{ secrets.COMPLIANCE_BUCKET }}/${EVIDENCE_PATH}"
+
+  # --------------------------------------------------------------------------
+  # Slack notification on compliance failure
+  # --------------------------------------------------------------------------
+  notify-failure:
+    name: Notify Compliance Failure
+    runs-on: ubuntu-latest
+    needs:
+      - supply-chain
+      - pci-dss-checks
+      - gli-gsf-checks
+      - iac-scan
+    if: failure()
+
+    steps:
+      - name: Send Slack alert
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_COMPLIANCE_WEBHOOK }}
+        run: |
+          curl -s -X POST "${SLACK_WEBHOOK}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"text\": \":rotating_light: *Compliance Gate FAILED*\",
+              \"attachments\": [{
+                \"color\": \"danger\",
+                \"fields\": [
+                  {\"title\": \"Repository\", \"value\": \"${{ github.repository }}\", \"short\": true},
+                  {\"title\": \"Branch\", \"value\": \"${{ github.ref_name }}\", \"short\": true},
+                  {\"title\": \"Commit\", \"value\": \"${{ github.sha }}\", \"short\": true},
+                  {\"title\": \"Run\", \"value\": \"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\", \"short\": false}
+                ]
+              }]
+            }"

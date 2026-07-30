@@ -1,0 +1,12 @@
+{
+    "uuid": "96ec57d2-4b1c-46b2-a4ed-8a419b2df6b5",
+    "persistent": true,
+    "request": {
+        "urlPath": "/online/authentication_url.asp",
+        "method": "POST"
+    },
+    "response": {
+        "status": 200,
+        "proxyBaseUrl": "https://www.INTEGRITY-DIRECT.com"
+    }
+}

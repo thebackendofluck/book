@@ -1,0 +1,48 @@
+# /etc/suricata/iprep/categories.txt
+# Format: <id>,<short_name>,<description>
+# Category IDs must be 1-255 and unique
+#
+# A category is only useful when something writes it. The "populated by"
+# column below tracks that: a rule may only reference a category that has a
+# writer, otherwise it can never match. iprep_update.py is the single writer
+# and its FEEDS table is the authority; keep the two in step.
+#
+#  id  populated by
+#   1  feodo_c2 (abuse.ch Feodo Tracker)
+#   2  blocklist_de_bots, firehol_dshield
+#   3  nothing yet — no rule references it
+#   4  nothing yet — no rule references it
+#   5  firehol_sslproxies, firehol_socks_proxy
+#   6  tor_exit_nodes (Tor Project bulk exit list)
+#   7  blocklist_de_bruteforce
+#   8  NOTHING, deliberately — see note under the list
+#   9  nothing yet — no rule references it
+#  10  datashield_recommended, datashield_aggressive
+#  11  emerging_threats
+#  12  abuseipdb_blacklist (only when ABUSEIPDB_API_KEY is set)
+#  13  spamhaus_drop
+#  14  firehol_level1
+#  15  iprep_update.py, from whitelist.txt, into whitelist.list
+
+1,Botnet,Botnet C2 and bot nodes
+2,Scanner,Port and vulnerability scanners
+3,Malware,Malware distribution and hosting
+4,Spam,Spam sources and open relays
+5,ProxyVPN,Commercial proxy and VPN exit nodes
+6,TorExit,Tor exit node
+7,CredStuffing,Known credential stuffing infrastructure
+8,DDoS,DDoS attack source
+9,Scraper,Automated scraping networks
+10,DataShield,Data-Shield aggregated blocklist
+11,EmergingThreats,Emerging Threats firewall block list
+12,AbuseIPDB,AbuseIPDB high-confidence blocks
+13,Spamhaus,Spamhaus DROP
+14,FireHOL,FireHOL Level 1
+15,Whitelist,Explicitly whitelisted (trusted sources)
+
+# Note on category 8 (DDoS): the ID stays reserved but no feed populates it,
+# and no rule references it. There is no public feed that authoritatively
+# identifies DDoS sources, because volumetric traffic arrives from spoofed
+# addresses and from reflectors that are themselves victims. Blocking on a
+# guessed "DDoS source" list mostly blocks misconfigured DNS and NTP servers.
+# Volumetric defence belongs at the scrubbing layer, not in iprep.

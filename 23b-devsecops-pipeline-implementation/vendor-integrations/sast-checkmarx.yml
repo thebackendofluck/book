@@ -1,0 +1,37 @@
+# Companion code for "The Backend of Luck" - Chapter 23b, DevSecOps Pipeline Implementation.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# GitLab CI stub: Checkmarx One scan with policy gate.
+# Fails the pipeline on any HIGH or CRITICAL finding in payment / RNG paths.
+checkmarx-one:
+  stage: sast
+  image: checkmarx/ast-cli:latest
+  timeout: 30 minutes
+  variables:
+    CX_BRANCH: $CI_COMMIT_REF_NAME
+    CX_PROJECT_NAME: "casino-platform"
+  script:
+    - cx configure set --prop-name cx_apikey --prop-value "$CX_CLIENT_SECRET"
+    - cx scan create
+        --project-name "$CX_PROJECT_NAME"
+        --branch "$CX_BRANCH"
+        --tenant "$CX_TENANT"
+        --client-id "$CX_CLIENT_ID"
+        --client-secret "$CX_CLIENT_SECRET"
+        --scan-types sast,sca,iac-security,api-security
+        --report-format sarif
+        --output-name checkmarx-results
+        --filter "severity=HIGH;severity=CRITICAL"
+  artifacts:
+    when: always
+    paths: [checkmarx-results.sarif]
+    reports:
+      sast: checkmarx-results.sarif
+  allow_failure: false

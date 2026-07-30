@@ -1,0 +1,19 @@
+#!/bin/bash
+echo "Check for hooks updates"
+cd "$(dirname "$0")"
+cmd="$(ls -l last_update 2>/dev/null)"
+ret=$?
+if [ $ret -ne 0 ]; then
+   git pull
+   touch last_update
+   exit 0
+else
+   :
+fi
+LAST_UPDATE="$(find . -name last_update -type f -mmin +720)"
+if [[ $LAST_UPDATE == *"last_update"* ]]; then
+   git pull
+   touch last_update
+else
+  echo "Updated <12h ago. Skipping..."
+fi

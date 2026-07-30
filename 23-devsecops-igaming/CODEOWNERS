@@ -1,0 +1,237 @@
+# CODEOWNERS Configuration for DevSecOps Standard
+# Defines code review assignments for different parts of the codebase
+
+# Global owners for the entire repository
+* @security-team @devops-team
+
+# Security-related files require security team approval
+*.yml @security-team @devops-team
+*.yaml @security-team @devops-team
+*.json @security-team @devops-team
+*.toml @security-team @devops-team
+*.hcl @security-team @devops-team
+*.properties @security-team @devops-team
+*.conf @security-team @devops-team
+*.config @security-team @devops-team
+
+# Security pipeline and workflow files
+.github/ @security-team @devops-team
+.github/workflows/ @security-team @devops-team
+.github/ISSUE_TEMPLATE/ @security-team @product-team
+.github/PULL_REQUEST_TEMPLATE/ @security-team @product-team
+
+# Security configuration files
+.zap/ @security-team @pentest-team
+.checkov.yml @security-team @infrastructure-team
+.tflint.hcl @security-team @infrastructure-team
+.pyproject.toml @security-team @python-team
+sonar-project.properties @security-team @quality-team
+.yamllint @security-team @devops-team
+.pre-commit-config.yaml @security-team @devops-team
+
+# Infrastructure as Code files
+*.tf @infrastructure-team @security-team
+*.tfvars @infrastructure-team @security-team
+terraform/ @infrastructure-team @security-team
+infrastructure/ @infrastructure-team @security-team
+
+# Container and deployment files
+Dockerfile* @devops-team @security-team
+docker-compose* @devops-team @security-team
+k8s/ @devops-team @security-team
+kubernetes/ @devops-team @security-team
+helm/ @devops-team @security-team
+
+# Security scripts and tools
+setup-*.sh @security-team @devops-team
+install-*.sh @security-team @devops-team
+security-*.sh @security-team @devops-team
+*.py @python-team @security-team
+
+# Documentation files
+*.md @documentation-team @security-team
+README* @documentation-team @security-team
+docs/ @documentation-team @security-team
+security-docs/ @documentation-team @security-team
+
+# Configuration files
+config/ @devops-team @security-team
+configs/ @devops-team @security-team
+settings/ @devops-team @security-team
+.env* @security-team @devops-team
+secrets/ @security-team @devops-team
+
+# Source code by language
+*.py @python-team @security-team
+*.js @javascript-team @security-team
+*.ts @typescript-team @security-team
+*.java @java-team @security-team
+*.go @golang-team @security-team
+*.php @php-team @security-team
+*.cs @dotnet-team @security-team
+*.rb @ruby-team @security-team
+*.scala @scala-team @security-team
+*.kt @kotlin-team @security-team
+
+# Test files
+tests/ @qa-team @security-team
+test/ @qa-team @security-team
+__tests__/ @qa-team @security-team
+*.test.* @qa-team @security-team
+*.spec.* @qa-team @security-team
+
+# Compliance and audit files
+audit/ @compliance-team @security-team
+compliance/ @compliance-team @security-team
+policies/ @compliance-team @security-team
+
+# Monitoring and observability
+monitoring/ @devops-team @security-team
+observability/ @devops-team @security-team
+metrics/ @devops-team @security-team
+alerts/ @devops-team @security-team
+
+# Database and data files
+*.sql @database-team @security-team
+database/ @database-team @security-team
+db/ @database-team @security-team
+migrations/ @database-team @security-team
+
+# API and service definitions
+api/ @api-team @security-team
+apis/ @api-team @security-team
+swagger/ @api-team @security-team
+openapi/ @api-team @security-team
+*.proto @api-team @security-team
+
+# Frontend and UI files
+frontend/ @frontend-team @security-team
+ui/ @frontend-team @security-team
+*.html @frontend-team @security-team
+*.css @frontend-team @security-team
+*.scss @frontend-team @security-team
+*.vue @frontend-team @security-team
+*.jsx @frontend-team @security-team
+*.tsx @frontend-team @security-team
+
+# Mobile application files
+mobile/ @mobile-team @security-team
+android/ @mobile-team @security-team
+ios/ @mobile-team @security-team
+*.swift @mobile-team @security-team
+*.kt @mobile-team @security-team
+
+# Machine learning and data science
+ml/ @ml-team @security-team
+ai/ @ml-team @security-team
+models/ @ml-team @security-team
+data/ @data-team @security-team
+*.ipynb @data-team @security-team
+
+# Third-party and vendor files
+vendor/ @security-team @devops-team
+third-party/ @security-team @devops-team
+external/ @security-team @devops-team
+lib/ @security-team @devops-team
+
+# Build and deployment files
+Makefile @devops-team @security-team
+makefile @devops-team @security-team
+*.mk @devops-team @security-team
+build/ @devops-team @security-team
+dist/ @devops-team @security-team
+target/ @devops-team @security-team
+
+# Package management files
+package.json @javascript-team @security-team
+package-lock.json @javascript-team @security-team
+yarn.lock @javascript-team @security-team
+requirements*.txt @python-team @security-team
+Pipfile* @python-team @security-team
+poetry.lock @python-team @security-team
+Gemfile* @ruby-team @security-team
+pom.xml @java-team @security-team
+build.gradle @java-team @security-team
+go.mod @golang-team @security-team
+go.sum @golang-team @security-team
+composer.json @php-team @security-team
+*.csproj @dotnet-team @security-team
+*.sln @dotnet-team @security-team
+Cargo.toml @rust-team @security-team
+Cargo.lock @rust-team @security-team
+
+# License and legal files
+LICENSE* @legal-team @security-team
+LEGAL* @legal-team @security-team
+NOTICE* @legal-team @security-team
+COPYING* @legal-team @security-team
+
+# CI/CD and automation files
+Jenkinsfile @devops-team @security-team
+.azure-pipelines/ @devops-team @security-team
+.circleci/ @devops-team @security-team
+travis.yml @devops-team @security-team
+.gitlab-ci.yml @devops-team @security-team
+
+# Cloud provider specific files
+.cloudformation/ @infrastructure-team @security-team
+.sam/ @infrastructure-team @security-team
+serverless.yml @infrastructure-team @security-team
+terraform/ @infrastructure-team @security-team
+
+# Backup and temporary files (should not exist in repo)
+*.bak @security-team @devops-team
+*.tmp @security-team @devops-team
+*.temp @security-team @devops-team
+*.log @security-team @devops-team
+
+# Binary and executable files
+*.exe @security-team @devops-team
+*.dll @security-team @devops-team
+*.so @security-team @devops-team
+*.dylib @security-team @devops-team
+bin/ @security-team @devops-team
+
+# Archive files
+*.zip @security-team @devops-team
+*.tar @security-team @devops-team
+*.gz @security-team @devops-team
+*.rar @security-team @devops-team
+*.7z @security-team @devops-team
+
+# Special security considerations
+# These files require additional security review
+**/secrets* @security-team @devops-team
+**/credentials* @security-team @devops-team
+**/passwords* @security-team @devops-team
+**/keys* @security-team @devops-team
+**/tokens* @security-team @devops-team
+**/certificates* @security-team @devops-team
+**/private* @security-team @devops-team
+
+# Critical system files
+/etc/ @security-team @devops-team
+/usr/ @security-team @devops-team
+/var/ @security-team @devops-team
+/boot/ @security-team @devops-team
+/dev/ @security-team @devops-team
+/proc/ @security-team @devops-team
+/sys/ @security-team @devops-team
+
+# Development and local files (should be gitignored)
+.vscode/ @devops-team
+.idea/ @devops-team
+*.swp @devops-team
+*.swo @devops-team
+*~ @devops-team
+.DS_Store @devops-team
+Thumbs.db @devops-team
+
+# Notes on CODEOWNERS usage:
+# - Lines are processed in order, first match wins
+# - Use @org/team or @username for ownership
+# - Multiple owners can be specified separated by spaces
+# - Use # for comments
+# - Patterns follow gitignore syntax
+# - Review assignments are automatic but can be overridden
+# - Emergency overrides are possible for critical fixes

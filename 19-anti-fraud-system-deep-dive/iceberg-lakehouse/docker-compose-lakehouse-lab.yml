@@ -1,0 +1,356 @@
+# Companion code for "The Backend of Luck" - Chapter 19, Anti-Fraud System Deep Dive.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# Docker Compose: Iceberg Fraud Lakehouse — ops-host deployment
+# =============================================================
+#
+# Adapts docker-compose-lakehouse.yml for the ops-host server (10.0.0.11).
+#
+# Key differences from the reference compose:
+#  - Joins the existing fraud-detection-network instead of creating a new one
+#  - Reuses fraud-detection-elasticsearch and fraud-detection-kafka (already running)
+#  - MinIO S3 API on :9010 (port 9000 taken by ministack)
+#  - MinIO console on :9091 (port 9001 taken by portainer_agent)
+#  - Iceberg REST catalog on :8181 (free)
+#  - Spark UI on :4040 (free); Spark master on :7077 (free)
+#  - Flink dashboard on :8086 (8081 taken by fraud-detection-features)
+#  - Uses dedicated iceberg-postgres so fraud-detection-postgres is untouched
+#  - Resource limits sized for 18-20 GB RAM budget on 121 GB available
+#
+# Endpoints (all localhost-only except MinIO console):
+#   MinIO S3 API:        http://localhost:9010
+#   MinIO Console:       http://localhost:9091  (minioadmin / $MINIO_ROOT_PASSWORD)
+#   Iceberg REST:        http://localhost:8181
+#   Spark UI:            http://localhost:4040
+#   Spark Master:        spark://localhost:7077
+#   Flink Dashboard:     http://localhost:8086
+#
+# Required environment (no defaults, on purpose):
+#   MINIO_ROOT_PASSWORD   MinIO root password, also used as the S3 secret key
+#   ICEBERG_PG_PASSWORD   PostgreSQL password for the Iceberg catalog
+# Both are referenced as ${VAR:?...}, so `docker compose up` aborts with a clear
+# message if either is unset. Unlike the local reference compose, this file
+# targets a real server, so it must not carry literal credentials at all.
+#
+# Usage:
+#   export MINIO_ROOT_PASSWORD=... ICEBERG_PG_PASSWORD=...
+#   mkdir -p ~/Projetos/fraud-iceberg-lakehouse
+#   cp docker-compose-lakehouse-ops-host.yml ~/Projetos/fraud-iceberg-lakehouse/
+#   cd ~/Projetos/fraud-iceberg-lakehouse
+#   docker compose -f docker-compose-lakehouse-ops-host.yml up -d
+#   docker compose -f docker-compose-lakehouse-ops-host.yml logs -f iceberg-rest
+
+services:
+  # ---------------------------------------------------------------------------
+  # MinIO: S3-compatible object storage for Iceberg data files
+  # ---------------------------------------------------------------------------
+  minio:
+    image: minio/minio:RELEASE.2024-03-15T01-07-19Z
+    container_name: iceberg-minio
+    # Run as root so MinIO can manage its own /data permissions.
+    # MinIO internally drops privileges after starting.
+    ports:
+      - "127.0.0.1:9010:9000"   # S3 API (9000 taken by ministack)
+      - "127.0.0.1:9091:9091"   # Console (9001 taken by portainer_agent)
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      # Injected, never baked in: this stack runs on a real host, so a literal
+      # here would be a credential committed to the repo. The `:?` form makes
+      # compose refuse to start rather than silently fall back to a default.
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set}
+    command: server /data --console-address ":9091"
+    volumes:
+      - minio_data:/data
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+    healthcheck:
+      # MinIO image has no curl/wget; use /bin/sh + /dev/tcp to check port 9000
+      test: ["CMD-SHELL", "cat /dev/null > /dev/tcp/localhost/9000 && echo ok"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - iceberg-net
+
+  # ---------------------------------------------------------------------------
+  # MinIO bucket initialisation
+  # ---------------------------------------------------------------------------
+  minio-init:
+    image: minio/mc:RELEASE.2024-03-13T23-51-57Z
+    container_name: iceberg-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+        mc alias set local http://minio:9000 minioadmin ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set};
+        mc mb local/fraud-lakehouse --ignore-existing;
+        mc mb local/fraud-lakehouse-checkpoints --ignore-existing;
+        mc anonymous set none local/fraud-lakehouse;
+        echo 'MinIO buckets ready';
+      "
+    restart: on-failure
+    networks:
+      - iceberg-net
+
+  # ---------------------------------------------------------------------------
+  # PostgreSQL: metadata store for Iceberg REST catalog
+  # ---------------------------------------------------------------------------
+  # Separate from fraud-detection-postgres (port 5432) to avoid conflicts.
+  iceberg-postgres:
+    image: postgres:16-alpine
+    container_name: iceberg-postgres
+    # Do not specify user: postgres initdb requires ownership of its data dir.
+    # The postgres:16-alpine image runs as the postgres user (uid 70 on Alpine)
+    # and manages permissions internally.
+    ports:
+      - "127.0.0.1:5433:5432"   # Offset by 1 from fraud-detection-postgres
+    environment:
+      POSTGRES_DB: iceberg_catalog
+      POSTGRES_USER: iceberg
+      POSTGRES_PASSWORD: ${ICEBERG_PG_PASSWORD:?ICEBERG_PG_PASSWORD must be set}
+    volumes:
+      - iceberg_postgres_data:/var/lib/postgresql/data
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U iceberg -d iceberg_catalog"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - iceberg-net
+
+  # ---------------------------------------------------------------------------
+  # Iceberg REST Catalog
+  # ---------------------------------------------------------------------------
+  iceberg-rest:
+    image: tabulario/iceberg-rest:1.5.0
+    container_name: iceberg-rest
+    ports:
+      - "127.0.0.1:8181:8181"
+    environment:
+      CATALOG_WAREHOUSE: s3://fraud-lakehouse/warehouse
+      CATALOG_IO__IMPL: org.apache.iceberg.aws.s3.S3FileIO
+      CATALOG_S3_ENDPOINT: http://minio:9000
+      CATALOG_S3_ACCESS__KEY__ID: minioadmin
+      CATALOG_S3_SECRET__ACCESS__KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set}
+      CATALOG_S3_PATH__STYLE__ACCESS: "true"
+      # AWS SDK requires a region even for non-AWS S3 (MinIO). Use a dummy value.
+      CATALOG_S3_REGION: us-east-1
+      AWS_REGION: us-east-1
+      AWS_DEFAULT_REGION: us-east-1
+      CATALOG_JDBC_URI: jdbc:postgresql://iceberg-postgres:5432/iceberg_catalog
+      CATALOG_JDBC_USER: iceberg
+      CATALOG_JDBC_PASSWORD: ${ICEBERG_PG_PASSWORD:?ICEBERG_PG_PASSWORD must be set}
+    depends_on:
+      iceberg-postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+    healthcheck:
+      # tabulario/iceberg-rest has only dash (sh), no curl/wget/bash.
+      # Check that port 8181 appears in /proc/net/tcp6 (hex 1FF5).
+      test: ["CMD-SHELL", "grep -qi ':1FF5 ' /proc/net/tcp6 2>/dev/null && echo ok"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - iceberg-net
+
+  # ---------------------------------------------------------------------------
+  # Apache Spark Master: batch fraud processing
+  # ---------------------------------------------------------------------------
+  # Reads from Iceberg (fraud_analytics.*) and writes back risk_scores / fraud_alerts.
+  # Packages needed at submit time:
+  #   org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.5.0
+  #   org.apache.hadoop:hadoop-aws:3.3.4
+  #   com.amazonaws:aws-java-sdk-bundle:1.12.262
+  #
+  # Using apache/spark:3.5.5 (official image; bitnami/spark:3.5 tag does not exist).
+  spark:
+    image: apache/spark:3.5.5
+    container_name: iceberg-spark
+    user: root
+    entrypoint: ["/opt/spark/sbin/start-master.sh"]
+    command: []
+    ports:
+      - "127.0.0.1:4040:4040"    # Spark application UI
+      - "127.0.0.1:4041:4041"    # Second app UI slot
+      - "127.0.0.1:7077:7077"    # Spark master
+      - "127.0.0.1:8088:8080"    # Spark master web UI
+    environment:
+      SPARK_NO_DAEMONIZE: "true"
+      SPARK_MASTER_HOST: "0.0.0.0"
+      SPARK_MASTER_PORT: "7077"
+      SPARK_MASTER_WEBUI_PORT: "8080"
+      SPARK_CONF_DIR: /opt/spark/conf
+    volumes:
+      - spark_data:/opt/spark-data
+      - ./scripts:/opt/fraud-scripts:ro
+      - spark_conf:/opt/spark/conf
+    deploy:
+      resources:
+        limits:
+          memory: 4g
+    restart: unless-stopped
+    networks:
+      - iceberg-net
+
+  spark-worker:
+    image: apache/spark:3.5.5
+    container_name: iceberg-spark-worker
+    user: root
+    entrypoint: ["/opt/spark/sbin/start-worker.sh", "spark://spark:7077"]
+    command: []
+    environment:
+      SPARK_NO_DAEMONIZE: "true"
+      SPARK_WORKER_CORES: "4"
+      SPARK_WORKER_MEMORY: "6g"
+    depends_on:
+      - spark
+    volumes:
+      - spark_data:/opt/spark-data
+      - ./scripts:/opt/fraud-scripts:ro
+    deploy:
+      resources:
+        limits:
+          memory: 8g
+    restart: unless-stopped
+    networks:
+      - iceberg-net
+
+  # ---------------------------------------------------------------------------
+  # Apache Flink JobManager: real-time fraud streaming
+  # ---------------------------------------------------------------------------
+  # Consumes fraud-detection-kafka (internal listener kafka:29092).
+  # Writes fraud alerts to Iceberg fraud_analytics.fraud_alerts.
+  # Checkpoint state stored in MinIO (s3a://fraud-lakehouse-checkpoints/flink).
+  flink-jobmanager:
+    image: flink:1.18
+    container_name: iceberg-flink-jobmanager
+    ports:
+      - "127.0.0.1:8086:8081"   # Flink Dashboard (8081 taken by fraud-detection-features)
+    command: jobmanager
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+        jobmanager.memory.process.size: 1600m
+        state.backend: rocksdb
+        state.checkpoints.dir: s3://fraud-lakehouse-checkpoints/flink
+        execution.checkpointing.interval: 60000
+        s3.endpoint: http://minio:9000
+        s3.access-key: minioadmin
+        s3.secret-key: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set}
+        s3.path.style.access: true
+        rest.flamegraph.enabled: true
+    volumes:
+      - flink_data:/opt/flink-data
+      - ./scripts:/opt/fraud-scripts:ro
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+    restart: unless-stopped
+    networks:
+      - iceberg-net
+      - fraud-detection-network   # Access existing Kafka (kafka:29092)
+
+  flink-taskmanager:
+    image: flink:1.18
+    container_name: iceberg-flink-taskmanager
+    command: taskmanager
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+        taskmanager.numberOfTaskSlots: 4
+        taskmanager.memory.process.size: 3g
+        state.backend: rocksdb
+        state.checkpoints.dir: s3://fraud-lakehouse-checkpoints/flink
+        s3.endpoint: http://minio:9000
+        s3.access-key: minioadmin
+        s3.secret-key: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set}
+        s3.path.style.access: true
+    depends_on:
+      - flink-jobmanager
+    volumes:
+      - flink_data:/opt/flink-data
+      - ./scripts:/opt/fraud-scripts:ro
+    deploy:
+      resources:
+        limits:
+          memory: 4g
+    restart: unless-stopped
+    networks:
+      - iceberg-net
+      - fraud-detection-network
+
+  # ---------------------------------------------------------------------------
+  # Iceberg table initialiser
+  # ---------------------------------------------------------------------------
+  # One-shot container: creates namespaces + tables via PyIceberg.
+  # Runs after the REST catalog is healthy, then exits.
+  iceberg-init:
+    image: python:3.12-slim
+    container_name: iceberg-init
+    depends_on:
+      iceberg-rest:
+        condition: service_healthy
+    environment:
+      ICEBERG_CATALOG_URI: http://iceberg-rest:8181
+      ICEBERG_WAREHOUSE: s3://fraud-lakehouse/warehouse
+      S3_ENDPOINT: http://minio:9000
+      AWS_REGION: us-east-1
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set}
+    volumes:
+      - ./scripts:/opt/fraud-scripts:ro
+    command: ["/bin/sh", "-c", "pip install --quiet 'pyiceberg[s3]>=0.7' && python /opt/fraud-scripts/iceberg_fraud_lakehouse.py --catalog-uri http://iceberg-rest:8181 --s3-endpoint http://minio:9000 --action init"]
+    restart: on-failure
+    networks:
+      - iceberg-net
+
+volumes:
+  minio_data:
+    driver: local
+  iceberg_postgres_data:
+    driver: local
+  spark_data:
+    driver: local
+  spark_conf:
+    driver: local
+  flink_data:
+    driver: local
+
+networks:
+  # Internal network for Iceberg stack
+  iceberg-net:
+    driver: bridge
+    name: iceberg-lakehouse-net
+
+  # External reference to existing fraud-detection stack
+  fraud-detection-network:
+    external: true

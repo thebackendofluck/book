@@ -1,0 +1,89 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 27, Data Residency and Backup/Recovery.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# ============================================================================
+# AcmeToCasino — LUKS Disk Encryption for Database Hosts
+# ============================================================================
+#
+# Deploys LUKS2 disk encryption on the data partition of database hosts.
+# The encryption key is either generated via HSM or stored in a keyfile
+# for automated unlock at boot.  Configures auto-mount via crypttab and
+# fstab, and verifies encryption status post-setup.
+#
+# IMPORTANT: This playbook will format the target partition.  Only run on
+# new/empty disks.  The playbook aborts if the target device already
+# contains a filesystem.
+#
+# Usage:
+#   ansible-playbook -i inventory/hosts.yml playbook-disk-encryption.yml
+#
+#   # Dry-run (recommended first)
+#   ansible-playbook -i inventory/hosts.yml playbook-disk-encryption.yml --check --diff
+#
+#   # Single host
+#   ansible-playbook -i inventory/hosts.yml playbook-disk-encryption.yml --limit pg-tde-01
+# ============================================================================
+
+- name: Deploy LUKS Disk Encryption for Database Partitions
+  hosts: disk_encryption
+  become: true
+  gather_facts: true
+
+  vars:
+    luks_mapper_name: "encrypted-data"
+    luks_filesystem: ext4
+    luks_keyfile_dir: /etc/luks
+    luks_keyfile_bits: 4096
+
+  pre_tasks:
+    - name: Verify SSH connectivity
+      ansible.builtin.ping:
+
+    - name: Verify cryptsetup is available or can be installed
+      ansible.builtin.shell: command -v cryptsetup || echo "not_installed"
+      register: cryptsetup_check
+      changed_when: false
+
+    - name: Record deployment start time
+      ansible.builtin.set_fact:
+        deploy_start: "{{ ansible_date_time.iso8601 }}"
+
+  roles:
+    - role: disk-encryption
+      tags: [disk, luks, encryption]
+
+  post_tasks:
+    - name: Verify encryption status
+      ansible.builtin.shell: |
+        if [ -b "/dev/mapper/{{ luks_mapper_name }}" ]; then
+          cryptsetup status {{ luks_mapper_name }}
+        else
+          echo "LUKS device not active"
+        fi
+      register: luks_status
+      changed_when: false
+
+    - name: Display deployment summary
+      ansible.builtin.debug:
+        msg: |
+          LUKS Disk Encryption deployment complete
+          Host: {{ inventory_hostname }} ({{ ansible_host }})
+          Device: {{ luks_data_device }}
+          Mapper: /dev/mapper/{{ luks_mapper_name }}
+          Mount: {{ luks_mount_point }}
+          Cipher: {{ luks_cipher }}
+          Key size: {{ luks_key_size }}
+          Filesystem: {{ luks_filesystem }}
+          Auto-mount: configured via crypttab + fstab
+          Started: {{ deploy_start }}
+          Finished: {{ ansible_date_time.iso8601 }}
+          --- Encryption Status ---
+          {{ luks_status.stdout }}

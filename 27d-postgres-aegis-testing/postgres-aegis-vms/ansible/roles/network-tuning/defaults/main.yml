@@ -1,0 +1,48 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 27d, PostgreSQL Aegis.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# network-tuning role defaults
+# Applied to every VM (postgres, etcd, pgcat).
+# Override in host_vars or group_vars for cloud/hybrid paths.
+
+# Set to 9000 for on-premises clusters where every hop is operator-controlled.
+# Set to 1500 for any cloud or hybrid path (NAT/VPN will clamp silently).
+network_mtu: 9000
+
+# Primary interface inside the VM (set by QEMU virtio-net).
+# Autodetected below; override if the guest uses a non-standard name.
+network_iface: "{{ ansible_facts.default_ipv4.interface | default('ens18') }}"
+
+# Sysctl file for network tuning (separate from PostgreSQL's 99-pg-aegis.conf).
+network_sysctl_file: /etc/sysctl.d/99-network-tuning.conf
+
+# TCP black-hole detection (1 = probe when black hole detected; 2 = always probe).
+# Always enable so ICMP-filtered paths fall back gracefully instead of stalling 30s.
+network_tcp_mtu_probing: 1
+
+# Buffer sizes — matched to 10 Gbps NIC with jumbo frames.
+# At MTU 9000 the effective TCP payload per packet is ~8900 B; raise rmem/wmem
+# so the kernel can pipeline more data in flight (BDP = bandwidth × RTT).
+network_rmem_max:    "67108864"   # 64 MB
+network_wmem_max:    "67108864"   # 64 MB
+network_rmem_default: "1048576"   # 1 MB
+network_wmem_default: "1048576"   # 1 MB
+network_tcp_rmem:    "4096 1048576 67108864"
+network_tcp_wmem:    "4096 1048576 67108864"
+
+# Congestion control — BBR performs better than CUBIC at 10 Gbps with large BDP.
+network_tcp_cc: bbr
+
+# Connection backlog — supports burst of new Patroni/etcd/pgcat reconnections
+# during failover events when hundreds of clients reconnect simultaneously.
+network_somaxconn:           "65535"
+network_netdev_max_backlog:  "65536"
+network_tcp_max_syn_backlog: "65536"

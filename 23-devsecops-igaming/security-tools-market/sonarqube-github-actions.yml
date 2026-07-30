@@ -1,0 +1,165 @@
+# Companion code for "The Backend of Luck" - Chapter 23, DevSecOps for iGaming.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# =============================================================================
+# GitHub Actions Workflow -- SonarQube Analysis for iGaming Platform
+# =============================================================================
+#
+# Purpose:
+#   Triggers SonarQube analysis on every push and pull request to main/develop.
+#   Decorates PRs with analysis results so reviewers see security issues inline.
+#
+# Why GitHub Actions for iGaming:
+#   Many iGaming startups and mid-size operators use GitHub. This workflow
+#   provides the same compliance evidence as the GitLab pipeline -- auditable
+#   proof of continuous security testing for PCI-DSS v4.0 and ISO 27001.
+#
+# Required GitHub Secrets:
+#   SONAR_TOKEN      -- SonarQube authentication token
+#   SONAR_HOST_URL   -- SonarQube server URL (e.g., https://sonar.example.com)
+#
+# =============================================================================
+
+name: SonarQube Analysis
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+    types: [opened, synchronize, reopened]
+
+# Cancel in-progress runs for the same branch/PR -- saves CI minutes
+concurrency:
+  group: sonar-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SONAR_PROJECT_KEY: "igaming-platform"
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Job: Run tests with coverage
+  # ---------------------------------------------------------------------------
+  test:
+    name: Test & Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # Full history needed for SonarQube blame analysis
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run tests with coverage
+        run: |
+          pytest \
+            --cov=src \
+            --cov-report=xml:coverage.xml \
+            --junitxml=test-results.xml \
+            -v
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.xml
+          retention-days: 7
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: test-results.xml
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # Job: SonarQube scan and quality gate check
+  # ---------------------------------------------------------------------------
+  sonarqube:
+    name: SonarQube Scan
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download coverage report
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-report
+
+      - name: Download test results
+        uses: actions/download-artifact@v4
+        with:
+          name: test-results
+
+      # SonarQube scan -- the core analysis step
+      # For iGaming, this catches: SQL injection in player queries,
+      # insecure randomness in game logic, hardcoded credentials,
+      # and missing input validation on financial endpoints.
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@v3
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        with:
+          args: >
+            -Dsonar.projectKey=${{ env.SONAR_PROJECT_KEY }}
+            -Dsonar.sources=src
+            -Dsonar.tests=tests
+            -Dsonar.python.coverage.reportPaths=coverage.xml
+            -Dsonar.python.xunit.reportPath=test-results.xml
+
+      # Quality gate enforcement -- this blocks merges when code
+      # does not meet the iGaming Compliance quality gate thresholds.
+      # PCI-DSS v4.0 requirement 6.2.4: "Prevent or detect and address
+      # common software attacks and related vulnerabilities."
+      - name: SonarQube Quality Gate
+        uses: SonarSource/sonarqube-quality-gate-action@v1
+        timeout-minutes: 5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+      # PR decoration -- adds SonarQube results as comments on the PR.
+      # Reviewers can see security hotspots, code smells, and coverage
+      # changes without leaving GitHub. Requires SonarQube GitHub app
+      # or ALM integration configured.
+      - name: Annotate PR with results
+        if: github.event_name == 'pull_request'
+        run: |
+          echo "## SonarQube Analysis Results" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Quality gate check completed." >> "$GITHUB_STEP_SUMMARY"
+          echo "Full results: ${{ secrets.SONAR_HOST_URL }}/dashboard?id=${{ env.SONAR_PROJECT_KEY }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### iGaming Compliance Checks" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Security rating: must be A (no new vulnerabilities)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Reliability rating: must be A" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Coverage on new code: must be >= 80%" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Zero new blocker/critical issues" >> "$GITHUB_STEP_SUMMARY"
+          echo "- All security hotspots reviewed" >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,191 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 24, Security and Compliance.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# roles/suricata/tasks/install.yml
+# Install Suricata and required tooling on Debian/Ubuntu and RHEL/CentOS/Rocky.
+
+# =============================================================================
+# DEBIAN / UBUNTU
+# =============================================================================
+
+- name: "[Debian] Install prerequisites for apt-key and add-apt-repository"
+  ansible.builtin.apt:
+    name:
+      - software-properties-common
+      - gnupg
+      - apt-transport-https
+      - ca-certificates
+      - curl
+    state: present
+    update_cache: true
+  when: ansible_os_family == "Debian"
+  tags: [install, packages]
+
+- name: "[Debian] Add Suricata stable PPA"
+  ansible.builtin.apt_repository:
+    repo: "ppa:oisf/suricata-stable"
+    state: present
+    update_cache: true
+  when: ansible_os_family == "Debian"
+  tags: [install, packages]
+
+- name: "[Debian] Install Suricata and supporting packages"
+  ansible.builtin.apt:
+    name:
+      - "suricata={{ suricata_version }}-*"
+      - suricata-update
+      - jq
+      - ethtool
+      - numactl
+      - hwloc
+      - iproute2
+      - python3-pip
+      - cpufrequtils
+      - linux-tools-common
+      - linux-tools-generic
+    state: present
+    update_cache: true
+  when: ansible_os_family == "Debian"
+  tags: [install, packages]
+
+# =============================================================================
+# RHEL / CENTOS / ROCKY / ALMA
+# =============================================================================
+
+- name: "[RedHat] Install EPEL release"
+  ansible.builtin.dnf:
+    name: epel-release
+    state: present
+  when: ansible_os_family == "RedHat"
+  tags: [install, packages]
+
+- name: "[RedHat] Install OISF Copr repository for Suricata"
+  ansible.builtin.get_url:
+    url: "https://copr.fedorainfracloud.org/coprs/g/oisf/suricata-{{ suricata_version | regex_replace('\\.[0-9]+$', '') }}/repo/epel-9/group_oisf-suricata-{{ suricata_version | regex_replace('\\.[0-9]+$', '') }}-epel-9.repo"
+    dest: /etc/yum.repos.d/suricata.repo
+    mode: '0644'
+  when: ansible_os_family == "RedHat"
+  tags: [install, packages]
+
+- name: "[RedHat] Install Suricata and supporting packages"
+  ansible.builtin.dnf:
+    name:
+      - suricata
+      - suricata-update
+      - jq
+      - ethtool
+      - numactl
+      - hwloc
+      - iproute
+      - python3-pip
+      - kernel-tools        # provides cpupower
+    state: present
+    update_cache: true
+  when: ansible_os_family == "RedHat"
+  tags: [install, packages]
+
+# =============================================================================
+# COMMON: python packages for suricata-update
+# =============================================================================
+
+- name: "Install suricata-update Python dependencies via pip"
+  ansible.builtin.pip:
+    name:
+      - pyyaml
+      - requests
+    executable: pip3
+    state: present
+  tags: [install, packages]
+
+# =============================================================================
+# DIRECTORIES
+# =============================================================================
+
+- name: "Create Suricata directory structure"
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ suricata_user }}"
+    group: "{{ suricata_group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "{{ suricata_config_dir }}",          mode: "0750" }
+    - { path: "{{ suricata_rules_dir }}",            mode: "0750" }
+    - { path: "{{ suricata_log_dir }}",              mode: "0750" }
+    - { path: "{{ suricata_lib_dir }}",              mode: "0750" }
+    - { path: "{{ suricata_run_dir }}",              mode: "0755" }
+    - { path: "/etc/suricata/update.d",              mode: "0750" }
+    - { path: "/var/lib/suricata/rules",             mode: "0750" }
+    - { path: "/var/lib/suricata/update",            mode: "0750" }
+    - { path: "/var/lib/node_exporter/textfile_collector", mode: "0755" }
+  tags: [install, directories]
+
+# =============================================================================
+# SYSTEM USER
+# =============================================================================
+
+- name: "Ensure suricata system group exists"
+  ansible.builtin.group:
+    name: "{{ suricata_group }}"
+    system: true
+    state: present
+  tags: [install, user]
+
+- name: "Ensure suricata system user exists"
+  ansible.builtin.user:
+    name: "{{ suricata_user }}"
+    group: "{{ suricata_group }}"
+    system: true
+    shell: /usr/sbin/nologin
+    home: "{{ suricata_lib_dir }}"
+    create_home: false
+    comment: "Suricata IDS/IPS daemon"
+  tags: [install, user]
+
+- name: "Add suricata user to required groups (e.g. for raw socket access)"
+  ansible.builtin.user:
+    name: "{{ suricata_user }}"
+    groups: "{{ item }}"
+    append: true
+  loop:
+    - adm
+  ignore_errors: true   # group may not exist on all platforms
+  tags: [install, user]
+
+# =============================================================================
+# CAPABILITIES (raw socket access without root)
+# =============================================================================
+
+- name: "Set required capabilities on Suricata binary"
+  community.general.capabilities:
+    path: /usr/bin/suricata
+    capability: "{{ item }}+eip"
+    state: present
+  loop:
+    - cap_net_admin
+    - cap_net_raw
+    - cap_sys_nice
+  tags: [install, capabilities]
+
+# =============================================================================
+# VERIFY INSTALLATION
+# =============================================================================
+
+- name: "Verify Suricata binary is present and executable"
+  ansible.builtin.command: suricata --build-info
+  register: suricata_build_info
+  changed_when: false
+  tags: [install, verify]
+
+- name: "Display Suricata build info"
+  ansible.builtin.debug:
+    msg: "{{ suricata_build_info.stdout_lines | first }}"
+  tags: [install, verify]

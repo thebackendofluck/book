@@ -1,0 +1,49 @@
+# Companion code for "The Backend of Luck" - Chapter 32, Testing and QA in Gambling.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  # - "first_rules.yml"
+  # - "second_rules.yml"
+
+scrape_configs:
+- job_name: 'prometheus'
+  static_configs:
+  - targets: [ 'localhost:9090' ]
+
+- job_name: 'locust-master'
+  static_configs:
+  - targets: [ 'locust-master:8089' ]
+  scrape_interval: 5s
+  metrics_path: '/metrics'
+
+- job_name: 'locust-workers'
+  static_configs:
+  - targets:
+    - 'locust-worker-1:8089'
+    - 'locust-worker-2:8089'
+    - 'locust-worker-3:8089'
+  scrape_interval: 5s
+  metrics_path: '/metrics'
+
+- job_name: 'node-exporter'
+  static_configs:
+  - targets: [ 'node-exporter:9100' ]
+
+- job_name: 'cadvisor'
+  static_configs:
+  - targets: [ 'cadvisor:8080' ]
+
+- job_name: 'redis-exporter'
+  static_configs:
+  - targets: [ 'redis-exporter:9121' ]

@@ -1,0 +1,270 @@
+# Companion code for "The Backend of Luck" - Chapter 23, DevSecOps for iGaming.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+id: igaming-admin-panel-exposure
+info:
+  name: iGaming Admin Panel Exposed
+  author: security-team
+  severity: critical
+  description: |
+    Detects exposed admin panels in iGaming platforms. Publicly accessible
+    admin endpoints can allow unauthorized management of player accounts,
+    financial transactions, and game configurations.
+  tags: igaming,admin,exposure,casino
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/admin"
+      - "{{BaseURL}}/admin/"
+      - "{{BaseURL}}/admin/login"
+      - "{{BaseURL}}/backoffice"
+      - "{{BaseURL}}/backoffice/login"
+      - "{{BaseURL}}/bo"
+      - "{{BaseURL}}/management"
+      - "{{BaseURL}}/cms"
+      - "{{BaseURL}}/portal/admin"
+      - "{{BaseURL}}/api/admin"
+      - "{{BaseURL}}/dashboard"
+      - "{{BaseURL}}/operator"
+      - "{{BaseURL}}/crm/admin"
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status:
+          - 200
+          - 301
+          - 302
+
+      - type: word
+        words:
+          - "admin"
+          - "login"
+          - "username"
+          - "password"
+          - "backoffice"
+          - "management"
+        condition: or
+        case-insensitive: true
+
+    extractors:
+      - type: regex
+        name: title
+        regex:
+          - '<title>([^<]+)</title>'
+        group: 1
+
+---
+id: igaming-debug-endpoints
+info:
+  name: iGaming Debug/Health Endpoints Leaking Version Info
+  author: security-team
+  severity: high
+  description: |
+    Debug and health-check endpoints in iGaming applications often expose
+    framework versions, dependency lists, and infrastructure details that
+    can aid in targeted attacks.
+  tags: igaming,debug,version-disclosure,casino
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/health"
+      - "{{BaseURL}}/healthz"
+      - "{{BaseURL}}/health/ready"
+      - "{{BaseURL}}/health/live"
+      - "{{BaseURL}}/actuator"
+      - "{{BaseURL}}/actuator/health"
+      - "{{BaseURL}}/actuator/env"
+      - "{{BaseURL}}/actuator/info"
+      - "{{BaseURL}}/actuator/mappings"
+      - "{{BaseURL}}/debug"
+      - "{{BaseURL}}/_debug"
+      - "{{BaseURL}}/api/debug"
+      - "{{BaseURL}}/__debug__"
+      - "{{BaseURL}}/info"
+      - "{{BaseURL}}/version"
+      - "{{BaseURL}}/api/version"
+      - "{{BaseURL}}/status"
+      - "{{BaseURL}}/metrics"
+
+    matchers-condition: or
+    matchers:
+      - type: word
+        words:
+          - '"version"'
+          - '"build"'
+          - '"git.commit"'
+          - '"spring.version"'
+          - '"jvm.version"'
+          - '"dependencies"'
+          - '"classpath"'
+        condition: or
+
+      - type: regex
+        regex:
+          - '"version":\s*"[0-9]+\.[0-9]+'
+          - '"build.version":'
+          - '"app.version":'
+          - 'Spring Boot'
+          - 'Django/[0-9]'
+
+    extractors:
+      - type: json
+        name: version
+        json:
+          - '.version'
+          - '.build.version'
+          - '.info.version'
+
+---
+id: igaming-payment-api-exposure
+info:
+  name: iGaming Payment/Wallet API Without Authentication
+  author: security-team
+  severity: critical
+  description: |
+    Detects payment and wallet API endpoints that respond without requiring
+    authentication headers. This is a critical finding in iGaming platforms
+    as it may allow unauthorized financial operations.
+  tags: igaming,payment,auth-bypass,casino,critical
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/api/wallet"
+      - "{{BaseURL}}/api/wallet/balance"
+      - "{{BaseURL}}/api/payment"
+      - "{{BaseURL}}/api/payments"
+      - "{{BaseURL}}/api/transaction"
+      - "{{BaseURL}}/api/transactions"
+      - "{{BaseURL}}/api/deposit"
+      - "{{BaseURL}}/api/withdraw"
+      - "{{BaseURL}}/api/v1/wallet"
+      - "{{BaseURL}}/api/v2/wallet"
+      - "{{BaseURL}}/payment/api"
+      - "{{BaseURL}}/casino/api/wallet"
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status:
+          - 200
+
+      - type: word
+        words:
+          - '"balance"'
+          - '"amount"'
+          - '"currency"'
+          - '"transaction"'
+          - '"wallet"'
+        condition: or
+
+      - type: word
+        words:
+          - "401"
+          - "403"
+          - "Unauthorized"
+          - "Forbidden"
+          - "authentication required"
+        condition: or
+        negative: true
+        case-insensitive: true
+
+---
+id: igaming-game-result-manipulation
+info:
+  name: iGaming Game Result Endpoint Without HMAC Validation
+  author: security-team
+  severity: high
+  description: |
+    Detects game result submission or RNG endpoints that do not enforce
+    HMAC signature validation, potentially allowing result manipulation.
+  tags: igaming,rng,game-integrity,casino
+
+http:
+  - method: POST
+    path:
+      - "{{BaseURL}}/api/game/result"
+      - "{{BaseURL}}/api/game/spin"
+      - "{{BaseURL}}/api/rng"
+      - "{{BaseURL}}/game/api/result"
+      - "{{BaseURL}}/api/round/complete"
+
+    headers:
+      Content-Type: application/json
+
+    body: '{"gameId":"test","result":"win","amount":1000}'
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status:
+          - 200
+          - 201
+
+      - type: word
+        words:
+          - "signature"
+          - "hmac"
+          - "x-signature"
+        condition: or
+        negative: true
+        case-insensitive: true
+
+---
+id: igaming-kyc-data-exposure
+info:
+  name: iGaming KYC/Player Data Endpoint Exposure
+  author: security-team
+  severity: high
+  description: |
+    Detects KYC (Know Your Customer) and player profile endpoints that may
+    expose PII without proper authorization checks. Critical for GDPR and
+    gambling regulations compliance.
+  tags: igaming,kyc,pii,gdpr,casino
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/api/kyc"
+      - "{{BaseURL}}/api/player/profile"
+      - "{{BaseURL}}/api/user/documents"
+      - "{{BaseURL}}/api/verification"
+      - "{{BaseURL}}/api/identity"
+      - "{{BaseURL}}/api/player/documents"
+      - "{{BaseURL}}/kyc/api"
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status:
+          - 200
+
+      - type: word
+        words:
+          - '"passport"'
+          - '"document"'
+          - '"verification"'
+          - '"dateOfBirth"'
+          - '"dob"'
+          - '"national_id"'
+          - '"ssn"'
+        condition: or
+
+      - type: word
+        words:
+          - "401"
+          - "403"
+          - "Unauthorized"
+        condition: or
+        negative: true
+        case-insensitive: true

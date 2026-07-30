@@ -1,0 +1,16 @@
+[Unit]
+Description=pgBackRest Differential Backup
+Documentation=https://pgbackrest.org/
+After=postgresql.service
+Requires=network-online.target
+
+[Service]
+Type=oneshot
+User=postgres
+ExecStart=/usr/bin/pgbackrest --stanza=casino --type=diff backup
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=pgbackrest-diff
+TimeoutStartSec=10800
+
+OnFailure=pgbackrest-notify@%n.service

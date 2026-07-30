@@ -1,0 +1,188 @@
+# Companion code for "The Backend of Luck" - Chapter 30, FinOps Deep Dive.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# GitHub Actions Workflow for License Scanning
+# =============================================
+#
+# This workflow integrates Aqua Security Trivy for comprehensive
+# license scanning and SBOM generation in GitHub CI/CD pipelines.
+#
+# Features:
+# - License compliance checking
+# - Vulnerability scanning
+# - SBOM generation and upload to Dependency Graph
+# - Policy enforcement with configurable rules
+#
+# Usage: Copy this file to .github/workflows/license-scan.yml
+
+name: License Compliance Scan
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master, develop]
+  schedule:
+    # Run weekly on Sunday at midnight
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+    inputs:
+      fail_on_violation:
+        description: 'Fail build on license violations'
+        required: false
+        default: 'true'
+        type: boolean
+
+env:
+  # Default allowed licenses for iGaming (permissive only)
+  ALLOWED_LICENSES: "MIT,Apache-2.0,BSD-2-Clause,BSD-3-Clause,ISC,CC0-1.0,Unlicense"
+  # Denied licenses (copyleft and source-available)
+  DENIED_LICENSES: "GPL-2.0-only,GPL-3.0-only,AGPL-3.0-only,SSPL-1.0,BSL-1.1"
+
+jobs:
+  license-scan:
+    name: License Compliance Check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Trivy
+        run: |
+          sudo apt-get install wget apt-transport-https gnupg lsb-release -y
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+          echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | sudo tee -a /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update
+          sudo apt-get install trivy -y
+
+      - name: Run License Scan
+        id: license-scan
+        run: |
+          mkdir -p reports
+
+          # Run license scan
+          trivy filesystem . \
+            --scanners license \
+            --license-full \
+            --format json \
+            --output reports/license-scan.json
+
+          # Count violations
+          VIOLATIONS=$(jq '[.Results[]?.Licenses[]? | select(.Name | test("GPL|AGPL|SSPL|BSL"))] | length' reports/license-scan.json || echo "0")
+          echo "violations=$VIOLATIONS" >> $GITHUB_OUTPUT
+
+          # Display summary
+          echo "### License Scan Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          TOTAL=$(jq '[.Results[]?.Licenses // [] | length] | add // 0' reports/license-scan.json)
+          echo "- Total packages with licenses: $TOTAL" >> $GITHUB_STEP_SUMMARY
+          echo "- Policy violations: $VIOLATIONS" >> $GITHUB_STEP_SUMMARY
+
+      - name: Generate SBOM (SPDX)
+        run: |
+          trivy filesystem . \
+            --format spdx-json \
+            --output reports/sbom.spdx.json
+
+      - name: Generate SBOM (CycloneDX)
+        run: |
+          trivy filesystem . \
+            --format cyclonedx \
+            --output reports/sbom.cyclonedx.json
+
+      - name: Run Vulnerability Scan
+        run: |
+          trivy filesystem . \
+            --scanners vuln \
+            --severity HIGH,CRITICAL \
+            --format json \
+            --output reports/vuln-scan.json
+
+          # Add to summary
+          VULNS=$(jq '[.Results[]?.Vulnerabilities // [] | length] | add // 0' reports/vuln-scan.json)
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Vulnerability Scan Results" >> $GITHUB_STEP_SUMMARY
+          echo "- High/Critical vulnerabilities: $VULNS" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload SBOM to Dependency Graph
+        uses: github/dependency-submission-action@v4
+        with:
+          sbom-path: reports/sbom.spdx.json
+        continue-on-error: true
+
+      - name: Upload Scan Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: license-scan-reports
+          path: reports/
+          retention-days: 30
+
+      - name: Upload SARIF Results
+        run: |
+          trivy filesystem . \
+            --scanners vuln,license \
+            --format sarif \
+            --output reports/trivy-results.sarif
+
+      - name: Upload to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: reports/trivy-results.sarif
+        continue-on-error: true
+
+      - name: Check for Violations
+        if: ${{ github.event.inputs.fail_on_violation != 'false' }}
+        run: |
+          VIOLATIONS=${{ steps.license-scan.outputs.violations }}
+          if [ "$VIOLATIONS" -gt 0 ]; then
+            echo "::error::License policy violations detected: $VIOLATIONS"
+            exit 1
+          fi
+          echo "✅ No license policy violations found"
+
+  container-scan:
+    name: Container Image Scan
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    needs: license-scan
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Container Image
+        run: |
+          if [ -f Dockerfile ]; then
+            docker build -t app:${{ github.sha }} .
+          else
+            echo "No Dockerfile found, skipping container scan"
+            exit 0
+          fi
+
+      - name: Scan Container Image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: 'app:${{ github.sha }}'
+          format: 'json'
+          output: 'container-scan.json'
+          scanners: 'vuln,license'
+          severity: 'HIGH,CRITICAL'
+
+      - name: Upload Container Scan Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: container-scan-results
+          path: container-scan.json
+        if: always()

@@ -1,0 +1,121 @@
+# Companion code for "The Backend of Luck" - Chapter 31, Performance Benchmarks and Metrics.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+type: tweetstorm
+events:
+  register:
+    profile:
+      url: /users/register/
+      average_wait: 2
+    transitions:
+      login: 1
+  login:
+    profile:
+      url: /users/login/
+      average_wait: 0
+    transitions:
+      get_profile: 1
+  get_profile:
+    profile:
+      url: /users/profile/
+      average_wait: 0
+    transitions:
+      get_config: 1
+  get_config:
+    profile:
+      url: /main/config/
+      average_wait: 0
+    transitions:
+      generate_geo_test_packet: 1
+  generate_geo_test_packet:
+    profile:
+      url: /geocomply/dev_generate/
+      average_wait: 0
+    transitions:
+      geo_validate: 1
+  geo_validate:
+    profile:
+      url: /geocomply/validate/
+      average_wait: 0
+    transitions:
+      homepage_landing: 1
+  homepage_landing:
+    profile:
+      url: /offerings/homepage/
+      average_wait: 10
+    transitions:
+      get_homepage: 0.9
+      deposit_funds: 0.07
+      coupon_history: 0.03
+  get_homepage:
+    profile:
+      url: /offerings/homepage/
+      average_wait: 10
+    transitions:
+      get_homepage: 0.5
+      deposit_funds: 0.4
+      coupon_history: 0.1
+  deposit_funds:
+    profile:
+      url: /users/deposit/
+      currency: USD
+      average_wait: 120
+      average: 10000
+      variance: 20
+    transitions:
+      place_bet: 0.55
+      get_homepage: 0.35
+      logout: 0.09
+      deposit_funds: 0.01
+  place_bet:
+    profile:
+      average_wait: 240
+      sports:
+        football: 0.9
+        basketball: 0.04
+        boxing: 0.01
+        ice_hockey: 0.02
+        baseball: 0.03
+      bet_types:
+        moneyline: 0.75
+        over/under: 0.25
+      straight:
+        average_odds: 155
+        variance_odds: 30
+        average_wager: 500
+        variance_wager: 2
+      betslip:
+        average_odds: 210
+        average_size: 1
+      parlay:
+        rate: 0
+        probability: 0.4
+        total_legs: 12
+        average_total_odds: 1000
+        average_wager: 600
+        variance_wager: 20
+    transitions:
+      deposit_funds: 0.02
+      logout: 0.2
+      coupon_history: 0.3
+      get_homepage: 0.48
+  coupon_history:
+    profile:
+      average_wait: 10
+    transitions:
+      deposit_funds: 0.02
+      get_homepage: 0.7
+      coupon_history: 0.1
+      logout: 0.18
+  logout:
+    profile:
+      average_wait: 0
+    transitions:
+      logout: 1

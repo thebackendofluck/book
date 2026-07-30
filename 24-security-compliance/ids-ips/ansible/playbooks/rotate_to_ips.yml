@@ -1,0 +1,358 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 24, Security and Compliance.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# playbooks/rotate_to_ips.yml
+# Safely transition a Suricata sensor from IDS (passive) to IPS (inline) mode.
+#
+# Safety gates that must all pass before the mode change is committed:
+#   1. Sensor has been in IDS mode for at least 30 days (configurable)
+#   2. Kernel drop rate is < 0.01 % (configurable)
+#   3. Rule count is > 0
+#   4. Configuration test passes (suricata -T)
+#
+# After switching to IPS mode, the playbook monitors for 5 minutes and
+# automatically rolls back if the drop rate exceeds the threshold.
+#
+# Usage:
+#   # Rotate a single sensor
+#   ansible-playbook -i inventory/production.yml playbooks/rotate_to_ips.yml \
+#     --limit ids-dmz-01.prod.igaming.internal
+#
+#   # Bypass the 30-day check (for testing in staging)
+#   ansible-playbook -i inventory/staging.yml playbooks/rotate_to_ips.yml \
+#     -e "skip_age_check=true"
+#
+#   # Dry run
+#   ansible-playbook -i inventory/production.yml playbooks/rotate_to_ips.yml \
+#     --check --limit ids-dmz-01.prod.igaming.internal
+
+- name: Rotate Suricata from IDS to IPS mode
+  hosts: suricata_sensors
+  become: true
+  gather_facts: true
+  serial: 1           # Only rotate one sensor at a time for safety
+
+  vars:
+    # Minimum number of days in IDS mode before IPS rotation is permitted
+    ids_minimum_days: "{{ ids_burn_in_days | default(30) }}"
+    # Drop rate threshold above which the rotation is considered failed
+    ips_drop_rate_max_pct: "{{ drop_rate_threshold | default(0.01) }}"
+    # Monitoring window (seconds) after IPS mode activation
+    ips_monitor_seconds: 300
+    # Flag set by pre-checks; gates the actual rotation
+    rotation_approved: false
+    # Whether to skip the age check (for staging/testing only)
+    skip_age_check: false
+
+  pre_tasks:
+    - name: "Assert current mode is IDS (not already IPS)"
+      ansible.builtin.assert:
+        that:
+          - suricata_mode == "ids"
+        fail_msg: >
+          {{ inventory_hostname }} is already in {{ suricata_mode | upper }} mode.
+          This playbook is for IDS -> IPS transitions only.
+      tags: [always]
+
+  tasks:
+
+    # ===========================================================================
+    # GATE 1: VERIFY IDS BURN-IN PERIOD
+    # ===========================================================================
+
+    - name: "Check Suricata service start date from journal"
+      ansible.builtin.shell: >
+        systemctl show suricata --property=ExecMainStartTimestamp
+        | cut -d= -f2
+      register: suricata_start_time
+      changed_when: false
+      tags: [pre-check]
+
+    - name: "Calculate days since Suricata was first started"
+      ansible.builtin.set_fact:
+        suricata_running_days: >-
+          {{
+            ((ansible_date_time.epoch | int) -
+             (suricata_start_time.stdout | to_datetime('%a %Y-%m-%d %H:%M:%S %Z') | strftime('%s') | int)
+            ) // 86400
+          }}
+      when: suricata_start_time.stdout != ""
+      ignore_errors: true
+      tags: [pre-check]
+
+    - name: "Set default if start time parsing failed"
+      ansible.builtin.set_fact:
+        suricata_running_days: 0
+      when: suricata_running_days is not defined
+      tags: [pre-check]
+
+    - name: "Gate 1: Verify minimum IDS burn-in period"
+      ansible.builtin.assert:
+        that:
+          - skip_age_check | bool or
+            (suricata_running_days | int >= ids_minimum_days | int)
+        fail_msg: >
+          GATE FAILED: {{ inventory_hostname }} has been running IDS mode for
+          {{ suricata_running_days }} days, but the minimum is {{ ids_minimum_days }} days.
+          Use -e "skip_age_check=true" to override (staging only).
+        success_msg: >
+          Gate 1 passed: {{ suricata_running_days }} days in IDS mode
+          (minimum: {{ ids_minimum_days }})
+      tags: [pre-check]
+
+    # ===========================================================================
+    # GATE 2: VERIFY KERNEL DROP RATE
+    # ===========================================================================
+
+    - name: "Read current packet drop statistics"
+      ansible.builtin.shell: |
+        tail -200 {{ suricata_log_dir }}/stats.log | \
+        awk '/kernel_packets/{pkts=$NF} /kernel_drops/{drops=$NF} END {
+          if (pkts > 0)
+            printf "%.6f", (drops / pkts) * 100
+          else
+            print "0"
+        }'
+      register: current_drop_rate
+      changed_when: false
+      tags: [pre-check]
+
+    - name: "Gate 2: Verify kernel drop rate is below threshold"
+      ansible.builtin.assert:
+        that:
+          - current_drop_rate.stdout | float < ips_drop_rate_max_pct | float
+        fail_msg: >
+          GATE FAILED: Current kernel drop rate is {{ current_drop_rate.stdout }}%.
+          Maximum allowed for IPS rotation is {{ ips_drop_rate_max_pct }}%.
+          Investigate NIC ring buffer and CPU affinity before proceeding.
+        success_msg: >
+          Gate 2 passed: kernel drop rate {{ current_drop_rate.stdout }}%
+          (threshold: {{ ips_drop_rate_max_pct }}%)
+      tags: [pre-check]
+
+    # ===========================================================================
+    # GATE 3: VERIFY RULE COUNT
+    # ===========================================================================
+
+    - name: "Count currently loaded rules"
+      ansible.builtin.shell: >
+        grep -c '^alert\|^drop\|^pass\|^reject'
+        {{ suricata_rules_dir }}/suricata.rules || echo 0
+      register: loaded_rule_count
+      changed_when: false
+      tags: [pre-check]
+
+    - name: "Gate 3: Verify rules are loaded"
+      ansible.builtin.assert:
+        that:
+          - loaded_rule_count.stdout | int > 0
+        fail_msg: "GATE FAILED: No rules loaded. Run update_rules.yml first."
+        success_msg: "Gate 3 passed: {{ loaded_rule_count.stdout }} rules loaded"
+      tags: [pre-check]
+
+    # ===========================================================================
+    # BACKUP CURRENT CONFIGURATION
+    # ===========================================================================
+
+    - name: "Create backup directory for pre-rotation config"
+      ansible.builtin.file:
+        path: /var/lib/suricata/ips-rotation-backup
+        state: directory
+        mode: "0750"
+      tags: [backup]
+
+    - name: "Back up suricata.yaml before modification"
+      ansible.builtin.copy:
+        src: "{{ suricata_config_dir }}/suricata.yaml"
+        dest: "/var/lib/suricata/ips-rotation-backup/suricata.yaml.ids-backup"
+        remote_src: true
+        mode: "0640"
+      tags: [backup]
+
+    - name: "Record pre-rotation state"
+      ansible.builtin.copy:
+        dest: /var/lib/suricata/ips-rotation-backup/rotation-state.txt
+        content: |
+          Rotation started: {{ ansible_date_time.iso8601 }}
+          Host: {{ inventory_hostname }}
+          Zone: {{ sensor_zone | default('unset') }}
+          Pre-rotation mode: IDS
+          IDS running days: {{ suricata_running_days | default('unknown') }}
+          Drop rate at rotation: {{ current_drop_rate.stdout }}%
+          Rule count: {{ loaded_rule_count.stdout }}
+        mode: "0644"
+      tags: [backup]
+
+    # ===========================================================================
+    # SWITCH TO IPS MODE
+    # ===========================================================================
+
+    - name: "Update suricata_mode fact to ips"
+      ansible.builtin.set_fact:
+        suricata_mode: "ips"
+      tags: [rotate]
+
+    - name: "Deploy updated suricata.yaml in IPS mode"
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../roles/suricata/templates/suricata.yaml.j2"
+        dest: "{{ suricata_config_dir }}/suricata.yaml"
+        owner: "{{ suricata_user }}"
+        group: "{{ suricata_group }}"
+        mode: "0640"
+      tags: [rotate]
+
+    - name: "Deploy updated systemd service unit in IPS mode"
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../roles/suricata/templates/suricata.service.j2"
+        dest: /etc/systemd/system/suricata.service
+        owner: root
+        group: root
+        mode: "0644"
+      tags: [rotate]
+
+    - name: "Validate IPS configuration before restart"
+      ansible.builtin.command: >
+        suricata -T -c {{ suricata_config_dir }}/suricata.yaml -l /tmp
+      register: ips_validate
+      changed_when: false
+      failed_when: ips_validate.rc != 0
+      tags: [rotate, validate]
+
+    - name: "Reload systemd daemon"
+      ansible.builtin.systemd:
+        daemon_reload: true
+      tags: [rotate]
+
+    - name: "Restart Suricata in IPS mode"
+      ansible.builtin.systemd:
+        name: suricata
+        state: restarted
+      tags: [rotate]
+
+    - name: "Pause 15 seconds for IPS mode to stabilise"
+      ansible.builtin.pause:
+        seconds: 15
+        prompt: "Waiting for Suricata to stabilise in IPS mode..."
+      tags: [rotate]
+
+    - name: "Verify Suricata is active in IPS mode"
+      ansible.builtin.systemd:
+        name: suricata
+      register: ips_status
+      tags: [rotate]
+
+    - name: "Assert and rollback block for IPS switch"
+      block:
+        - name: "Assert Suricata is running after IPS switch"
+          ansible.builtin.assert:
+            that:
+              - ips_status.status.ActiveState == "active"
+            fail_msg: >
+              Suricata failed to start in IPS mode on {{ inventory_hostname }}.
+              Rolling back to IDS mode.
+      rescue:
+        - name: "ROLLBACK: Suricata failed to start in IPS mode"
+          ansible.builtin.include_tasks: _rollback_to_ids.yml
+      tags: [rotate]
+
+    # ===========================================================================
+    # MONITORING WINDOW (5 minutes)
+    # ===========================================================================
+
+    - name: "Monitor drop rate for {{ ips_monitor_seconds }}s in IPS mode"
+      ansible.builtin.shell: |
+        END_TIME=$(( $(date +%s) + {{ ips_monitor_seconds }} ))
+        while [ $(date +%s) -lt ${END_TIME} ]; do
+          DROP_RATE=$(tail -200 {{ suricata_log_dir }}/stats.log | \
+            awk '/kernel_packets/{pkts=$NF} /kernel_drops/{drops=$NF} END {
+              if (pkts > 0) printf "%.6f", (drops / pkts) * 100; else print "0"
+            }')
+          EXCEEDED=$(awk "BEGIN {print (${DROP_RATE} >= {{ ips_drop_rate_max_pct }}) ? 1 : 0}")
+          if [ "${EXCEEDED}" = "1" ]; then
+            echo "DROPS_EXCEEDED:${DROP_RATE}"
+            exit 1
+          fi
+          echo "OK:${DROP_RATE}"
+          sleep 30
+        done
+        echo "MONITOR_PASSED"
+      register: ips_monitor_result
+      changed_when: false
+      failed_when: ips_monitor_result.rc != 0
+      tags: [monitor]
+
+    - name: "Display monitoring results"
+      ansible.builtin.debug:
+        msg: >
+          IPS monitoring complete.
+          Sample readings: {{ ips_monitor_result.stdout_lines }}
+      tags: [monitor]
+
+    # ===========================================================================
+    # COMMIT ROTATION
+    # ===========================================================================
+
+    - name: "Update group_vars fact to persist IPS mode"
+      ansible.builtin.debug:
+        msg: >
+          IPS rotation completed successfully on {{ inventory_hostname }}.
+          Update inventory or group_vars/suricata_sensors.yml to set
+          suricata_mode: ips permanently for this host.
+      tags: [commit]
+
+    - name: "Record rotation completion"
+      ansible.builtin.lineinfile:
+        path: /var/lib/suricata/ips-rotation-backup/rotation-state.txt
+        line: "Rotation completed: {{ ansible_date_time.iso8601 }} — SUCCESS"
+        insertafter: EOF
+      tags: [commit]
+
+  # ===========================================================================
+  # ROLLBACK HANDLER (invoked on monitoring failure)
+  # ===========================================================================
+
+  post_tasks:
+    - name: "IPS rotation monitoring FAILED — initiating rollback"
+      block:
+        - name: "Restore IDS configuration from backup"
+          ansible.builtin.copy:
+            src: /var/lib/suricata/ips-rotation-backup/suricata.yaml.ids-backup
+            dest: "{{ suricata_config_dir }}/suricata.yaml"
+            remote_src: true
+            owner: "{{ suricata_user }}"
+            group: "{{ suricata_group }}"
+            mode: "0640"
+
+        - name: "Restart Suricata in IDS mode"
+          ansible.builtin.systemd:
+            name: suricata
+            state: restarted
+
+        - name: "Verify rollback succeeded"
+          ansible.builtin.systemd:
+            name: suricata
+          register: rollback_status
+
+        - name: "Record rollback"
+          ansible.builtin.lineinfile:
+            path: /var/lib/suricata/ips-rotation-backup/rotation-state.txt
+            line: "ROLLBACK executed: {{ ansible_date_time.iso8601 }} — reverted to IDS mode"
+            insertafter: EOF
+
+        - name: "Fail with rollback message"
+          ansible.builtin.fail:
+            msg: >
+              IPS rotation on {{ inventory_hostname }} was rolled back.
+              Drop rate exceeded {{ ips_drop_rate_max_pct }}% during the
+              {{ ips_monitor_seconds }}s monitoring window.
+              Monitor output: {{ ips_monitor_result.stdout_lines | last }}
+      when: ips_monitor_result is defined and ips_monitor_result.rc != 0
+      tags: [always]

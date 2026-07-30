@@ -1,0 +1,29 @@
+[Unit]
+Description=Encrypted PostgreSQL backup to Wasabi S3
+After=network-online.target docker.service
+Requires=docker.service
+ConditionPathExists=/root/.wasabi/encryption-passphrase
+ConditionPathExists=/root/.wasabi/credentials
+
+[Service]
+Type=oneshot
+ExecStart=/opt/scripts/wasabi-backup-encrypted.sh
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=wasabi-backup
+
+# Restrict filesystem access
+ProtectSystem=strict
+ReadWritePaths=/opt/backups/wasabi-tmp /var/log /var/www
+PrivateTmp=true
+
+# Drop unnecessary privileges
+NoNewPrivileges=true
+CapabilityBoundingSet=
+
+# Environment overrides (set PASSPHRASE_FILE if using non-default path)
+# Environment=PASSPHRASE_FILE=/root/.wasabi/encryption-passphrase
+# Environment=PROMETHEUS_PUSHGATEWAY_URL=http://localhost:9091
+
+[Install]
+WantedBy=multi-user.target

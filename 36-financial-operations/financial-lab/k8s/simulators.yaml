@@ -1,0 +1,626 @@
+# Companion code for "The Backend of Luck" - Chapter 36, Financial Operations.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# financial-lab/k8s/simulators.yaml
+# PSP simulator deployments for local financial testing
+# Simulates 8 payment providers: Adyen, Trustly, PayPal, Paysafe,
+# Skrill, Neteller, Nuvei, and the bank wire simulator
+# Chapter 36b: Financial Truth Layer -- reconciliation testing
+---
+# ----------------------------------------------------------------
+# Adyen Simulator
+# Simulates Adyen HPP + Checkout API + webhook callbacks
+# ----------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: adyen-simulator
+  namespace: financial-lab
+  labels:
+    app: adyen-simulator
+    component: simulator
+    psp: adyen
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: adyen-simulator
+  template:
+    metadata:
+      labels:
+        app: adyen-simulator
+        component: simulator
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: adyen-simulator
+          image: ghcr.io/acmetocasino/psp-simulator:1.0.0
+          ports:
+            - containerPort: 8100
+          env:
+            - name: SIMULATOR_NAME
+              value: "adyen"
+            - name: SIMULATOR_PORT
+              value: "8100"
+            - name: PAYMENT_SUCCESS_RATE
+              value: "0.95"
+            - name: CALLBACK_URL
+              value: "http://payments-service:8081/webhooks/adyen"
+            - name: SETTLEMENT_DELAY_DAYS
+              value: "2"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: adyen-simulator
+  namespace: financial-lab
+spec:
+  selector:
+    app: adyen-simulator
+  ports:
+    - port: 8100
+      targetPort: 8100
+---
+# ----------------------------------------------------------------
+# Trustly Simulator (Open Banking / bank transfer)
+# ----------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: trustly-simulator
+  namespace: financial-lab
+  labels:
+    app: trustly-simulator
+    component: simulator
+    psp: trustly
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: trustly-simulator
+  template:
+    metadata:
+      labels:
+        app: trustly-simulator
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: trustly-simulator
+          image: ghcr.io/acmetocasino/psp-simulator:1.0.0
+          ports:
+            - containerPort: 8101
+          env:
+            - name: SIMULATOR_NAME
+              value: "trustly"
+            - name: SIMULATOR_PORT
+              value: "8101"
+            - name: PAYMENT_SUCCESS_RATE
+              value: "0.92"
+            - name: CALLBACK_URL
+              value: "http://payments-service:8081/webhooks/trustly"
+            - name: SETTLEMENT_DELAY_DAYS
+              value: "1"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: trustly-simulator
+  namespace: financial-lab
+spec:
+  selector:
+    app: trustly-simulator
+  ports:
+    - port: 8101
+      targetPort: 8101
+---
+# ----------------------------------------------------------------
+# PayPal Simulator
+# ----------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: paypal-simulator
+  namespace: financial-lab
+  labels:
+    app: paypal-simulator
+    component: simulator
+    psp: paypal
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: paypal-simulator
+  template:
+    metadata:
+      labels:
+        app: paypal-simulator
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: paypal-simulator
+          image: ghcr.io/acmetocasino/psp-simulator:1.0.0
+          ports:
+            - containerPort: 8102
+          env:
+            - name: SIMULATOR_NAME
+              value: "paypal"
+            - name: SIMULATOR_PORT
+              value: "8102"
+            - name: PAYMENT_SUCCESS_RATE
+              value: "0.97"
+            - name: CALLBACK_URL
+              value: "http://payments-service:8081/webhooks/paypal"
+            - name: SETTLEMENT_DELAY_DAYS
+              value: "3"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: paypal-simulator
+  namespace: financial-lab
+spec:
+  selector:
+    app: paypal-simulator
+  ports:
+    - port: 8102
+      targetPort: 8102
+---
+# ----------------------------------------------------------------
+# Paysafe Simulator
+# ----------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: paysafe-simulator
+  namespace: financial-lab
+  labels:
+    app: paysafe-simulator
+    component: simulator
+    psp: paysafe
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: paysafe-simulator
+  template:
+    metadata:
+      labels:
+        app: paysafe-simulator
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: paysafe-simulator
+          image: ghcr.io/acmetocasino/psp-simulator:1.0.0
+          ports:
+            - containerPort: 8103
+          env:
+            - name: SIMULATOR_NAME
+              value: "paysafe"
+            - name: SIMULATOR_PORT
+              value: "8103"
+            - name: PAYMENT_SUCCESS_RATE
+              value: "0.93"
+            - name: CALLBACK_URL
+              value: "http://payments-service:8081/webhooks/paysafe"
+            - name: SETTLEMENT_DELAY_DAYS
+              value: "2"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: paysafe-simulator
+  namespace: financial-lab
+spec:
+  selector:
+    app: paysafe-simulator
+  ports:
+    - port: 8103
+      targetPort: 8103
+---
+# ----------------------------------------------------------------
+# Skrill Simulator
+# ----------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: skrill-simulator
+  namespace: financial-lab
+  labels:
+    app: skrill-simulator
+    component: simulator
+    psp: skrill
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: skrill-simulator
+  template:
+    metadata:
+      labels:
+        app: skrill-simulator
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: skrill-simulator
+          image: ghcr.io/acmetocasino/psp-simulator:1.0.0
+          ports:
+            - containerPort: 8104
+          env:
+            - name: SIMULATOR_NAME
+              value: "skrill"
+            - name: SIMULATOR_PORT
+              value: "8104"
+            - name: PAYMENT_SUCCESS_RATE
+              value: "0.91"
+            - name: CALLBACK_URL
+              value: "http://payments-service:8081/webhooks/skrill"
+            - name: SETTLEMENT_DELAY_DAYS
+              value: "2"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: skrill-simulator
+  namespace: financial-lab
+spec:
+  selector:
+    app: skrill-simulator
+  ports:
+    - port: 8104
+      targetPort: 8104
+---
+# ----------------------------------------------------------------
+# Neteller Simulator
+# ----------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: neteller-simulator
+  namespace: financial-lab
+  labels:
+    app: neteller-simulator
+    component: simulator
+    psp: neteller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: neteller-simulator
+  template:
+    metadata:
+      labels:
+        app: neteller-simulator
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: neteller-simulator
+          image: ghcr.io/acmetocasino/psp-simulator:1.0.0
+          ports:
+            - containerPort: 8105
+          env:
+            - name: SIMULATOR_NAME
+              value: "neteller"
+            - name: SIMULATOR_PORT
+              value: "8105"
+            - name: PAYMENT_SUCCESS_RATE
+              value: "0.90"
+            - name: CALLBACK_URL
+              value: "http://payments-service:8081/webhooks/neteller"
+            - name: SETTLEMENT_DELAY_DAYS
+              value: "2"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: neteller-simulator
+  namespace: financial-lab
+spec:
+  selector:
+    app: neteller-simulator
+  ports:
+    - port: 8105
+      targetPort: 8105
+---
+# ----------------------------------------------------------------
+# Nuvei Simulator
+# ----------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nuvei-simulator
+  namespace: financial-lab
+  labels:
+    app: nuvei-simulator
+    component: simulator
+    psp: nuvei
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nuvei-simulator
+  template:
+    metadata:
+      labels:
+        app: nuvei-simulator
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: nuvei-simulator
+          image: ghcr.io/acmetocasino/psp-simulator:1.0.0
+          ports:
+            - containerPort: 8106
+          env:
+            - name: SIMULATOR_NAME
+              value: "nuvei"
+            - name: SIMULATOR_PORT
+              value: "8106"
+            - name: PAYMENT_SUCCESS_RATE
+              value: "0.94"
+            - name: CALLBACK_URL
+              value: "http://payments-service:8081/webhooks/nuvei"
+            - name: SETTLEMENT_DELAY_DAYS
+              value: "2"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nuvei-simulator
+  namespace: financial-lab
+spec:
+  selector:
+    app: nuvei-simulator
+  ports:
+    - port: 8106
+      targetPort: 8106
+---
+# ----------------------------------------------------------------
+# Bank Wire Simulator
+# Simulates SWIFT/SEPA bank transfer settlement callbacks
+# ----------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bank-wire-simulator
+  namespace: financial-lab
+  labels:
+    app: bank-wire-simulator
+    component: simulator
+    psp: bank-wire
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bank-wire-simulator
+  template:
+    metadata:
+      labels:
+        app: bank-wire-simulator
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: bank-wire-simulator
+          image: ghcr.io/acmetocasino/psp-simulator:1.0.0
+          ports:
+            - containerPort: 8107
+          env:
+            - name: SIMULATOR_NAME
+              value: "bank-wire"
+            - name: SIMULATOR_PORT
+              value: "8107"
+            - name: PAYMENT_SUCCESS_RATE
+              value: "0.99"
+            - name: CALLBACK_URL
+              value: "http://payments-service:8081/webhooks/bank-wire"
+            - name: SETTLEMENT_DELAY_DAYS
+              value: "5"   # T+5 for international wires
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bank-wire-simulator
+  namespace: financial-lab
+spec:
+  selector:
+    app: bank-wire-simulator
+  ports:
+    - port: 8107
+      targetPort: 8107

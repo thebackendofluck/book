@@ -1,0 +1,71 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 24, Security and Compliance.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# group_vars/all.yml
+# Variables that apply to every host in the inventory.
+# Override per-group or per-host as needed.
+
+# ── Organisation ───────────────────────────────────────────────────────────────
+organization_name: "iGaming Platform"
+organization_short: "igaming"
+
+# ── Time ───────────────────────────────────────────────────────────────────────
+# At least two NTP sources; use your cloud provider's stratum-1 where possible.
+ntp_servers:
+  - 169.254.169.123     # AWS/GCP/Azure internal NTP
+  - 0.pool.ntp.org
+  - 1.pool.ntp.org
+timezone: "UTC"
+
+# ── DNS ────────────────────────────────────────────────────────────────────────
+dns_servers:
+  - 10.0.0.2            # VPC resolver
+  - 8.8.8.8             # Google fallback (outbound only)
+dns_search_domains:
+  - igaming.internal
+
+# ── Centralised Logging ────────────────────────────────────────────────────────
+# Syslog / rsyslog target for EVE JSON and system logs.
+# Protocol: UDP for speed (accept some loss); TCP for compliance-sensitive zones.
+syslog_server: "syslog.igaming.internal"
+syslog_port: 514
+syslog_protocol: udp          # udp | tcp
+
+# Filebeat / Logstash endpoint (used by monitoring.yml task)
+logstash_host: "logstash.igaming.internal"
+logstash_port: 5044
+
+# ── Alerting ───────────────────────────────────────────────────────────────────
+# Slack webhook for operational alerts (rule updates, health check failures).
+# Store the actual URL in vault.yml (group_vars/vault.yml), encrypted with
+# ansible-vault.  This variable is the *reference* only.
+slack_webhook_url: "{{ vault_slack_webhook_url }}"
+slack_channel: "#security-alerts"
+slack_username: "Suricata-Bot"
+
+# PagerDuty integration key (critical alerts only)
+pagerduty_integration_key: "{{ vault_pagerduty_integration_key }}"
+
+# ── SSH Hardening ──────────────────────────────────────────────────────────────
+ssh_allowed_users:
+  - ansible
+  - soc-operator
+
+# ── Package Mirror ─────────────────────────────────────────────────────────────
+# Use an internal mirror to avoid outbound dependency on public repos.
+# Leave empty to use OS defaults.
+apt_mirror: ""            # e.g. http://apt-mirror.igaming.internal/ubuntu
+yum_mirror: ""            # e.g. http://yum-mirror.igaming.internal/centos
+
+# ── Proxy (if required) ────────────────────────────────────────────────────────
+http_proxy: ""
+https_proxy: ""
+no_proxy: "localhost,127.0.0.1,10.0.0.0/8,igaming.internal"

@@ -1,0 +1,613 @@
+# Companion code for "The Backend of Luck" - Chapter 10, Complete Platform Architecture.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# Chapter 42 - Complete Platform Architecture
+# OpenTelemetry Collector Configuration for iGambling Platform
+#
+# Implements distributed tracing, metrics, and log collection with:
+# - Trace sampling based on endpoint criticality (payment = 100%, game = 10%)
+# - Gambling-specific span attributes (player_id, jurisdiction, game_id)
+# - Tail-based sampling for error traces
+# - Multi-backend export (Jaeger, Prometheus, Loki)
+# - PII scrubbing from traces and logs
+#
+# Deploy:
+#   kubectl apply -f otel-collector.yaml
+#
+# Architecture:
+#   Services -> OTel SDK -> OTel Collector (Agent/DaemonSet)
+#                         -> OTel Collector (Gateway/Deployment)
+#                         -> Jaeger / Prometheus / Loki
+
+---
+# 1. ConfigMap - OTel Collector configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-collector-config
+  namespace: monitoring
+data:
+  collector-config.yaml: |
+    receivers:
+      # OTLP receiver (gRPC and HTTP)
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+            max_recv_msg_size_mib: 16
+          http:
+            endpoint: 0.0.0.0:4318
+            cors:
+              allowed_origins:
+                - "https://admin.acme-casino.com"
+
+      # Prometheus scraping for services that expose /metrics
+      prometheus:
+        config:
+          scrape_configs:
+            - job_name: "casino-services"
+              scrape_interval: 15s
+              kubernetes_sd_configs:
+                - role: pod
+                  namespaces:
+                    names:
+                      - casino-platform
+                      - payment-processing
+                      - game-engine
+                      - player-management
+                      - compliance
+              relabel_configs:
+                - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+                  action: keep
+                  regex: true
+                - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+                  action: replace
+                  target_label: __metrics_path__
+                  regex: (.+)
+                - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+                  action: replace
+                  target_label: __address__
+                  regex: (.+)
+                  replacement: "$$1"
+                - source_labels: [__meta_kubernetes_namespace]
+                  target_label: namespace
+                - source_labels: [__meta_kubernetes_pod_name]
+                  target_label: pod
+                - source_labels: [__meta_kubernetes_pod_label_app]
+                  target_label: app
+
+      # Kafka receiver for async trace/log ingestion
+      kafka:
+        protocol_version: 3.6.0
+        brokers:
+          - kafka-1.kafka-cluster:9092
+          - kafka-2.kafka-cluster:9092
+          - kafka-3.kafka-cluster:9092
+        topic: "platform.otel.traces"
+        group_id: "otel-collector"
+        encoding: otlp_proto
+
+      # Host metrics from DaemonSet agents
+      hostmetrics:
+        collection_interval: 30s
+        scrapers:
+          cpu: {}
+          memory: {}
+          disk: {}
+          network: {}
+          load: {}
+
+    processors:
+      # Batch processor for efficient export
+      batch:
+        send_batch_size: 1024
+        send_batch_max_size: 2048
+        timeout: 5s
+
+      # Memory limiter to prevent OOM
+      memory_limiter:
+        check_interval: 5s
+        limit_mib: 1536
+        spike_limit_mib: 512
+
+      # Resource detection (K8s metadata)
+      resourcedetection:
+        detectors: [env, system, gcp, aws, azure]
+        timeout: 5s
+
+      # K8s attributes enrichment
+      k8sattributes:
+        auth_type: "serviceAccount"
+        passthrough: false
+        extract:
+          metadata:
+            - k8s.namespace.name
+            - k8s.deployment.name
+            - k8s.pod.name
+            - k8s.node.name
+          labels:
+            - tag_name: app
+              key: app
+              from: pod
+            - tag_name: version
+              key: version
+              from: pod
+            - tag_name: tier
+              key: tier
+              from: pod
+
+      # PII scrubbing - Remove sensitive data from traces and logs
+      attributes/pii-scrub:
+        actions:
+          # Mask player email addresses
+          - key: player.email
+            action: hash
+          # Mask card numbers (keep last 4)
+          - key: payment.card_number
+            action: delete
+          # Mask IP addresses in non-payment contexts
+          - key: net.peer.ip
+            action: hash
+          # Remove raw request/response bodies that may contain PII
+          - key: http.request.body
+            action: delete
+          - key: http.response.body
+            action: delete
+          # Mask player names
+          - key: player.first_name
+            action: delete
+          - key: player.last_name
+            action: delete
+          - key: player.date_of_birth
+            action: delete
+
+      # Add gambling-specific resource attributes
+      resource:
+        attributes:
+          - key: service.platform
+            value: "acme-casino"
+            action: upsert
+          - key: deployment.environment
+            value: "production"
+            action: upsert
+
+      # Tail-based sampling (Gateway collector only)
+      # Keeps all error traces and samples normal traffic
+      tail_sampling:
+        decision_wait: 10s
+        num_traces: 100000
+        expected_new_traces_per_sec: 5000
+        policies:
+          # Always keep error traces
+          - name: errors-policy
+            type: status_code
+            status_code:
+              status_codes:
+                - ERROR
+          # Always keep payment traces (100% sampling)
+          - name: payment-traces
+            type: string_attribute
+            string_attribute:
+              key: casino.domain
+              values:
+                - payment-processing
+          # Always keep compliance traces
+          - name: compliance-traces
+            type: string_attribute
+            string_attribute:
+              key: casino.domain
+              values:
+                - compliance
+          # Keep traces with high latency (>2s)
+          - name: latency-policy
+            type: latency
+            latency:
+              threshold_ms: 2000
+          # Sample 10% of game engine traces
+          - name: game-sampling
+            type: and
+            and:
+              and_sub_policy:
+                - name: game-filter
+                  type: string_attribute
+                  string_attribute:
+                    key: casino.domain
+                    values:
+                      - game-engine
+                - name: probabilistic-10
+                  type: probabilistic
+                  probabilistic:
+                    sampling_percentage: 10
+          # Sample 25% of player management traces
+          - name: player-sampling
+            type: and
+            and:
+              and_sub_policy:
+                - name: player-filter
+                  type: string_attribute
+                  string_attribute:
+                    key: casino.domain
+                    values:
+                      - player-management
+                - name: probabilistic-25
+                  type: probabilistic
+                  probabilistic:
+                    sampling_percentage: 25
+          # Default: 5% sampling for everything else
+          - name: default-sampling
+            type: probabilistic
+            probabilistic:
+              sampling_percentage: 5
+
+      # Span metrics connector - generate RED metrics from spans
+      spanmetrics:
+        metrics_exporter: prometheus
+        latency_histogram_buckets:
+          - 5ms
+          - 10ms
+          - 25ms
+          - 50ms
+          - 100ms
+          - 250ms
+          - 500ms
+          - 1000ms
+          - 2500ms
+          - 5000ms
+          - 10000ms
+        dimensions:
+          - name: casino.domain
+          - name: http.method
+          - name: http.status_code
+          - name: casino.jurisdiction
+
+      # Filter processor - drop health check spans
+      filter:
+        error_mode: ignore
+        traces:
+          span:
+            - 'attributes["http.target"] == "/health"'
+            - 'attributes["http.target"] == "/ready"'
+            - 'attributes["http.target"] == "/metrics"'
+            - 'attributes["http.target"] == "/status"'
+
+    exporters:
+      # Jaeger for trace storage
+      otlp/jaeger:
+        endpoint: "jaeger-collector.monitoring:4317"
+        tls:
+          insecure: false
+          ca_file: /etc/ssl/certs/ca-certificates.crt
+
+      # Prometheus remote write for metrics
+      prometheusremotewrite:
+        endpoint: "http://prometheus.monitoring:9090/api/v1/write"
+        tls:
+          insecure: true
+        resource_to_telemetry_conversion:
+          enabled: true
+
+      # Loki for logs
+      loki:
+        endpoint: "http://loki.monitoring:3100/loki/api/v1/push"
+        labels:
+          resource:
+            service.name: "service_name"
+            k8s.namespace.name: "namespace"
+            casino.domain: "domain"
+
+      # Debug exporter (development only)
+      debug:
+        verbosity: basic
+        sampling_initial: 5
+        sampling_thereafter: 200
+
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+      pprof:
+        endpoint: 0.0.0.0:1777
+      zpages:
+        endpoint: 0.0.0.0:55679
+
+    service:
+      extensions: [health_check, pprof, zpages]
+      telemetry:
+        logs:
+          level: info
+        metrics:
+          address: 0.0.0.0:8888
+      pipelines:
+        traces:
+          receivers: [otlp, kafka]
+          processors:
+            - memory_limiter
+            - resourcedetection
+            - k8sattributes
+            - resource
+            - attributes/pii-scrub
+            - filter
+            - tail_sampling
+            - batch
+          exporters: [otlp/jaeger]
+        metrics:
+          receivers: [otlp, prometheus, hostmetrics]
+          processors:
+            - memory_limiter
+            - resourcedetection
+            - k8sattributes
+            - resource
+            - batch
+          exporters: [prometheusremotewrite]
+        logs:
+          receivers: [otlp]
+          processors:
+            - memory_limiter
+            - resourcedetection
+            - k8sattributes
+            - resource
+            - attributes/pii-scrub
+            - batch
+          exporters: [loki]
+
+---
+# 2. Gateway Collector Deployment (centralized processing)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: otel-collector-gateway
+  namespace: monitoring
+  labels:
+    app: otel-collector
+    component: gateway
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: otel-collector
+      component: gateway
+  template:
+    metadata:
+      labels:
+        app: otel-collector
+        component: gateway
+    spec:
+      serviceAccountName: otel-collector
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: otel-collector
+          image: otel/opentelemetry-collector-contrib:0.157.0
+          args:
+            - "--config=/conf/collector-config.yaml"
+          ports:
+            - containerPort: 4317   # OTLP gRPC
+              name: otlp-grpc
+            - containerPort: 4318   # OTLP HTTP
+              name: otlp-http
+            - containerPort: 8888   # Metrics
+              name: metrics
+            - containerPort: 13133  # Health check
+              name: health
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2000m"
+              memory: "2Gi"
+          volumeMounts:
+            - name: config
+              mountPath: /conf
+            - name: tmp
+              mountPath: /tmp
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 13133
+            initialDelaySeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 13133
+            initialDelaySeconds: 5
+      volumes:
+        - name: config
+          configMap:
+            name: otel-collector-config
+        - name: tmp
+          emptyDir: {}
+
+---
+# 3. Agent DaemonSet (per-node collection)
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: otel-collector-agent
+  namespace: monitoring
+  labels:
+    app: otel-collector
+    component: agent
+spec:
+  selector:
+    matchLabels:
+      app: otel-collector
+      component: agent
+  template:
+    metadata:
+      labels:
+        app: otel-collector
+        component: agent
+    spec:
+      serviceAccountName: otel-collector
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: otel-collector
+          image: otel/opentelemetry-collector-contrib:0.157.0
+          args:
+            - "--config=/conf/agent-config.yaml"
+          ports:
+            - containerPort: 4317
+              hostPort: 4317
+              name: otlp-grpc
+            - containerPort: 4318
+              hostPort: 4318
+              name: otlp-http
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          volumeMounts:
+            - name: config
+              mountPath: /conf
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: config
+          configMap:
+            name: otel-agent-config
+        - name: tmp
+          emptyDir: {}
+
+---
+# 4. Services
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-collector
+  namespace: monitoring
+spec:
+  selector:
+    app: otel-collector
+    component: gateway
+  ports:
+    - name: otlp-grpc
+      port: 4317
+      targetPort: 4317
+    - name: otlp-http
+      port: 4318
+      targetPort: 4318
+    - name: metrics
+      port: 8888
+      targetPort: 8888
+
+---
+# 5. ServiceAccount and RBAC
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: otel-collector
+  namespace: monitoring
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: otel-collector
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "namespaces", "nodes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets", "daemonsets", "statefulsets"]
+    verbs: ["get", "list", "watch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: otel-collector
+subjects:
+  - kind: ServiceAccount
+    name: otel-collector
+    namespace: monitoring
+roleRef:
+  kind: ClusterRole
+  name: otel-collector
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# 6. Agent ConfigMap (simplified config for DaemonSet agents)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-agent-config
+  namespace: monitoring
+data:
+  agent-config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+      hostmetrics:
+        collection_interval: 30s
+        scrapers:
+          cpu: {}
+          memory: {}
+          disk: {}
+          network: {}
+
+    processors:
+      memory_limiter:
+        check_interval: 5s
+        limit_mib: 400
+        spike_limit_mib: 100
+      batch:
+        send_batch_size: 512
+        timeout: 3s
+      resourcedetection:
+        detectors: [env, system]
+
+    exporters:
+      otlp:
+        endpoint: "otel-collector.monitoring:4317"
+        tls:
+          insecure: true
+
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, resourcedetection, batch]
+          exporters: [otlp]
+        metrics:
+          receivers: [otlp, hostmetrics]
+          processors: [memory_limiter, resourcedetection, batch]
+          exporters: [otlp]
+        logs:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [otlp]

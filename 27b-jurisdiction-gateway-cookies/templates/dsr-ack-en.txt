@@ -1,0 +1,35 @@
+Subject: [DSR {{id}}] Your privacy request — received
+
+Hello,
+
+Thank you for writing to dpo@backendofluck.com. We have logged your request
+as {{id}} under the {{jurisdiction}} regime and it is now in the queue.
+
+Clock:
+  * Received:       {{received_at}}
+  * Target close:   {{deadline_at}} ({{sla_days}} days from receipt)
+
+What happens next:
+  1. If we need to confirm your identity (for example, to link this email to
+     a past Book purchase), we will ask for one additional piece of evidence —
+     the Gumroad receipt number you received at checkout is enough in most
+     cases. We only ask when there is a real reason to doubt.
+  2. We will then process the request: gathering the data for an access or
+     portability request, deleting it for an erasure request, stopping the
+     specific processing for an objection or restriction request.
+  3. You will receive a final message with the outcome before the target
+     close date above, unless we are unable to act on the request — in which
+     case we will write to explain why, and point you at the supervisory
+     authority.
+
+Your rights (GDPR Art. 15-22 / UK GDPR / LGPD Art. 18) are not contingent on
+a Book purchase and exercising them is free of charge.
+
+This thread is used only to handle your request. We do not add DPO
+correspondents to the newsletter or any marketing campaign. If you would
+also like to subscribe to the newsletter, reply with "subscribe newsletter"
+and we will treat that as a separate, explicit consent.
+
+— DPO, dpo@backendofluck.com
+  The Backend of Luck / Por Trás da Sorte
+  Website: https://thebackendofluck.com/privacy.html

@@ -1,0 +1,95 @@
+# Companion code for "The Backend of Luck" - Chapter 47, Platform Onboarding.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# .github/workflows/deploy-operator.yml
+#
+# Chapter 47: Platform Onboarding — From Contract to First Real-Money Bet
+# CI/CD Pipeline: Operator-specific deployment workflow.
+#
+# Each operator gets their own deployment pipeline. Feature flags control
+# which features are enabled per operator, per jurisdiction.
+#
+# Triggered by:
+#   - Push to main when operator config changes
+#   - Manual workflow_dispatch for targeted operator deployments
+#
+# Script reference: scripts/chapter-47/.github/workflows/deploy-operator.yml
+name: Deploy Operator Environment
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'config/operators/{{ operator_slug }}/**'
+  workflow_dispatch:
+    inputs:
+      operator:
+        description: 'Operator slug'
+        required: true
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options: [staging, production]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment || 'staging' }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+
+      - name: Load operator config
+        env:
+          OPERATOR: ${{ inputs.operator }}
+        run: |
+          echo "Loading config for ${OPERATOR}"
+          cat "config/operators/${OPERATOR}/settings.yml"
+
+      - name: Build operator-specific image
+        env:
+          OPERATOR: ${{ inputs.operator }}
+          GIT_SHA: ${{ github.sha }}
+        run: |
+          JURISDICTION=$(yq ".jurisdiction" "config/operators/${OPERATOR}/settings.yml")
+          docker build \
+            --build-arg OPERATOR="${OPERATOR}" \
+            --build-arg JURISDICTION="${JURISDICTION}" \
+            -t "platform:${OPERATOR}-${GIT_SHA}" .
+
+      - name: Deploy to Kubernetes
+        env:
+          OPERATOR: ${{ inputs.operator }}
+          ENVIRONMENT: ${{ inputs.environment }}
+          GIT_SHA: ${{ github.sha }}
+        run: |
+          kubectl set image deployment/platform \
+            "platform=platform:${OPERATOR}-${GIT_SHA}" \
+            -n "${OPERATOR}-${ENVIRONMENT}"
+
+      - name: Run smoke tests
+        env:
+          OPERATOR: ${{ inputs.operator }}
+          ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          ./scripts/smoke-test.sh \
+            --operator "${OPERATOR}" \
+            --environment "${ENVIRONMENT}" \
+            --tests health,auth,games,payments
+
+      - name: Notify operator
+        if: success()
+        env:
+          OPERATOR: ${{ inputs.operator }}
+          ENVIRONMENT: ${{ inputs.environment }}
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+        run: |
+          curl -X POST "${SLACK_WEBHOOK}" \
+            -d "{\"text\": \"Deployed ${OPERATOR} to ${ENVIRONMENT}\"}"

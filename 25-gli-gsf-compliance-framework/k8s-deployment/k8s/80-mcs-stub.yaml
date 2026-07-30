@@ -1,0 +1,115 @@
+# Companion code for "The Backend of Luck" - Chapter 25, GLI-GSF Compliance Framework.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# In-cluster stub regulator MCS — listens on :8443 with HTTPS using a server cert
+# signed by the same CA as the client cert in mcs-mtls. Mimics the two endpoints
+# the GLI-13 connector test calls: /v1/health and /v1/connector/last-event.
+#
+# In a real deployment this object does not exist — the MCS lives at the regulator
+# (SPA/SIGAP, MGCB CIDS, KSA, AGCO iGO). The GLI-13 cronjob points at the regulator
+# host via the OpenBao-sourced env vars; the certs come from the same OpenBao path.
+# This stub exists so the wire-up can be demonstrated end-to-end inside one cluster.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcs-stub
+  namespace: gli-compliance
+  labels:
+    app.kubernetes.io/name: mcs-stub
+    app.kubernetes.io/component: stub-regulator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mcs-stub
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mcs-stub
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: stub
+          image: registry.internal.example:5000/gli-compliance-runner:0.1.1
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-c"]
+          args:
+            - |
+              import http.server, ssl, json, time
+              class H(http.server.BaseHTTPRequestHandler):
+                  def log_message(self, fmt, *args): pass
+                  def do_GET(self):
+                      now = int(time.time())
+                      if self.path in ("/v1/health", "/healthz"):
+                          body = json.dumps({"status":"ok","server_time_unix":now}).encode()
+                      elif self.path == "/v1/connector/last-event":
+                          body = json.dumps({"last_event_ts_unix":now}).encode()
+                      else:
+                          self.send_response(404); self.end_headers(); return
+                      self.send_response(200)
+                      self.send_header("Content-Type","application/json")
+                      self.send_header("Content-Length",str(len(body)))
+                      self.end_headers()
+                      self.wfile.write(body)
+              srv = http.server.ThreadingHTTPServer(("0.0.0.0", 8443), H)
+              ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+              ctx.load_cert_chain("/etc/mcs-stub-tls/tls.crt", "/etc/mcs-stub-tls/tls.key")
+              srv.socket = ctx.wrap_socket(srv.socket, server_side=True)
+              print("mcs-stub listening on :8443 (TLS)", flush=True)
+              srv.serve_forever()
+          ports:
+            - name: https
+              containerPort: 8443
+          volumeMounts:
+            - name: tls
+              mountPath: /etc/mcs-stub-tls
+              readOnly: true
+          readinessProbe:
+            tcpSocket:
+              port: 8443
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          resources:
+            requests: { cpu: "20m", memory: "64Mi" }
+            limits:   { cpu: "200m", memory: "128Mi" }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: tls
+          secret:
+            secretName: mcs-stub-tls
+            defaultMode: 0440
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcs-stub
+  namespace: gli-compliance
+  labels:
+    app.kubernetes.io/name: mcs-stub
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: mcs-stub
+  ports:
+    - name: https
+      port: 8443
+      targetPort: 8443

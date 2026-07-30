@@ -1,0 +1,420 @@
+# Companion code for "The Backend of Luck" - Chapter 36, Financial Operations.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# financial-lab/k8s/core-apps.yaml
+# Local lab K8s manifests for core financial services:
+# payments, ledger, treasury, reconciliation
+# Used for integration testing the double-entry ledger stack (Chapter 36b)
+# Apply with: kubectl apply -f k8s/
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: financial-lab
+  labels:
+    app.kubernetes.io/managed-by: financial-lab
+---
+# ----------------------------------------------------------------
+# Ledger Service
+# Double-entry booking engine — single source of financial truth
+# ----------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ledger-service
+  namespace: financial-lab
+  labels:
+    app: ledger-service
+    component: core
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ledger-service
+  template:
+    metadata:
+      labels:
+        app: ledger-service
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: ledger-service
+          image: ghcr.io/acmetocasino/ledger-service:1.0.0
+          ports:
+            - containerPort: 8080
+              name: http
+            - containerPort: 9090
+              name: grpc
+          env:
+            - name: DB_URL
+              value: "jdbc:postgresql://postgres:5432/ledger"
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: username
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: password
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "redpanda:9092"
+            - name: KAFKA_TOPIC_LEDGER_EVENTS
+              value: "ledger.events"
+            - name: ENFORCE_TRIAL_BALANCE
+              value: "true"
+            - name: LOG_LEVEL
+              value: "INFO"
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "500m"
+              memory: "1Gi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ledger-service
+  namespace: financial-lab
+spec:
+  selector:
+    app: ledger-service
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+    - name: grpc
+      port: 9090
+      targetPort: 9090
+---
+# ----------------------------------------------------------------
+# Payments Service
+# Routes deposits/withdrawals through PSP simulators
+# ----------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payments-service
+  namespace: financial-lab
+  labels:
+    app: payments-service
+    component: core
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: payments-service
+  template:
+    metadata:
+      labels:
+        app: payments-service
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: payments-service
+          image: ghcr.io/acmetocasino/payments-service:1.0.0
+          ports:
+            - containerPort: 8081
+              name: http
+          env:
+            - name: LEDGER_SERVICE_URL
+              value: "http://ledger-service:8080"
+            - name: ADYEN_SIMULATOR_URL
+              value: "http://adyen-simulator:8100"
+            - name: TRUSTLY_SIMULATOR_URL
+              value: "http://trustly-simulator:8101"
+            - name: PAYPAL_SIMULATOR_URL
+              value: "http://paypal-simulator:8102"
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "redpanda:9092"
+            - name: DB_URL
+              value: "jdbc:postgresql://postgres:5432/payments"
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: username
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: password
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8081
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "512Mi"
+            limits:
+              cpu: "500m"
+              memory: "1Gi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: payments-service
+  namespace: financial-lab
+spec:
+  selector:
+    app: payments-service
+  ports:
+    - name: http
+      port: 8081
+      targetPort: 8081
+---
+# ----------------------------------------------------------------
+# Treasury Service
+# Tracks actual fund positions across PSP clearing accounts
+# ----------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: treasury-service
+  namespace: financial-lab
+  labels:
+    app: treasury-service
+    component: core
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: treasury-service
+  template:
+    metadata:
+      labels:
+        app: treasury-service
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: treasury-service
+          image: ghcr.io/acmetocasino/treasury-service:1.0.0
+          ports:
+            - containerPort: 8082
+              name: http
+          env:
+            - name: LEDGER_SERVICE_URL
+              value: "http://ledger-service:8080"
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "redpanda:9092"
+            - name: DB_URL
+              value: "jdbc:postgresql://postgres:5432/treasury"
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: username
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: password
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8082
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: "150m"
+              memory: "256Mi"
+            limits:
+              cpu: "300m"
+              memory: "512Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: treasury-service
+  namespace: financial-lab
+spec:
+  selector:
+    app: treasury-service
+  ports:
+    - name: http
+      port: 8082
+      targetPort: 8082
+---
+# ----------------------------------------------------------------
+# Reconciliation Service
+# Daily automated reconciliation: ledger vs PSP settlement reports
+# ----------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reconciliation-service
+  namespace: financial-lab
+  labels:
+    app: reconciliation-service
+    component: core
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: reconciliation-service
+  template:
+    metadata:
+      labels:
+        app: reconciliation-service
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: reconciliation-service
+          image: ghcr.io/acmetocasino/reconciliation-service:1.0.0
+          ports:
+            - containerPort: 8083
+              name: http
+          env:
+            - name: LEDGER_SERVICE_URL
+              value: "http://ledger-service:8080"
+            - name: TREASURY_SERVICE_URL
+              value: "http://treasury-service:8082"
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "redpanda:9092"
+            - name: DB_URL
+              value: "jdbc:postgresql://postgres:5432/reconciliation"
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: username
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: password
+            - name: TOLERANCE_AMOUNT_CENTS
+              value: "100"   # 1.00 EUR max acceptable discrepancy
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8083
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: "150m"
+              memory: "256Mi"
+            limits:
+              cpu: "300m"
+              memory: "512Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: reconciliation-service
+  namespace: financial-lab
+spec:
+  selector:
+    app: reconciliation-service
+  ports:
+    - name: http
+      port: 8083
+      targetPort: 8083
+---
+# ----------------------------------------------------------------
+# Secrets
+# ----------------------------------------------------------------
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-credentials
+  namespace: financial-lab
+type: Opaque
+stringData:
+  username: "casino_lab"
+  password: "lab_password_change_in_prod"

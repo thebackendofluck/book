@@ -1,0 +1,81 @@
+# Companion code for "The Backend of Luck" - Chapter 27d, PostgreSQL Aegis.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "postgres-aegis.writerName" . }}-headless
+  labels:
+    {{- include "postgres-aegis.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  selector:
+    {{- include "postgres-aegis.selectorLabels" . | nindent 4 }}
+    postgres-aegis.io/role: writer
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+    - name: patroni-api
+      port: 8008
+      targetPort: 8008
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "postgres-aegis.writerName" . }}
+  labels:
+    {{- include "postgres-aegis.labels" . | nindent 4 }}
+    postgres-aegis.io/role: writer-vip
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "postgres-aegis.selectorLabels" . | nindent 4 }}
+    postgres-aegis.io/role: writer
+    # Patroni labels the leader pod - set via DCS label patch.
+    role: master
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "postgres-aegis.readerName" . }}-headless
+  labels:
+    {{- include "postgres-aegis.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  selector:
+    {{- include "postgres-aegis.selectorLabels" . | nindent 4 }}
+    postgres-aegis.io/role: reader
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "postgres-aegis.readerName" . }}
+  labels:
+    {{- include "postgres-aegis.labels" . | nindent 4 }}
+    postgres-aegis.io/role: reader-vip
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "postgres-aegis.selectorLabels" . | nindent 4 }}
+    postgres-aegis.io/role: reader
+    role: replica
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432

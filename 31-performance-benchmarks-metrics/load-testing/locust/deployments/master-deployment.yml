@@ -1,0 +1,98 @@
+# Companion code for "The Backend of Luck" - Chapter 31, Performance Benchmarks and Metrics.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    deployment.kubernetes.io/revision: "1"
+  labels:
+    role: locust-master
+    app: locust-master
+  name: locust-master
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      role: locust-master
+      app: locust-master
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        role: locust-master
+        app: locust-master
+    spec:
+      containers:
+      - image: acmetocasino/load-testing:1.0.0
+        imagePullPolicy: Always
+        name: master
+        command: ["/bin/bash"]
+        args: ["-c", "/start_master.sh"]
+        envFrom:
+          - configMapRef:
+              name: locust-cm
+        volumeMounts:
+          - mountPath: /home/locust
+            name: locust-scripts
+          - mountPath: /tmp
+            name: tmp-volume
+        lifecycle:
+          preStop:
+            exec:
+              command: ["/pre-stop.sh"]
+        ports:
+        - containerPort: 5557
+          name: comm
+        - containerPort: 5558
+          name: comm-plus-1
+        - containerPort: 8089
+          name: web-ui
+        # Generous limits: this is a load-generator, not a target under test --
+        # tight caps here would distort the load test itself.
+        resources:
+          requests:
+            cpu: "250m"
+            memory: "256Mi"
+          limits:
+            cpu: "2000m"
+            memory: "2Gi"
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+          readOnlyRootFilesystem: true
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+      ### TODO ###
+      # revisit why below is not playing nice after resizing EC2 workers
+      # nodeSelector:
+      #   worker-group: locust
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 60
+      volumes:
+      - name: locust-scripts
+        configMap:
+          name: scripts-cm
+      - name: tmp-volume
+        emptyDir: {}

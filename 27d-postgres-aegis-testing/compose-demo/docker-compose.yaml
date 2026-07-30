@@ -1,0 +1,165 @@
+# Companion code for "The Backend of Luck" - Chapter 27d, PostgreSQL Aegis.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# postgres-aegis-demo
+#
+# Reproducible laptop-scale demo for the book chapter 27d.
+# Honesty mode: if `pg_aegis` isn't available as a binary, the `pg-aegis`
+# service still boots but the `aegis_*` helper functions route to `pgcrypto`,
+# so readers can still compare column-level encryption overhead.
+#
+# Topology (intentionally small — the book covers 2W+10R separately):
+#   - pg-primary        : PostgreSQL 16 writer with pgcrypto + pg_aegis (or stub)
+#   - pg-replica        : streaming replica (hot standby) for read-path tests
+#   - pgbouncer         : r/w split, port 6432
+#   - pgbench-runner    : scratch container, runs T01/T02/T06 harnesses on demand
+#   - prometheus+grafana: optional observability for the reader
+
+name: postgres-aegis-demo
+
+x-pg-env: &pg-env
+  POSTGRES_USER: demo
+  POSTGRES_PASSWORD: demo-pw-not-a-secret  # test-only credential, never use in production
+  POSTGRES_DB: casino
+
+services:
+  pg-primary:
+    image: postgres:16.4-alpine
+    container_name: pg-aegis-primary
+    hostname: pg-primary
+    restart: unless-stopped
+    environment:
+      <<: *pg-env
+      POSTGRES_INITDB_ARGS: "--data-checksums --encoding=UTF8"
+      PGDATA: /var/lib/postgresql/data/pgdata
+      # Demo-only: relaxes pg_hba.conf so the replica can streaming-replicate.
+      # Production uses SCRAM-SHA-256 with a dedicated replicator role.
+      POSTGRES_HOST_AUTH_METHOD: "md5"
+      AEGIS_DEK_HEX: "00112233445566778899aabbccddeeff"
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - pg-primary-data:/var/lib/postgresql/data
+      - ./init:/docker-entrypoint-initdb.d:ro
+      - ./tls:/etc/postgresql/tls:ro
+    command:
+      - "postgres"
+      - "-c"
+      - "ssl=off"                     # demo only; production demands verify-full
+      - "-c"
+      - "max_wal_senders=5"
+      - "-c"
+      - "wal_level=replica"
+      - "-c"
+      - "shared_preload_libraries=pg_stat_statements"
+      - "-c"
+      - "track_io_timing=on"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U demo -d casino"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  pg-replica:
+    image: postgres:16.4-alpine
+    container_name: pg-aegis-replica
+    hostname: pg-replica
+    restart: unless-stopped
+    depends_on:
+      pg-primary:
+        condition: service_healthy
+    environment:
+      <<: *pg-env
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "127.0.0.1:5434:5432"
+    volumes:
+      - pg-replica-data:/var/lib/postgresql/data
+    user: "postgres"
+    entrypoint:
+      - "/bin/sh"
+      - "-c"
+      - |
+        set -e
+        if [ ! -s "$$PGDATA/PG_VERSION" ]; then
+          echo "[replica] initializing from primary via pg_basebackup"
+          until pg_isready -h pg-primary -U demo -d casino; do sleep 2; done
+          # test-only credential, never use in production
+          PGPASSWORD="demo-pw-not-a-secret" pg_basebackup \
+            -h pg-primary -U demo -D "$$PGDATA" -Fp -Xs -P -R
+          chmod 0700 "$$PGDATA"
+        fi
+        exec postgres -D "$$PGDATA"
+
+  pgbouncer:
+    image: edoburu/pgbouncer:v1.24.1-p1
+    container_name: pg-aegis-pgbouncer
+    hostname: pgbouncer
+    restart: unless-stopped
+    depends_on:
+      pg-primary:
+        condition: service_healthy
+    # edoburu/pgbouncer expects DB_* env vars (not DATABASES_*).
+    environment:
+      DB_HOST: pg-primary
+      DB_PORT: "5432"
+      DB_NAME: casino
+      DB_USER: demo
+      DB_PASSWORD: demo-pw-not-a-secret  # test-only credential, never use in production
+      POOL_MODE: transaction
+      AUTH_TYPE: plain
+      MAX_CLIENT_CONN: "200"
+      DEFAULT_POOL_SIZE: "25"
+      ADMIN_USERS: demo
+    ports:
+      - "127.0.0.1:6432:5432"
+
+  pgbench-runner:
+    image: postgres:16.4-alpine
+    container_name: pg-aegis-pgbench
+    depends_on:
+      pg-primary:
+        condition: service_healthy
+    volumes:
+      - ../tests-laptop:/harness:ro
+      - ./results:/results
+    environment:
+      <<: *pg-env
+      PGHOST: pg-primary
+      PGPORT: "5432"
+    command:
+      - "sh"
+      - "-c"
+      - "tail -f /dev/null"     # Keep alive; user invokes harness scripts.
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: pg-aegis-prom
+    restart: unless-stopped
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "127.0.0.1:9091:9090"
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: pg-aegis-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: demo  # test-only credential, never use in production
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+    ports:
+      - "127.0.0.1:3030:3000"
+    depends_on:
+      - prometheus
+
+volumes:
+  pg-primary-data:
+  pg-replica-data:

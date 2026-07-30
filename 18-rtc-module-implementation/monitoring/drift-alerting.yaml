@@ -1,0 +1,327 @@
+# Companion code for "The Backend of Luck" - Chapter 18, Real-Time Clock Module Implementation.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# =============================================================================
+# Prometheus Alerting Rules: RTC Timestamp Drift
+# =============================================================================
+# Comprehensive drift-specific alerting rules for the RTC timestamp service.
+# These supplement the existing alerting-rules.yml with more granular drift
+# detection, trend analysis, and GLI-11 compliance monitoring.
+#
+# GLI-11 Requirement: Section 5.4.1 mandates that electronic gaming systems
+# alert operators when time accuracy degrades beyond acceptable thresholds.
+# These rules implement a multi-tier alerting strategy:
+#
+#   Tier 1 (Info):     Drift > 10ms  - Informational, log for trend analysis
+#   Tier 2 (Warning):  Drift > 25ms  - Approaching threshold, investigate
+#   Tier 3 (Critical): Drift > 50ms  - Operational threshold exceeded
+#   Tier 4 (Emergency):Drift > 100ms - GLI-11 violation, halt affected games
+#
+# Deploy: Copy to /etc/prometheus/rules.d/rtc-drift-alerting.yaml
+# =============================================================================
+
+groups:
+  # ============================================
+  # Drift Magnitude Alerts
+  # ============================================
+  - name: rtc_drift_magnitude
+    interval: 5s
+    rules:
+      # Tier 4: Emergency - GLI-11 violation
+      - alert: RTCDriftEmergency
+        expr: abs(rtc_drift_milliseconds) > 100
+        for: 30s
+        labels:
+          severity: emergency
+          compliance: gli-11
+          page: "true"
+          escalation: p0
+          team: platform-engineering
+        annotations:
+          summary: "EMERGENCY: RTC drift exceeds GLI-11 100ms limit"
+          description: |
+            RTC module {{ $labels.module_id }} on {{ $labels.instance }} has drifted
+            {{ $value | printf "%.2f" }}ms from system time, exceeding the GLI-11
+            regulatory limit of 100ms.
+
+            IMMEDIATE ACTION REQUIRED:
+            1. Halt game operations on affected servers
+            2. Engage incident response team
+            3. Notify regulatory compliance officer
+            4. Begin P0 incident procedure
+          runbook_url: "https://wiki.internal/runbooks/rtc-drift-emergency"
+          dashboard_url: "https://grafana.internal/d/rtc-gli11-dashboard"
+
+      # Tier 3: Critical - Operational threshold exceeded
+      - alert: RTCDriftCritical
+        expr: abs(rtc_drift_milliseconds) > 50 and abs(rtc_drift_milliseconds) <= 100
+        for: 1m
+        labels:
+          severity: critical
+          compliance: gli-11
+          page: "true"
+          escalation: p1
+        annotations:
+          summary: "CRITICAL: RTC drift exceeds 50ms operational threshold"
+          description: |
+            RTC module {{ $labels.module_id }} drift is {{ $value | printf "%.2f" }}ms.
+            Operational threshold (50ms) exceeded. GLI-11 limit (100ms) at risk.
+
+            ACTION:
+            1. Check RTC module health (temperature, battery)
+            2. Verify NTP synchronization status
+            3. Consider forced re-sync if drift is increasing
+          runbook_url: "https://wiki.internal/runbooks/rtc-drift-critical"
+
+      # Tier 2: Warning - Approaching threshold
+      - alert: RTCDriftWarning
+        expr: abs(rtc_drift_milliseconds) > 25 and abs(rtc_drift_milliseconds) <= 50
+        for: 5m
+        labels:
+          severity: warning
+          compliance: gli-11
+        annotations:
+          summary: "RTC drift approaching operational threshold"
+          description: |
+            RTC module {{ $labels.module_id }} drift is {{ $value | printf "%.2f" }}ms.
+            Approaching 50ms operational threshold.
+          runbook_url: "https://wiki.internal/runbooks/rtc-drift-warning"
+
+      # Tier 1: Info - For trend analysis
+      - alert: RTCDriftElevated
+        expr: abs(rtc_drift_milliseconds) > 10 and abs(rtc_drift_milliseconds) <= 25
+        for: 15m
+        labels:
+          severity: info
+        annotations:
+          summary: "RTC drift elevated ({{ $value | printf \"%.2f\" }}ms)"
+          description: |
+            Module {{ $labels.module_id }} showing elevated drift. Monitor for trends.
+
+  # ============================================
+  # Drift Trend Alerts
+  # ============================================
+  - name: rtc_drift_trends
+    interval: 30s
+    rules:
+      # Drift is increasing over time (predictive alert)
+      - alert: RTCDriftIncreasing
+        expr: |
+          deriv(abs(rtc_drift_milliseconds)[30m:1m]) > 0.5
+        for: 10m
+        labels:
+          severity: warning
+          category: predictive
+        annotations:
+          summary: "RTC drift is increasing at {{ $value | printf \"%.3f\" }}ms/min"
+          description: |
+            Module {{ $labels.module_id }} drift is trending upward at
+            {{ $value | printf "%.3f" }}ms per minute. At this rate, the 50ms
+            threshold will be exceeded in approximately
+            {{ printf "%.0f" (divf (subf 50 (query "abs(rtc_drift_milliseconds)")) $value) }} minutes.
+
+            This often indicates:
+            - Temperature change affecting crystal oscillator
+            - Aging of the crystal (requires calibration adjustment)
+            - Battery degradation
+
+      # Drift variance is high (unstable module)
+      - alert: RTCDriftUnstable
+        expr: |
+          stddev_over_time(rtc_drift_milliseconds[30m]) > 5
+        for: 15m
+        labels:
+          severity: warning
+          category: stability
+        annotations:
+          summary: "RTC module {{ $labels.module_id }} drift is unstable"
+          description: |
+            Standard deviation of drift over 30 minutes is {{ $value | printf "%.2f" }}ms.
+            Normal modules should have stddev < 2ms. Investigate hardware health.
+
+      # Sudden drift jump (possible hardware fault or tampering)
+      - alert: RTCDriftJump
+        expr: |
+          abs(rtc_drift_milliseconds - rtc_drift_milliseconds offset 5m) > 20
+        for: 30s
+        labels:
+          severity: critical
+          security: "true"
+          category: anomaly
+        annotations:
+          summary: "Sudden drift jump detected on {{ $labels.module_id }}"
+          description: |
+            Drift changed by more than 20ms in 5 minutes. This is abnormal and
+            may indicate:
+            - Hardware fault or loose connection
+            - Deliberate clock manipulation attempt
+            - Power supply issue affecting oscillator
+
+            Current drift: {{ $value | printf "%.2f" }}ms
+            Previous drift: {{ with query "rtc_drift_milliseconds offset 5m" }}{{ . | first | value | printf "%.2f" }}{{ end }}ms
+
+  # ============================================
+  # Per-Module Drift Comparison
+  # ============================================
+  - name: rtc_drift_intermodule
+    interval: 15s
+    rules:
+      # Modules disagree with each other
+      - alert: RTCModuleDisagreement
+        expr: |
+          (max(rtc_drift_milliseconds) without (module_id)
+           - min(rtc_drift_milliseconds) without (module_id)) > 30
+        for: 2m
+        labels:
+          severity: warning
+          category: consensus
+        annotations:
+          summary: "RTC modules disagree by more than 30ms"
+          description: |
+            The spread between fastest and slowest RTC modules is
+            {{ $value | printf "%.2f" }}ms. This reduces consensus confidence
+            and may indicate a Byzantine node.
+
+      # One module consistently deviates from others
+      - alert: RTCModuleOutlier
+        expr: |
+          abs(rtc_drift_milliseconds
+            - on() group_left avg(rtc_drift_milliseconds) without (module_id))
+          > 25
+        for: 5m
+        labels:
+          severity: warning
+          category: outlier
+        annotations:
+          summary: "Module {{ $labels.module_id }} is an outlier ({{ $value | printf \"%.2f\" }}ms from avg)"
+          description: |
+            This module consistently deviates from the group average.
+            Consider removing from consensus pool for maintenance.
+
+  # ============================================
+  # Synchronization Alerts
+  # ============================================
+  - name: rtc_sync_status
+    interval: 30s
+    rules:
+      # NTP sync lost
+      - alert: RTCNTPSyncLost
+        expr: rtc_ntp_sync_status != 1
+        for: 2m
+        labels:
+          severity: warning
+          category: sync
+        annotations:
+          summary: "NTP synchronization lost"
+          description: |
+            NTP sync is not active. The system is relying on hardware RTC
+            modules only. This is safe short-term but NTP should be restored
+            for drift correction.
+
+      # GPS sync lost (if configured)
+      - alert: RTCGPSSyncLost
+        expr: rtc_gps_fix_status == 0 and rtc_gps_configured == 1
+        for: 5m
+        labels:
+          severity: warning
+          category: sync
+        annotations:
+          summary: "GPS time source lost"
+          description: |
+            GPS receiver has lost satellite fix. Check antenna connection
+            and sky visibility. GPS provides the most accurate time reference.
+
+      # Long time since last sync
+      - alert: RTCSyncOverdue
+        expr: (time() - rtc_last_sync_timestamp) > 86400
+        for: 1h
+        labels:
+          severity: warning
+          compliance: gli-11
+        annotations:
+          summary: "RTC module {{ $labels.module_id }} not synced in 24+ hours"
+          description: |
+            Last sync was {{ $value | humanizeDuration }} ago.
+            Modules should sync at least daily to maintain GLI-11 accuracy.
+
+  # ============================================
+  # Battery & Hardware Alerts
+  # ============================================
+  - name: rtc_hardware
+    interval: 60s
+    rules:
+      - alert: RTCBatteryCritical
+        expr: rtc_battery_level < 5
+        for: 5m
+        labels:
+          severity: critical
+          category: hardware
+        annotations:
+          summary: "RTC battery critically low on {{ $labels.module_id }}"
+          description: |
+            Battery at {{ $value | printf "%.1f" }}%. Module will lose time
+            when powered off. Schedule immediate battery replacement.
+
+      - alert: RTCBatteryLow
+        expr: rtc_battery_level < 20 and rtc_battery_level >= 5
+        for: 1h
+        labels:
+          severity: warning
+          category: hardware
+        annotations:
+          summary: "RTC battery low on {{ $labels.module_id }} ({{ $value | printf \"%.1f\" }}%)"
+          description: |
+            Schedule battery replacement during next maintenance window.
+
+      - alert: RTCTemperatureCritical
+        expr: rtc_temperature_celsius > 70
+        for: 2m
+        labels:
+          severity: critical
+          category: hardware
+          page: "true"
+        annotations:
+          summary: "RTC temperature critical: {{ $value | printf \"%.1f\" }}C on {{ $labels.module_id }}"
+          description: |
+            DS3231 accuracy degrades significantly above 70C. Check data center
+            cooling and module ventilation. Consider removing from consensus.
+
+      - alert: RTCTemperatureWarning
+        expr: rtc_temperature_celsius > 60 and rtc_temperature_celsius <= 70
+        for: 10m
+        labels:
+          severity: warning
+          category: hardware
+        annotations:
+          summary: "RTC temperature elevated: {{ $value | printf \"%.1f\" }}C"
+
+  # ============================================
+  # Compliance Recording Rules
+  # ============================================
+  - name: rtc_compliance_recording
+    interval: 60s
+    rules:
+      # Record maximum drift seen in the last hour (for compliance reporting)
+      - record: rtc:max_drift_1h
+        expr: max_over_time(abs(rtc_drift_milliseconds)[1h:1m])
+
+      # Record compliance status (1 = compliant, 0 = violation)
+      - record: rtc:gli11_compliant
+        expr: |
+          (abs(rtc_drift_milliseconds) < 100
+           and rtc_consensus_confidence > 0.5
+           and rtc_consensus_nodes_healthy >= 3) * 1
+
+      # Track uptime percentage where drift was within threshold
+      - record: rtc:drift_compliance_ratio
+        expr: |
+          avg_over_time(
+            (abs(rtc_drift_milliseconds) < 50) * 1
+          [24h:1m])

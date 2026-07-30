@@ -1,0 +1,19 @@
+[Unit]
+Description=pgBackRest Full Backup
+Documentation=https://pgbackrest.org/
+After=postgresql.service
+Requires=network-online.target
+
+[Service]
+Type=oneshot
+User=postgres
+ExecStart=/usr/bin/pgbackrest --stanza=casino --type=full backup
+ExecStartPost=/usr/local/bin/backup-verify.sh --stanza casino
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=pgbackrest-full
+# Timeout: 6 hours for large databases
+TimeoutStartSec=21600
+
+# Alert on failure via systemd-email or webhook
+OnFailure=pgbackrest-notify@%n.service

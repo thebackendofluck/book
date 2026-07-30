@@ -1,0 +1,524 @@
+# Companion code for "The Backend of Luck" - Chapter 31, Performance Benchmarks and Metrics.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# =============================================================================
+# Prometheus Recording Rules for Casino Platform KPIs
+# =============================================================================
+# These pre-compute expensive queries so Grafana dashboards load quickly.
+# Deploy as ConfigMap mounted into Prometheus rules directory.
+#
+# Categories:
+#   - API Gateway SLOs
+#   - Game Server Performance
+#   - Payment/Wallet Latency
+#   - Database Performance
+#   - Cache Efficiency
+#   - WebSocket Health
+#   - Business KPIs (GGR, bets/sec, active players)
+# =============================================================================
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: casino-recording-rules
+  namespace: monitoring
+data:
+  casino-api-rules.yaml: |
+    groups:
+      # =====================================================================
+      # API Gateway Performance
+      # =====================================================================
+      - name: casino_api_performance
+        interval: 15s
+        rules:
+          # Request rate per endpoint
+          - record: casino:api:request_rate_5m
+            expr: |
+              sum(rate(http_request_duration_seconds_count{job="casino-api-gateway"}[5m])) by (method, path, status_code)
+
+          # P50/P95/P99 latencies per endpoint
+          - record: casino:api:latency_p50
+            expr: |
+              histogram_quantile(0.50,
+                sum(rate(http_request_duration_seconds_bucket{job="casino-api-gateway"}[5m])) by (le, method, path)
+              )
+
+          - record: casino:api:latency_p95
+            expr: |
+              histogram_quantile(0.95,
+                sum(rate(http_request_duration_seconds_bucket{job="casino-api-gateway"}[5m])) by (le, method, path)
+              )
+
+          - record: casino:api:latency_p99
+            expr: |
+              histogram_quantile(0.99,
+                sum(rate(http_request_duration_seconds_bucket{job="casino-api-gateway"}[5m])) by (le, method, path)
+              )
+
+          # Error rate (5xx) per endpoint
+          - record: casino:api:error_rate_5m
+            expr: |
+              sum(rate(http_request_duration_seconds_count{job="casino-api-gateway",status_code=~"5.."}[5m])) by (method, path)
+              /
+              sum(rate(http_request_duration_seconds_count{job="casino-api-gateway"}[5m])) by (method, path)
+
+          # Availability (non-5xx / total)
+          - record: casino:api:availability_5m
+            expr: |
+              1 - (
+                sum(rate(http_request_duration_seconds_count{job="casino-api-gateway",status_code=~"5.."}[5m]))
+                /
+                sum(rate(http_request_duration_seconds_count{job="casino-api-gateway"}[5m]))
+              )
+
+          # SLO burn rate (multi-window)
+          - record: casino:api:slo_error_budget_1h
+            expr: |
+              1 - (
+                sum(rate(http_request_duration_seconds_count{job="casino-api-gateway",status_code=~"5.."}[1h]))
+                /
+                sum(rate(http_request_duration_seconds_count{job="casino-api-gateway"}[1h]))
+              )
+
+          - record: casino:api:slo_error_budget_6h
+            expr: |
+              1 - (
+                sum(rate(http_request_duration_seconds_count{job="casino-api-gateway",status_code=~"5.."}[6h]))
+                /
+                sum(rate(http_request_duration_seconds_count{job="casino-api-gateway"}[6h]))
+              )
+
+      # =====================================================================
+      # Game Server Performance
+      # =====================================================================
+      - name: casino_game_performance
+        interval: 15s
+        rules:
+          # Game round processing time
+          - record: casino:game:round_duration_p95
+            expr: |
+              histogram_quantile(0.95,
+                sum(rate(game_round_duration_seconds_bucket{job="game-servers"}[5m])) by (le, game_type)
+              )
+
+          - record: casino:game:round_duration_p99
+            expr: |
+              histogram_quantile(0.99,
+                sum(rate(game_round_duration_seconds_bucket{job="game-servers"}[5m])) by (le, game_type)
+              )
+
+          # Rounds per second by game type
+          - record: casino:game:rounds_per_second
+            expr: |
+              sum(rate(game_round_total{job="game-servers"}[5m])) by (game_type)
+
+          # RNG call latency
+          - record: casino:rng:latency_p95
+            expr: |
+              histogram_quantile(0.95,
+                sum(rate(rng_request_duration_seconds_bucket{job="rng-service"}[5m])) by (le)
+              )
+
+          - record: casino:rng:latency_p99
+            expr: |
+              histogram_quantile(0.99,
+                sum(rate(rng_request_duration_seconds_bucket{job="rng-service"}[5m])) by (le)
+              )
+
+          # RNG request rate
+          - record: casino:rng:request_rate_5m
+            expr: |
+              sum(rate(rng_request_total{job="rng-service"}[5m]))
+
+          # Game server error rate
+          - record: casino:game:error_rate_5m
+            expr: |
+              sum(rate(game_round_errors_total{job="game-servers"}[5m])) by (game_type, error_type)
+
+          # Active game sessions
+          - record: casino:game:active_sessions
+            expr: |
+              sum(game_active_sessions{job="game-servers"}) by (game_type)
+
+      # =====================================================================
+      # Payment / Wallet Performance
+      # =====================================================================
+      - name: casino_payment_performance
+        interval: 15s
+        rules:
+          # Deposit processing time
+          - record: casino:payment:deposit_duration_p95
+            expr: |
+              histogram_quantile(0.95,
+                sum(rate(payment_processing_duration_seconds_bucket{job="wallet-service",type="deposit"}[5m])) by (le, provider)
+              )
+
+          # Withdrawal processing time
+          - record: casino:payment:withdrawal_duration_p95
+            expr: |
+              histogram_quantile(0.95,
+                sum(rate(payment_processing_duration_seconds_bucket{job="wallet-service",type="withdrawal"}[5m])) by (le, provider)
+              )
+
+          # Payment success rate
+          - record: casino:payment:success_rate_5m
+            expr: |
+              sum(rate(payment_transactions_total{job="wallet-service",status="success"}[5m])) by (type, provider)
+              /
+              sum(rate(payment_transactions_total{job="wallet-service"}[5m])) by (type, provider)
+
+          # Balance lookup latency
+          - record: casino:wallet:balance_latency_p95
+            expr: |
+              histogram_quantile(0.95,
+                sum(rate(wallet_balance_lookup_seconds_bucket{job="wallet-service"}[5m])) by (le)
+              )
+
+      # =====================================================================
+      # Database Performance
+      # =====================================================================
+      - name: casino_database_performance
+        interval: 15s
+        rules:
+          # Query duration by operation
+          - record: casino:db:query_duration_p95
+            expr: |
+              histogram_quantile(0.95,
+                sum(rate(pg_stat_activity_query_duration_seconds_bucket[5m])) by (le, datname)
+              )
+
+          # Active connections
+          - record: casino:db:active_connections
+            expr: |
+              sum(pg_stat_activity_count{state="active"}) by (datname)
+
+          # Connection utilization
+          - record: casino:db:connection_utilization
+            expr: |
+              sum(pg_stat_activity_count) by (datname)
+              /
+              pg_settings_max_connections
+
+          # Transactions per second
+          - record: casino:db:tps
+            expr: |
+              sum(rate(pg_stat_database_xact_commit{datname="casino_production"}[5m]))
+              +
+              sum(rate(pg_stat_database_xact_rollback{datname="casino_production"}[5m]))
+
+          # Cache hit ratio
+          - record: casino:db:cache_hit_ratio
+            expr: |
+              pg_stat_database_blks_hit{datname="casino_production"}
+              /
+              (pg_stat_database_blks_hit{datname="casino_production"} + pg_stat_database_blks_read{datname="casino_production"})
+
+          # Replication lag
+          - record: casino:db:replication_lag_seconds
+            expr: |
+              pg_replication_lag_seconds
+
+      # =====================================================================
+      # Cache (Redis) Performance
+      # =====================================================================
+      - name: casino_cache_performance
+        interval: 15s
+        rules:
+          # Cache hit rate
+          - record: casino:cache:hit_rate
+            expr: |
+              rate(redis_keyspace_hits_total[5m])
+              /
+              (rate(redis_keyspace_hits_total[5m]) + rate(redis_keyspace_misses_total[5m]))
+
+          # Cache memory usage
+          - record: casino:cache:memory_usage_pct
+            expr: |
+              redis_memory_used_bytes / redis_memory_max_bytes
+
+          # Operations per second
+          - record: casino:cache:ops_per_second
+            expr: |
+              sum(rate(redis_commands_processed_total[5m]))
+
+          # Command latency
+          - record: casino:cache:command_latency_p95
+            expr: |
+              histogram_quantile(0.95,
+                sum(rate(redis_command_duration_seconds_bucket[5m])) by (le, cmd)
+              )
+
+          # Eviction rate
+          - record: casino:cache:eviction_rate
+            expr: |
+              rate(redis_evicted_keys_total[5m])
+
+      # =====================================================================
+      # WebSocket Performance
+      # =====================================================================
+      - name: casino_websocket_performance
+        interval: 15s
+        rules:
+          # Active WebSocket connections
+          - record: casino:ws:active_connections
+            expr: |
+              sum(websocket_active_connections)
+
+          # Message throughput
+          - record: casino:ws:messages_per_second
+            expr: |
+              sum(rate(websocket_messages_total[5m])) by (direction)
+
+          # Message latency
+          - record: casino:ws:message_latency_p95
+            expr: |
+              histogram_quantile(0.95,
+                sum(rate(websocket_message_duration_seconds_bucket[5m])) by (le, message_type)
+              )
+
+          # Connection error rate
+          - record: casino:ws:error_rate
+            expr: |
+              rate(websocket_errors_total[5m])
+
+      # =====================================================================
+      # Business KPIs
+      # =====================================================================
+      - name: casino_business_kpis
+        interval: 60s
+        rules:
+          # Bets per second
+          - record: casino:business:bets_per_second
+            expr: |
+              sum(rate(game_bets_total[5m]))
+
+          # GGR (Gross Gaming Revenue) rate
+          - record: casino:business:ggr_rate_per_minute
+            expr: |
+              sum(rate(game_stakes_total_cents[5m])) * 60
+              -
+              sum(rate(game_payouts_total_cents[5m])) * 60
+
+          # Active players (unique sessions)
+          - record: casino:business:active_players
+            expr: |
+              count(count by (player_id) (game_active_sessions))
+
+          # Deposit rate
+          - record: casino:business:deposits_per_minute
+            expr: |
+              sum(rate(payment_transactions_total{type="deposit",status="success"}[5m])) * 60
+
+          # Average bet size
+          - record: casino:business:avg_bet_size_cents
+            expr: |
+              sum(rate(game_stakes_total_cents[5m])) / sum(rate(game_bets_total[5m]))
+
+  casino-alert-rules.yaml: |
+    groups:
+      # =====================================================================
+      # Critical Alerts
+      # =====================================================================
+      - name: casino_critical_alerts
+        rules:
+          - alert: GameServerDown
+            expr: up{job="game-servers"} == 0
+            for: 1m
+            labels:
+              severity: critical
+              service: game-server
+            annotations:
+              summary: "Game server {{ $labels.instance }} is down"
+              description: "Game server has been unreachable for more than 1 minute. Players may be unable to play."
+
+          - alert: RNGServiceDown
+            expr: up{job="rng-service"} == 0
+            for: 30s
+            labels:
+              severity: critical
+              service: rng
+              category: regulatory
+            annotations:
+              summary: "RNG service is down"
+              description: "RNG service is unreachable. ALL game operations must be halted per regulatory requirements."
+
+          - alert: PaymentServiceDown
+            expr: up{job="wallet-service"} == 0
+            for: 1m
+            labels:
+              severity: critical
+              service: payments
+            annotations:
+              summary: "Payment/Wallet service is down"
+              description: "Players cannot make deposits or withdrawals."
+
+          - alert: APIErrorRateHigh
+            expr: casino:api:error_rate_5m > 0.05
+            for: 5m
+            labels:
+              severity: critical
+              service: api-gateway
+            annotations:
+              summary: "API error rate above 5% for {{ $labels.path }}"
+              description: "API endpoint {{ $labels.method }} {{ $labels.path }} has {{ $value | humanizePercentage }} error rate."
+
+          - alert: DatabaseDown
+            expr: pg_up == 0
+            for: 30s
+            labels:
+              severity: critical
+              service: database
+            annotations:
+              summary: "PostgreSQL database is down"
+              description: "Database {{ $labels.instance }} is unreachable."
+
+      # =====================================================================
+      # Performance Alerts
+      # =====================================================================
+      - name: casino_performance_alerts
+        rules:
+          - alert: APILatencyHigh
+            expr: casino:api:latency_p95 > 0.5
+            for: 5m
+            labels:
+              severity: high
+              service: api-gateway
+            annotations:
+              summary: "API P95 latency above 500ms for {{ $labels.path }}"
+              description: "P95 latency is {{ $value | humanizeDuration }} for {{ $labels.method }} {{ $labels.path }}."
+
+          - alert: GameRoundSlow
+            expr: casino:game:round_duration_p95 > 0.3
+            for: 5m
+            labels:
+              severity: high
+              service: game-server
+            annotations:
+              summary: "Game round P95 above 300ms for {{ $labels.game_type }}"
+              description: "Players experiencing slow game rounds. P95 = {{ $value | humanizeDuration }}."
+
+          - alert: RNGLatencyHigh
+            expr: casino:rng:latency_p99 > 0.05
+            for: 2m
+            labels:
+              severity: high
+              service: rng
+              category: regulatory
+            annotations:
+              summary: "RNG P99 latency above 50ms"
+              description: "RNG latency degradation may impact game fairness perception."
+
+          - alert: DatabaseReplicationLag
+            expr: casino:db:replication_lag_seconds > 5
+            for: 2m
+            labels:
+              severity: high
+              service: database
+            annotations:
+              summary: "Database replication lag above 5s"
+              description: "Replica lag is {{ $value }}s. Read-after-write consistency at risk."
+
+          - alert: CacheHitRateLow
+            expr: casino:cache:hit_rate < 0.90
+            for: 10m
+            labels:
+              severity: warning
+              service: redis
+            annotations:
+              summary: "Cache hit rate below 90%"
+              description: "Redis cache hit rate is {{ $value | humanizePercentage }}. Database load will increase."
+
+          - alert: WebSocketLatencyHigh
+            expr: casino:ws:message_latency_p95 > 0.1
+            for: 5m
+            labels:
+              severity: high
+              service: websocket
+            annotations:
+              summary: "WebSocket P95 latency above 100ms"
+              description: "Real-time game updates are delayed. P95 = {{ $value | humanizeDuration }}."
+
+      # =====================================================================
+      # Capacity Alerts
+      # =====================================================================
+      - name: casino_capacity_alerts
+        rules:
+          - alert: HighCPUUsage
+            expr: 100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 85
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: "CPU usage above 85% on {{ $labels.instance }}"
+
+          - alert: HighMemoryUsage
+            expr: (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) > 0.90
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Memory usage above 90% on {{ $labels.instance }}"
+
+          - alert: DatabaseConnectionsHigh
+            expr: casino:db:connection_utilization > 0.80
+            for: 5m
+            labels:
+              severity: warning
+              service: database
+            annotations:
+              summary: "Database connection pool above 80%"
+              description: "{{ $value | humanizePercentage }} of max connections in use."
+
+          - alert: CacheMemoryHigh
+            expr: casino:cache:memory_usage_pct > 0.85
+            for: 10m
+            labels:
+              severity: warning
+              service: redis
+            annotations:
+              summary: "Redis memory usage above 85%"
+              description: "Cache evictions may begin. Consider scaling."
+
+          - alert: DiskSpaceLow
+            expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) < 0.15
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Disk space below 15% on {{ $labels.instance }}"
+
+      # =====================================================================
+      # SLO Burn Rate Alerts (Multi-Window)
+      # =====================================================================
+      - name: casino_slo_alerts
+        rules:
+          - alert: SLOBudgetBurnFast
+            expr: |
+              (1 - casino:api:slo_error_budget_1h) > (14.4 * 0.001)
+              and
+              (1 - casino:api:slo_error_budget_6h) > (6 * 0.001)
+            for: 2m
+            labels:
+              severity: critical
+              service: api-gateway
+            annotations:
+              summary: "SLO error budget burning fast (page immediately)"
+              description: "At current rate, monthly error budget will be exhausted in < 2 hours."
+
+          - alert: SLOBudgetBurnSlow
+            expr: |
+              (1 - casino:api:slo_error_budget_6h) > (3 * 0.001)
+            for: 30m
+            labels:
+              severity: warning
+              service: api-gateway
+            annotations:
+              summary: "SLO error budget burning slowly"
+              description: "Error budget consumption rate elevated. Review before it becomes critical."

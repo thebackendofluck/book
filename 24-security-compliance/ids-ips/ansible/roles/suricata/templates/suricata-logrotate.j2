@@ -1,0 +1,66 @@
+# /etc/logrotate.d/suricata — Managed by Ansible
+# Generated for: {{ inventory_hostname }}
+# Rotates Suricata EVE JSON and alert logs hourly to keep file sizes manageable
+# for downstream consumers (Filebeat, rsyslog, Splunk forwarder).
+
+{{ suricata_log_dir }}/eve.json
+{{ suricata_log_dir }}/fast.log
+{{ suricata_log_dir }}/stats.log
+{
+    # ── Frequency ───────────────────────────────────────────────────────────
+    {{ logrotate_frequency }}
+
+    # ── Retention ──────────────────────────────────────────────────────────
+    # Keep {{ log_retention_days }} days × 24 hours = {{ log_retention_days * 24 }} rotated files.
+    rotate {{ log_retention_days * 24 }}
+
+    # ── Compression ─────────────────────────────────────────────────────────
+{% if logrotate_compress %}
+    compress
+    delaycompress          # do not compress the most recent rotated file
+    # (Filebeat / rsyslog may still be reading it)
+{% endif %}
+
+    # ── Housekeeping ─────────────────────────────────────────────────────────
+{% if logrotate_missingok %}
+    missingok              # no error if log file is missing
+{% endif %}
+    notifempty             # skip rotation if the log is empty
+    nocreate               # Suricata creates the file itself on next write
+
+    # ── Size limit ───────────────────────────────────────────────────────────
+    # Rotate immediately if the file exceeds 512 MB, regardless of frequency.
+    # Prevents a single file from growing unboundedly during a traffic spike.
+    maxsize 512M
+
+    # ── Post-rotate signal ────────────────────────────────────────────────────
+    # Suricata reopens its log files when it receives SIGHUP.
+    # sharedscripts ensures the postrotate block runs once even if
+    # multiple log files are rotated in the same pass.
+{% if logrotate_sharedscripts %}
+    sharedscripts
+{% endif %}
+    postrotate
+        # Send SIGHUP to instruct Suricata to reopen log files
+        if [ -f {{ suricata_run_dir }}/suricata.pid ]; then
+            kill -HUP $(cat {{ suricata_run_dir }}/suricata.pid) 2>/dev/null || true
+        fi
+    endscript
+}
+
+# Suricata daemon log (rotated weekly, not hourly — much lower volume)
+{{ suricata_log_dir }}/suricata.log
+{
+    weekly
+    rotate 8
+    compress
+    delaycompress
+    missingok
+    notifempty
+    sharedscripts
+    postrotate
+        if [ -f {{ suricata_run_dir }}/suricata.pid ]; then
+            kill -HUP $(cat {{ suricata_run_dir }}/suricata.pid) 2>/dev/null || true
+        fi
+    endscript
+}

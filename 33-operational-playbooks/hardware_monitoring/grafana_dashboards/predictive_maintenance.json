@@ -1,0 +1,73 @@
+{
+  "dashboard": {
+    "title": "Predictive Maintenance",
+    "tags": ["predictive", "maintenance", "ml"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "title": "Components Requiring Maintenance",
+        "type": "table",
+        "targets": [
+          {
+            "expr": "hardware_risk_score >= 40",
+            "legendFormat": "{{ component_type }}/{{ component_id }}"
+          }
+        ],
+        "transformations": [
+          {
+            "id": "organize",
+            "options": {
+              "excludeByName": {},
+              "indexByName": {},
+              "renameByName": {
+                "component_type": "Type",
+                "component_id": "ID",
+                "risk_score": "Risk Score",
+                "age_days": "Age (Days)",
+                "last_seen": "Last Seen"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "title": "Failure Probability Trends",
+        "type": "timeSeries",
+        "targets": [
+          {
+            "expr": "ml_failure_probability",
+            "legendFormat": "{{ component_type }}/{{ component_id }}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "green", "value": null },
+                { "color": "yellow", "value": 0.3 },
+                { "color": "orange", "value": 0.6 },
+                { "color": "red", "value": 0.8 }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "title": "Maintenance Schedule",
+        "type": "table",
+        "targets": [
+          {
+            "expr": "maintenance_scheduled",
+            "legendFormat": "Scheduled Maintenance"
+          }
+        ]
+      }
+    ],
+    "time": { "from": "now-24h", "to": "now" },
+    "refresh": "5m"
+  }
+}

@@ -1,0 +1,21 @@
+{
+    "uuid": "6e5e685a-65e8-4d7c-8b81-bbf44fb10ab8",
+    "persistent": true,
+    "request": {
+        "urlPath": "/online/authentication_url.asp",
+        "method": "POST",
+        "bodyPatterns": [
+            {
+                "matches": ".*address=kyc_pass_\\d{1,4}.*"
+            }
+        ]
+    },
+    "response": {
+        "status": 200,
+        "bodyFileName": "id-pass-template.txt",
+        "headers": {
+            "Content-Type": "text/html"
+        }
+    },
+    "priority": 1
+}

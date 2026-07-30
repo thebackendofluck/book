@@ -1,0 +1,140 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 23, DevSecOps for iGaming.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# Ansible inventory — New Jersey, Continent 8 Atlantic City datacenter
+#
+# Continent 8 holds a Casino Service Industry Enterprise (CSIE) license from the
+# NJ Division of Gaming Enforcement (DGE).  All hosts listed here are physically
+# located in the approved Atlantic City facility and meet DGE data residency
+# requirements for player PII, financial records, and game outcome data.
+#
+# Reference: Chapter 23 — DevSecOps for iGaming / Compliance as Code
+#            Chapter 29b — US Datacenter Infrastructure (Continent 8)
+#
+# IP addresses use the TEST-NET-3 block (203.0.113.0/24, RFC 5737)
+# to avoid leaking production addressing in published material.
+
+nj_c8_machines:
+  vars:
+    ansible_user: ansible
+    ansible_ssh_private_key_file: ~/.ssh/ansible-dc
+    ansible_ssh_extra_args: "-o StrictHostKeyChecking=yes -o BatchMode=yes"
+    ansible_python_interpreter: /usr/bin/python3
+
+    # Jurisdiction metadata consumed by Datadog and compliance scripts
+    jurisdiction: nj
+    datacenter: c8-atlantic-city
+    regulatory_tier: dge-csie
+    data_residency_zone: us-nj
+
+    # Datadog site tags injected by dc-phys-servers.yml pre_tasks
+    dd_site_tags:
+      jurisdiction: nj
+      datacenter: c8-atlantic-city
+      env: production
+      team: platform-infra
+
+  hosts:
+    # ------------------------------------------------------------------
+    # Kubernetes control-plane nodes (3-node HA etcd + API server)
+    # ------------------------------------------------------------------
+    nj_master_1:
+      ansible_host: 203.0.113.109
+      node_role: k8s-master
+      host_fqdn: nj-master-1.live.acmetocasino.com
+
+    nj_master_2:
+      ansible_host: 203.0.113.110
+      node_role: k8s-master
+      host_fqdn: nj-master-2.live.acmetocasino.com
+
+    nj_master_3:
+      ansible_host: 203.0.113.111
+      node_role: k8s-master
+      host_fqdn: nj-master-3.live.acmetocasino.com
+
+    # ------------------------------------------------------------------
+    # Kubernetes worker nodes
+    # ------------------------------------------------------------------
+    nj_worker_1:
+      ansible_host: 203.0.113.103
+      node_role: k8s-worker
+      host_fqdn: nj-worker-1.live.acmetocasino.com
+
+    nj_worker_2:
+      ansible_host: 203.0.113.104
+      node_role: k8s-worker
+      host_fqdn: nj-worker-2.live.acmetocasino.com
+
+    nj_worker_3:
+      ansible_host: 203.0.113.105
+      node_role: k8s-worker
+      host_fqdn: nj-worker-3.live.acmetocasino.com
+
+    nj_worker_4:
+      ansible_host: 203.0.113.106
+      node_role: k8s-worker
+      host_fqdn: nj-worker-4.live.acmetocasino.com
+
+    nj_worker_5:
+      ansible_host: 203.0.113.107
+      node_role: k8s-worker
+      host_fqdn: nj-worker-5.live.acmetocasino.com
+
+    # Primary NJ production platform host
+    # DNS: nj-platform.live.acmetocasino.com
+    nj_worker_6:
+      ansible_host: 203.0.113.108
+      node_role: k8s-worker
+      host_fqdn: nj-platform.live.acmetocasino.com
+      platform_primary: true
+
+    # ------------------------------------------------------------------
+    # Database nodes (PostgreSQL 18, hub-and-spoke per-jurisdiction)
+    # ------------------------------------------------------------------
+    nj_db_1:
+      ansible_host: 203.0.113.114
+      node_role: db-primary
+      host_fqdn: nj-db-1.live.acmetocasino.com
+      db_role: primary
+      db_schemas:
+        - casino_core
+        - dge
+
+    nj_db_2:
+      ansible_host: 203.0.113.115
+      node_role: db-replica
+      host_fqdn: nj-db-2.live.acmetocasino.com
+      db_role: replica
+      db_schemas:
+        - casino_core
+        - dge
+
+  children:
+    nj_k8s_masters:
+      hosts:
+        nj_master_1:
+        nj_master_2:
+        nj_master_3:
+
+    nj_k8s_nodes:
+      hosts:
+        nj_worker_1:
+        nj_worker_2:
+        nj_worker_3:
+        nj_worker_4:
+        nj_worker_5:
+        nj_worker_6:
+
+    nj_dbs:
+      hosts:
+        nj_db_1:
+        nj_db_2:

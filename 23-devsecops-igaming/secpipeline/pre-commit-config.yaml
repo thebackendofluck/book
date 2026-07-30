@@ -1,0 +1,117 @@
+# Companion code for "The Backend of Luck" - Chapter 23, DevSecOps for iGaming.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# DevSecOps Pre-commit Configuration for iGaming Platforms
+# Layered security hooks: secret detection, SAST, code quality, IaC scanning
+
+repos:
+  # ── Secret Detection ────────────────────────────────────────────
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.2
+    hooks:
+      - id: gitleaks
+        name: Gitleaks Secret Detection
+        description: Detect hardcoded secrets in git history
+        entry: gitleaks protect --verbose --redact --staged
+        language: golang
+        pass_filenames: false
+
+  - repo: https://github.com/trufflesecurity/trufflehog
+    rev: v3.63.0
+    hooks:
+      - id: trufflehog
+        name: TruffleHog Advanced Secret Detection
+        description: Find credentials in git history and files
+        entry: trufflehog git file://. --no-verification --max-depth=1
+        language: golang
+        pass_filenames: false
+
+  # ── Python Security ─────────────────────────────────────────────
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.7.6
+    hooks:
+      - id: bandit
+        name: Bandit Python Security
+        description: Find security issues in Python code
+        args: [-r]
+        files: \.py$
+
+  - repo: https://github.com/Lucas-C/pre-commit-hooks-safety
+    rev: v1.3.2
+    hooks:
+      - id: python-safety-dependencies-check
+        name: Safety Dependency Vulnerabilities
+        description: Check Python dependencies for known vulnerabilities
+        files: requirements.*\.txt$
+
+  # ── Code Quality ────────────────────────────────────────────────
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+        name: Trailing Whitespace
+      - id: end-of-file-fixer
+        name: End of File Fixer
+      - id: check-yaml
+        name: YAML Syntax Check
+      - id: check-json
+        name: JSON Syntax Check
+      - id: check-merge-conflict
+        name: Merge Conflict Check
+      - id: check-executables-have-shebangs
+        name: Shebang Check
+
+  # ── Shell Script Analysis ───────────────────────────────────────
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.9.0.2
+    hooks:
+      - id: shellcheck
+        name: ShellCheck Script Analysis
+        types: [shell]
+
+  # ── YAML Linting ────────────────────────────────────────────────
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.33.0
+    hooks:
+      - id: yamllint
+        name: YAMLLint YAML Validation
+        types: [yaml]
+
+  # ── Terraform Security ──────────────────────────────────────────
+  - repo: https://github.com/antonbabenko/pre-commit-terraform
+    rev: v1.86.0
+    hooks:
+      - id: terraform_fmt
+        name: Terraform Format
+      - id: terraform_validate
+        name: Terraform Validate
+      - id: terraform_tflint
+        name: TFLint Terraform Linting
+      - id: terraform_tfsec
+        name: TFSec Terraform Security
+
+  # ── Semgrep Security Scanning ───────────────────────────────────
+  - repo: https://github.com/returntocorp/semgrep
+    rev: v1.52.0
+    hooks:
+      - id: semgrep
+        name: Semgrep Security Pattern Scanning
+        description: Find security vulnerabilities with static analysis
+        args: ['--config=auto', '--error']
+        types: [python, javascript, ts, go, java, yaml]
+
+  # ── Commit Message Validation ───────────────────────────────────
+  - repo: https://github.com/conventional-changelog/commitlint
+    rev: v18.4.4
+    hooks:
+      - id: commitlint
+        name: CommitLint Commit Message Validation
+        stages: [commit-msg]
+        additional_dependencies: ['@commitlint/config-conventional']

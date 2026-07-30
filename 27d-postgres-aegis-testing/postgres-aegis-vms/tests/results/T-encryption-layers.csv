@@ -1,0 +1,6 @@
+2026-04-23T08:07:47Z,proxmox-secondary-host-shard-b,luks2_aes-xts-plain64,PASS
+2026-04-23T08:07:47Z,proxmox-secondary-host-shard-b,tls_1.3_aes256gcm,PASS
+2026-04-23T08:07:47Z,proxmox-secondary-host-shard-b,pg_aegis_no_plaintext_in_wal,PASS
+2026-04-23T08:07:47Z,proxmox-secondary-host-shard-b,openbao_active,PASS
+2026-04-23T08:07:47Z,proxmox-secondary-host-shard-b,pg_aegis_master_key_set,PASS
+2026-04-23T08:07:47Z,proxmox-secondary-host-shard-b,fails,0

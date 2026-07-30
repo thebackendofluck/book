@@ -1,0 +1,174 @@
+# Companion code for "The Backend of Luck" - Chapter 38, Case Study.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# =============================================================================
+# Main Playbook -- Server Configuration Orchestration
+# =============================================================================
+# CONTEXT: This playbook was the heart of on-premises server management.
+# Every physical and virtual machine was configured through these roles.
+# The tag-based structure allowed targeted execution -- deploying just
+# Docker configuration or just SSH hardening across the entire fleet.
+#
+# After cloud migration, most of these roles became unnecessary. Docker
+# and monitoring are baked into the AMI, SSH access is through SSM, and
+# infrastructure provisioning moved to Terraform. This playbook remains
+# as a reference for the configuration management patterns that preceded
+# the cloud-native approach.
+# =============================================================================
+---
+- hosts: "{{ target }}"
+  gather_facts: true
+
+  roles:
+    # --- Container Runtime ----------------------------------------------------
+    - role: docker-config
+      tags:
+        - docker-config
+
+    - role: docker-logdriver
+      tags:
+        - docker-logdriver
+
+    # --- Web Server Configuration ---------------------------------------------
+    - role: apache-config
+      tags:
+        - apache-config
+
+    - role: nginx-proxy
+      tags:
+        - nginx-proxy
+
+    # --- Security Hardening ---------------------------------------------------
+    - role: ssh-config
+      tags:
+        - common
+        - ssh-config
+
+    - role: ssh-ciphers
+      tags:
+        - ssh-ciphers
+
+    - role: disable-tls-1
+      tags:
+        - disable-tls-1
+
+    - role: ssl-cipher
+      tags:
+        - ssl-cipher
+
+    # --- User and Access Management -------------------------------------------
+    - role: user-config
+      tags:
+        - user-config
+
+    - role: instance-config
+      tags:
+        - instance-config
+
+    # --- Monitoring and Logging -----------------------------------------------
+    - role: datadog-config
+      tags:
+        - datadog-config
+
+    - role: filebeat-config
+      tags:
+        - filebeat-config
+
+    - role: journalbeat-config
+      tags:
+        - journalbeat-config
+
+    # --- SIEM and Security Monitoring -----------------------------------------
+    - role: wazuh-agent
+      tags:
+        - wazuh-agent
+
+    - role: wazuh-manager
+      tags:
+        - wazuh-manager
+
+    # --- Database Management --------------------------------------------------
+    - role: install-postgresql
+      tags:
+        - install-postgresql
+
+    - role: pg-hba-config
+      tags:
+        - pg-hba-config
+
+    - role: install-pgbackrest
+      tags:
+        - install-pgbackrest
+
+    - role: configure-hugepages-postgresql
+      tags:
+        - configure-hugepages-postgresql
+
+    # --- Cloud Integration ----------------------------------------------------
+    - role: awscli-config
+      tags:
+        - awscli-config
+
+    - role: setup-ssm
+      tags:
+        - setup-ssm
+
+    # --- Container Orchestration (on-prem K8s) --------------------------------
+    - role: kubespray
+      tags:
+        - kubespray
+
+    - role: docker-manager
+      tags:
+        - docker-manager
+
+    # --- Physical Server Management -------------------------------------------
+    # These roles only apply to bare-metal servers in colocation facilities.
+    # They became obsolete after cloud migration.
+    - role: baserole-physical-vm
+      tags:
+        - baserole-physical-vm
+
+    - role: setup-ipmitools
+      tags:
+        - setup-ipmitools
+
+    - role: setup-smartd
+      tags:
+        - setup-smartd
+
+    - role: setup-storcli
+      tags:
+        - setup-storcli
+
+    - role: nic-hardware-buffer
+      tags:
+        - nic-hardware-buffer
+
+    # --- System Maintenance ---------------------------------------------------
+    - role: kernel-update
+      tags:
+        - kernel-update
+
+    - role: logrotate
+      tags:
+        - logrotate
+
+    - role: os_checker
+      tags:
+        - os_checker
+
+  tasks:
+    - include_role:
+        name: ubuntu
+      tags:
+        - system-version-check
+        - distro-upgrade
+        - release-upgrade

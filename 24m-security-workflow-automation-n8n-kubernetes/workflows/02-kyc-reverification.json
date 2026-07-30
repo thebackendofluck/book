@@ -1,0 +1,103 @@
+{
+  "name": "[book-cap24m §10.2] KYC Re-verification Daily Cron",
+  "active": false,
+  "tags": [{"name": "book-cap24m"}, {"name": "compliance"}],
+  "settings": {"executionOrder": "v1"},
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## KYC Re-verification (cap 24m §10.2)\n\n**Trigger:** Daily at 02:30 UTC.\n**Query:** KYC docs near regulatory expiry (UK 180d, MGA 365d, NJ DGE 365d, SIGAP 365d).\n**Action:** Email player a pre-signed re-verification link via Postmark (cap 24l).\n**Audit:** Every email logged to compliance bucket.\n\n**Credentials:**\n- Postgres (cnpg-tunnel)\n- Postmark API token\n- S3-compatible audit bucket (Wasabi/MinIO)",
+        "height": 240,
+        "width": 360,
+        "color": 4
+      },
+      "id": "note-2",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [0, -200]
+    },
+    {
+      "parameters": {
+        "rule": {"interval": [{"field": "cronExpression", "expression": "30 2 * * *"}]}
+      },
+      "id": "cron-1",
+      "name": "Daily 02:30 UTC",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 80]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT p.player_id, p.email, p.first_name, p.country, p.kyc_level, p.last_kyc_at,\n  CASE p.country\n    WHEN 'UK' THEN p.last_kyc_at + INTERVAL '180 days'\n    ELSE p.last_kyc_at + INTERVAL '365 days'\n  END AS expires_at\nFROM players p\nWHERE p.kyc_status = 'approved'\n  AND CASE p.country\n        WHEN 'UK' THEN p.last_kyc_at + INTERVAL '180 days'\n        ELSE p.last_kyc_at + INTERVAL '365 days'\n      END BETWEEN NOW() AND NOW() + INTERVAL '14 days'\nORDER BY expires_at",
+        "options": {}
+      },
+      "id": "pg-1",
+      "name": "Find Expiring KYC (next 14d)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [480, 80],
+      "credentials": {"postgres": {"id": "PLACEHOLDER", "name": "casino-cnpg-tunnel"}}
+    },
+    {
+      "parameters": {
+        "batchSize": 10,
+        "options": {}
+      },
+      "id": "split-1",
+      "name": "Batch x10",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [720, 80]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate signed re-verification link (HMAC of player_id + timestamp + secret)\nconst crypto = require('crypto');\nconst player = $json;\nconst SECRET = $env.KYC_LINK_HMAC_SECRET || 'replace-with-bao-vault-injected';\nconst exp = Math.floor(Date.now() / 1000) + 7 * 86400;\nconst payload = `${player.player_id}.${exp}`;\nconst sig = crypto.createHmac('sha256', SECRET).update(payload).digest('hex');\nreturn [{ json: { ...player, link: `https://kyc.example.internal/reverify?p=${player.player_id}&exp=${exp}&sig=${sig}` } }];"
+      },
+      "id": "code-1",
+      "name": "Generate Signed Link",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [960, 80]
+    },
+    {
+      "parameters": {
+        "url": "https://api.postmarkapp.com/email",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {"parameters": [{"name": "X-Postmark-Server-Token", "value": "={{ $credentials.postmarkToken }}"}, {"name": "Accept", "value": "application/json"}]},
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"From\": \"compliance@example.internal\",\n  \"To\": \"{{ $json.email }}\",\n  \"Subject\": \"Action required: re-verify your account by {{ $json.expires_at }}\",\n  \"HtmlBody\": \"<p>Hello {{ $json.first_name }},</p><p>Your KYC verification expires on <strong>{{ $json.expires_at }}</strong>. Please re-verify within 14 days to keep your account active.</p><p><a href='{{ $json.link }}'>Re-verify now</a></p>\",\n  \"MessageStream\": \"transactional\"\n}",
+        "options": {}
+      },
+      "id": "http-1",
+      "name": "Send via Postmark",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1200, 80]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO compliance_audit (event_type, player_id, email_sent_to, expires_at, link_hash, created_at) VALUES ('kyc_reverify_email', $1, $2, $3, $4, NOW())",
+        "options": {"queryReplacement": "={{ $json.player_id }},={{ $json.email }},={{ $json.expires_at }},={{ require('crypto').createHash('sha256').update($json.link).digest('hex') }}"}
+      },
+      "id": "audit-1",
+      "name": "Audit Log",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1440, 80],
+      "credentials": {"postgres": {"id": "PLACEHOLDER", "name": "casino-cnpg-tunnel"}}
+    }
+  ],
+  "connections": {
+    "Daily 02:30 UTC": {"main": [[{"node": "Find Expiring KYC (next 14d)", "type": "main", "index": 0}]]},
+    "Find Expiring KYC (next 14d)": {"main": [[{"node": "Batch x10", "type": "main", "index": 0}]]},
+    "Batch x10": {"main": [[{"node": "Generate Signed Link", "type": "main", "index": 0}]]},
+    "Generate Signed Link": {"main": [[{"node": "Send via Postmark", "type": "main", "index": 0}]]},
+    "Send via Postmark": {"main": [[{"node": "Audit Log", "type": "main", "index": 0}]]},
+    "Audit Log": {"main": [[{"node": "Batch x10", "type": "main", "index": 0}]]}
+  }
+}

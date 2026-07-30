@@ -1,0 +1,71 @@
+# ============================================================
+# requirements.txt
+# iGaming IP Detection Pipeline — AWS Lambda (Python 3.12)
+# ============================================================
+
+# ---------------------------------------------------------------------------
+# Core AWS SDK
+# ---------------------------------------------------------------------------
+boto3>=1.34.0
+botocore>=1.34.0
+
+# ---------------------------------------------------------------------------
+# GeoIP database reader (MaxMind GeoLite2 / GeoIP2)
+# ---------------------------------------------------------------------------
+geoip2>=4.8.0
+maxminddb>=2.6.0
+
+# ---------------------------------------------------------------------------
+# Fuzzy name matching for sanctions check
+# Prefer rapidfuzz (C extension, ~10x faster than pure Python)
+# Falls back gracefully to pure-Python Levenshtein in s3_sanctions_checker.py
+# ---------------------------------------------------------------------------
+rapidfuzz>=3.6.0
+
+# ---------------------------------------------------------------------------
+# ElastiCache / Redis client (optional, for velocity tracking)
+# Only included in Lambda layers when ElastiCache is enabled
+# ---------------------------------------------------------------------------
+redis>=5.0.1
+hiredis>=2.3.2       # C extension for ~10x faster Redis protocol parsing
+
+# ---------------------------------------------------------------------------
+# HTTP requests (used by ip reputation API queries and SDN refresh)
+# Stdlib urllib is used in production code, but requests is available for
+# custom integrations and local testing
+# ---------------------------------------------------------------------------
+requests>=2.33.0
+urllib3>=2.3.0
+
+# ---------------------------------------------------------------------------
+# Cryptography / security
+# ---------------------------------------------------------------------------
+cryptography>=46.0.6
+
+# ---------------------------------------------------------------------------
+# Utilities
+# ---------------------------------------------------------------------------
+python-dateutil>=2.8.2
+
+# ============================================================
+# Development / Testing dependencies (not deployed to Lambda)
+# ============================================================
+
+# Test runner
+pytest>=9.0.3
+pytest-mock>=3.12.0
+pytest-asyncio>=0.23.0
+pytest-cov>=4.1.0
+
+# AWS mocking for tests
+moto[dynamodb,s3,wafv2,sns,iam,events]>=5.0.0
+
+# Type checking
+mypy>=1.8.0
+boto3-stubs[dynamodb,s3,wafv2,sns,lambda,cloudwatch]>=1.34.0
+
+# Time mocking
+freezegun>=1.4.0
+
+# Linting
+ruff>=0.3.0

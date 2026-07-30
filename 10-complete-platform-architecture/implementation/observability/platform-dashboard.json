@@ -1,0 +1,577 @@
+{
+  "__comment": "Chapter 42 - Complete Platform Architecture - Grafana Platform Health Dashboard with SLO Tracking",
+  "annotations": {
+    "list": [
+      {
+        "datasource": "-- Grafana --",
+        "enable": true,
+        "hide": false,
+        "iconColor": "rgba(255, 96, 96, 1)",
+        "name": "Deployments",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "title": "Platform Overview",
+      "type": "row",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
+    },
+    {
+      "title": "Platform Availability (SLO: 99.95%)",
+      "type": "gauge",
+      "gridPos": { "h": 6, "w": 4, "x": 0, "y": 1 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "1 - (sum(rate(http_server_requests_total{status=~\"5..\"}[30d])) / sum(rate(http_server_requests_total[30d])))",
+          "legendFormat": "Availability"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": 0 },
+              { "color": "orange", "value": 0.999 },
+              { "color": "yellow", "value": 0.9995 },
+              { "color": "green", "value": 0.9999 }
+            ]
+          },
+          "unit": "percentunit",
+          "min": 0.99,
+          "max": 1
+        }
+      }
+    },
+    {
+      "title": "Error Budget Remaining (30d)",
+      "type": "gauge",
+      "gridPos": { "h": 6, "w": 4, "x": 4, "y": 1 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "1 - ((1 - (sum(rate(http_server_requests_total{status=~\"5..\"}[30d])) / sum(rate(http_server_requests_total[30d])))) - 0.9995) / (1 - 0.9995)",
+          "legendFormat": "Error Budget"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": 0 },
+              { "color": "orange", "value": 0.25 },
+              { "color": "yellow", "value": 0.5 },
+              { "color": "green", "value": 0.75 }
+            ]
+          },
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1
+        }
+      }
+    },
+    {
+      "title": "Active Players",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 4, "x": 8, "y": 1 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(casino_active_players_total)",
+          "legendFormat": "Active Players"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "color": "blue", "value": 0 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Transactions/sec",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 4, "x": 12, "y": 1 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(casino_transactions_total[5m]))",
+          "legendFormat": "TPS"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "yellow", "value": 500 },
+              { "color": "red", "value": 1000 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "GGR Today (EUR)",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 4, "x": 16, "y": 1 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(casino_ggr_total_eur)",
+          "legendFormat": "GGR"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyEUR",
+          "thresholds": {
+            "steps": [
+              { "color": "blue", "value": 0 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Open Alerts",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 4, "x": 20, "y": 1 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "count(ALERTS{alertstate=\"firing\"})",
+          "legendFormat": "Firing"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 5 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Service SLOs",
+      "type": "row",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 7 }
+    },
+    {
+      "title": "Service Availability SLOs (30-day rolling)",
+      "type": "table",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "1 - (sum by (service) (rate(http_server_requests_total{status=~\"5..\"}[30d])) / sum by (service) (rate(http_server_requests_total[30d])))",
+          "legendFormat": "{{ service }}",
+          "format": "table",
+          "instant": true
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "service": "Service",
+              "Value": "Availability"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": 0 },
+              { "color": "orange", "value": 0.999 },
+              { "color": "green", "value": 0.9995 }
+            ]
+          },
+          "custom": {
+            "displayMode": "color-background"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Service" },
+            "properties": [
+              { "id": "custom.width", "value": 200 }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "title": "Service Latency SLOs (p99 < target)",
+      "type": "table",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum by (service, le) (rate(http_server_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{ service }}",
+          "format": "table",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "yellow", "value": 0.5 },
+              { "color": "red", "value": 1.0 }
+            ]
+          },
+          "custom": {
+            "displayMode": "color-background"
+          }
+        }
+      }
+    },
+    {
+      "title": "Payment Processing",
+      "type": "row",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 16 }
+    },
+    {
+      "title": "Payment Success Rate by PSP",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 17 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum by (psp) (rate(casino_payment_success_total[5m])) / sum by (psp) (rate(casino_payment_attempts_total[5m]))",
+          "legendFormat": "{{ psp }}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0.9,
+          "max": 1,
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": 0 },
+              { "color": "yellow", "value": 0.95 },
+              { "color": "green", "value": 0.98 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "PSP Circuit Breaker Status",
+      "type": "state-timeline",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 17 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "casino_psp_circuit_breaker_status",
+          "legendFormat": "{{ psp }}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "OPEN", "color": "red" } } },
+            { "type": "value", "options": { "1": { "text": "HEALTHY", "color": "green" } } },
+            { "type": "value", "options": { "2": { "text": "HALF-OPEN", "color": "yellow" } } }
+          ]
+        }
+      }
+    },
+    {
+      "title": "Deposit/Withdrawal Volume (EUR)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 25 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(casino_deposit_amount_eur_total[5m])) * 300",
+          "legendFormat": "Deposits (5m avg)"
+        },
+        {
+          "expr": "sum(rate(casino_withdrawal_amount_eur_total[5m])) * 300",
+          "legendFormat": "Withdrawals (5m avg)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyEUR"
+        }
+      }
+    },
+    {
+      "title": "Payment Failover Events",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 25 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum by (from_psp, to_psp) (rate(casino_psp_failover_total[5m]))",
+          "legendFormat": "{{ from_psp }} -> {{ to_psp }}"
+        }
+      ]
+    },
+    {
+      "title": "Game Engine",
+      "type": "row",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 33 }
+    },
+    {
+      "title": "Game Rounds/sec by Provider",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 34 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum by (provider) (rate(casino_game_rounds_total[5m]))",
+          "legendFormat": "{{ provider }}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        }
+      }
+    },
+    {
+      "title": "RTP by Game Category (rolling 24h)",
+      "type": "bargauge",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 34 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum by (category) (casino_game_wins_total_eur) / sum by (category) (casino_game_bets_total_eur)",
+          "legendFormat": "{{ category }}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0.8,
+          "max": 1.0,
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": 0 },
+              { "color": "green", "value": 0.92 },
+              { "color": "yellow", "value": 0.98 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Infrastructure",
+      "type": "row",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 42 }
+    },
+    {
+      "title": "Kafka Consumer Lag by Topic",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 43 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum by (topic) (kafka_consumer_group_lag)",
+          "legendFormat": "{{ topic }}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "yellow", "value": 1000 },
+              { "color": "red", "value": 10000 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Database Replication Lag",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 43 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "casino_replication_lag_seconds",
+          "legendFormat": "{{ source }} -> {{ target }}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "yellow", "value": 2 },
+              { "color": "red", "value": 10 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Pod CPU Usage by Namespace",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 51 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum by (namespace) (rate(container_cpu_usage_seconds_total{namespace=~\"casino.*|payment.*|game.*|player.*|compliance.*\"}[5m]))",
+          "legendFormat": "{{ namespace }}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        }
+      }
+    },
+    {
+      "title": "Pod Memory Usage by Namespace",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 51 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum by (namespace) (container_memory_working_set_bytes{namespace=~\"casino.*|payment.*|game.*|player.*|compliance.*\"})",
+          "legendFormat": "{{ namespace }}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        }
+      }
+    },
+    {
+      "title": "Compliance & Responsible Gaming",
+      "type": "row",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 59 }
+    },
+    {
+      "title": "AML Alerts (24h)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 60 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(increase(casino_aml_alerts_total[24h]))",
+          "legendFormat": "AML Alerts"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "yellow", "value": 10 },
+              { "color": "red", "value": 50 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Self-Exclusions (24h)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 60 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(increase(casino_self_exclusions_total[24h]))",
+          "legendFormat": "Self-Exclusions"
+        }
+      ]
+    },
+    {
+      "title": "Deposit Limit Hits (24h)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 60 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(increase(casino_deposit_limit_reached_total[24h]))",
+          "legendFormat": "Limit Hits"
+        }
+      ]
+    },
+    {
+      "title": "Compliance Events by Jurisdiction",
+      "type": "piechart",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 60 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum by (jurisdiction) (increase(casino_compliance_events_total[24h]))",
+          "legendFormat": "{{ jurisdiction }}"
+        }
+      ]
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["casino", "platform", "slo"],
+  "templating": {
+    "list": [
+      {
+        "name": "jurisdiction",
+        "type": "query",
+        "datasource": "Prometheus",
+        "query": "label_values(casino_transactions_total, jurisdiction)",
+        "multi": true,
+        "includeAll": true,
+        "current": { "text": "All", "value": "$__all" }
+      },
+      {
+        "name": "namespace",
+        "type": "query",
+        "datasource": "Prometheus",
+        "query": "label_values(kube_pod_info{namespace=~\"casino.*|payment.*|game.*|player.*|compliance.*\"}, namespace)",
+        "multi": true,
+        "includeAll": true,
+        "current": { "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "UTC",
+  "title": "Casino Platform Health & SLO Dashboard",
+  "uid": "casino-platform-health",
+  "version": 1
+}

@@ -1,0 +1,132 @@
+# Companion code for "The Backend of Luck" - Chapter 14, Mobile-First Architecture for iGaming.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# lighthouse-ci.yml — Lighthouse CI GitHub Actions Workflow
+#
+# Runs Lighthouse performance audits on PRs and blocks merges when
+# Core Web Vitals budgets are exceeded.
+#
+# Gate conditions:
+#   - FCP < 1.5s, LCP < 2.5s, CLS < 0.1 (Core Web Vitals Good thresholds)
+#   - Performance score >= 80 on mobile simulated 3G
+#   - PWA score >= 90 (offline support, manifest, HTTPS)
+#   - Accessibility score >= 95 (WCAG 2.1 AA compliance)
+#
+# Chapter 14 — Mobile-First Architecture for iGaming
+
+name: Lighthouse CI
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main]
+
+jobs:
+  lighthouse:
+    name: Lighthouse Performance Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build PWA
+        run: npm run build:pwa
+        env:
+          NODE_ENV: production
+
+      - name: Run Lighthouse CI
+        uses: treosh/lighthouse-ci-action@v11
+        with:
+          configPath: .lighthouserc.json
+          budgetPath: scripts/chapter-14/lighthouse-budget.json
+          uploadArtifacts: true
+          temporaryPublicStorage: true
+        env:
+          LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_GITHUB_APP_TOKEN }}
+
+      - name: Comment PR with Lighthouse results
+        uses: actions/github-script@v7
+        if: github.event_name == 'pull_request'
+        with:
+          script: |
+            const fs = require('fs');
+            const results = JSON.parse(
+              fs.readFileSync('.lighthouseci/lhr-*.json', 'utf8')
+            );
+            const { categories, audits } = results;
+            const body = `## Lighthouse CI Results
+            | Category | Score |
+            |----------|-------|
+            | Performance | ${Math.round(categories.performance.score * 100)} |
+            | Accessibility | ${Math.round(categories.accessibility.score * 100)} |
+            | Best Practices | ${Math.round(categories['best-practices'].score * 100)} |
+            | SEO | ${Math.round(categories.seo.score * 100)} |
+            | PWA | ${Math.round((categories.pwa?.score || 0) * 100)} |
+
+            **Core Web Vitals:**
+            - FCP: ${audits['first-contentful-paint'].displayValue}
+            - LCP: ${audits['largest-contentful-paint'].displayValue}
+            - TBT: ${audits['total-blocking-time'].displayValue}
+            - CLS: ${audits['cumulative-layout-shift'].displayValue}
+            `;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body
+            });
+
+  mobile-device-test:
+    name: Mobile Device Performance Test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    needs: lighthouse
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build:pwa
+
+      - name: Run mobile performance tests (BrowserStack)
+        run: npm run test:mobile:performance
+        env:
+          BROWSERSTACK_USERNAME: ${{ secrets.BROWSERSTACK_USERNAME }}
+          BROWSERSTACK_ACCESS_KEY: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}
+          TEST_URL: ${{ needs.lighthouse.outputs.preview-url }}
+        continue-on-error: true
+
+      - name: Upload performance report
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-performance-report
+          path: reports/mobile-performance/
+          retention-days: 30

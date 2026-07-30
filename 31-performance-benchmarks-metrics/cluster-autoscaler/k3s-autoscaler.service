@@ -1,0 +1,21 @@
+[Unit]
+Description=K3s Cluster Node Autoscaler
+Documentation=https://k3s.io
+After=k3s.service
+Wants=k3s.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/k3s-autoscaler/k3s-node-autoscaler.sh
+WorkingDirectory=/opt/k3s-autoscaler
+EnvironmentFile=-/etc/k3s-autoscaler.conf
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=k3s-autoscaler
+
+# Safety: prevent runaway scaling
+TimeoutStartSec=600
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

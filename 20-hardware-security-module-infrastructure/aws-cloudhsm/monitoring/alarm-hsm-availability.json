@@ -1,0 +1,26 @@
+{
+  "AlarmName": "cloudhsm-hsm-count-too-low",
+  "AlarmDescription": "CloudHSM cluster has fewer than 2 active HSMs. HA is at risk. PCI DSS Req. 12.3.4 — availability of cryptographic infrastructure.",
+  "Namespace": "AWS/CloudHSM",
+  "MetricName": "HsmCount",
+  "Dimensions": [
+    {
+      "Name": "ClusterId",
+      "Value": "${CLUSTER_ID}"
+    }
+  ],
+  "Statistic": "Average",
+  "Period": 300,
+  "EvaluationPeriods": 1,
+  "DatapointsToAlarm": 1,
+  "Threshold": 2.0,
+  "ComparisonOperator": "LessThanThreshold",
+  "TreatMissingData": "breaching",
+  "AlarmActions": ["${SNS_TOPIC_ARN}"],
+  "OKActions": ["${SNS_TOPIC_ARN}"],
+  "Tags": [
+    {"Key": "Environment", "Value": "${ENV}"},
+    {"Key": "Compliance", "Value": "pci-dss-4.0.1"},
+    {"Key": "Severity", "Value": "critical"}
+  ]
+}

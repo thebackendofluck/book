@@ -1,0 +1,16 @@
+[Unit]
+Description=Run OpenBao seal-status probe every 30 seconds
+Documentation=file:///opt/egambling-book/writing/new-book/chapters/20b-openbao-operations.md
+
+[Timer]
+# Boot delay so the probe does not race openbao.service on host start.
+OnBootSec=45s
+# Fire every 30 seconds. Persistent=false because catching up on missed runs
+# of a liveness probe is meaningless -- we only care about now.
+OnUnitActiveSec=30s
+AccuracySec=5s
+Persistent=false
+Unit=monitor-seal-status.service
+
+[Install]
+WantedBy=timers.target

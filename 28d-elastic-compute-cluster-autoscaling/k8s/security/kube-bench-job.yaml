@@ -1,0 +1,128 @@
+# Companion code for "The Backend of Luck" - Chapter 28d, Elastic Compute and Cluster Autoscaling on EKS.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# kube-bench — runs the CIS Amazon EKS Benchmark and records PASS/FAIL/WARN/INFO.
+# This is the *testable evidence artifact* for CIS compliance (ISO A.8.9/A.8.8).
+#   kubectl apply -f kube-bench-job.yaml
+#   kubectl logs -f job/kube-bench-eks
+# Retrieve past results with kube-bench-evidence-reader.yaml.
+# Note: needs a real EKS/kind/k3d node — it cannot run on LocalStack (no nodes).
+#
+# --- Why the output goes to a volume ----------------------------------------
+# The earlier revision had `ttlSecondsAfterFinished: 3600` and no output beyond
+# stdout. Pod logs live and die with the pod, so the CIS evidence deleted itself
+# an hour after the run. An auditor asking in March for the January benchmark
+# result gets nothing, and "we ran it, trust us" is not evidence.
+#
+# So: write machine-readable JSON to a PersistentVolumeClaim that outlives the
+# Job, keep the human-readable table on stdout for whoever is watching the run,
+# and raise the TTL so the Job object survives long enough to debug. The PVC
+# accumulates one timestamped file per run, and that history is the audit trail.
+#
+# For a real compliance programme this is the floor. Sync the PVC to the
+# seven-year S3 log archive from Chapter 24c so the evidence inherits the same
+# retention schedule as everything else a regulator asks for, and drive it from a
+# CronJob: a benchmark that runs only when someone remembers is not a control.
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kube-bench-evidence
+  namespace: kube-system
+  labels:
+    app: kube-bench
+    purpose: cis-evidence
+spec:
+  accessModes: [ReadWriteOnce]
+  # Served by the aws-ebs-csi-driver add-on (terraform/addons.tf). Note that EKS
+  # ships only a `gp2` StorageClass by default, so either create a `gp3` one
+  # (recommended: cheaper and faster) or change this to the cluster's default.
+  # On kind/k3d, substitute the local provisioner's class.
+  # A missing StorageClass leaves the PVC Pending and the Job unschedulable,
+  # which at least fails visibly rather than losing the evidence quietly.
+  storageClassName: gp3
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kube-bench-eks
+  namespace: kube-system
+spec:
+  # 7 days, and it governs only the Job object: the evidence is on the PVC.
+  ttlSecondsAfterFinished: 604800
+  backoffLimit: 2
+  template:
+    metadata:
+      labels:
+        app: kube-bench
+    spec:
+      # Exception: kube-bench checks the kubelet's own process arguments, which
+      # it can only see from the host PID namespace. This is the whole point of
+      # the tool, and it is why the Job is scoped to kube-system, runs to
+      # completion, and mounts every host path read-only. Do not carry hostPID
+      # over into an application workload.
+      hostPID: true
+      restartPolicy: Never
+      containers:
+        - name: kube-bench
+          # Pinned, not :latest. The tool version and the benchmark version
+          # together determine the result, so a floating tag means two runs are
+          # not comparable and the evidence trail has an unexplained step in it.
+          image: docker.io/aquasec/kube-bench:v0.10.0
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              OUT="/evidence/kube-bench-eks-1.8.0-$(date -u +%Y%m%dT%H%M%SZ).json"
+
+              # Pass 1: the artifact an auditor reads.
+              kube-bench run --benchmark eks-1.8.0 --json --outputfile "$OUT"
+              echo "CIS evidence written to $OUT"
+
+              # Pass 2: the table a human reads, and --exit-code turns any FAIL
+              # into a failed Job so a regression surfaces in CI instead of
+              # sitting inside a green Job nobody opens. Two passes cost seconds.
+              kube-bench run --benchmark eks-1.8.0 --exit-code 1
+          securityContext:
+            runAsNonRoot: false # needs host paths to read node config
+            allowPrivilegeEscalation: false
+            # Reading files and /proc needs no capabilities at all, so drop the
+            # lot. Running as uid 0 is the exception here; keeping the default
+            # capability set on top of it would not be.
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - { name: var-lib-kubelet, mountPath: /var/lib/kubelet, readOnly: true }
+            - { name: etc-systemd, mountPath: /etc/systemd, readOnly: true }
+            - { name: etc-kubernetes, mountPath: /etc/kubernetes, readOnly: true }
+            - { name: evidence, mountPath: /evidence }
+            # The only writes are the JSON report (on the PVC) and whatever the
+            # shell scratches in /tmp, so both get an explicit mount and the
+            # image's own filesystem stays read-only.
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: tmp, emptyDir: {} }
+        - { name: var-lib-kubelet, hostPath: { path: /var/lib/kubelet } }
+        - { name: etc-systemd, hostPath: { path: /etc/systemd } }
+        - { name: etc-kubernetes, hostPath: { path: /etc/kubernetes } }
+        - name: evidence
+          persistentVolumeClaim:
+            claimName: kube-bench-evidence

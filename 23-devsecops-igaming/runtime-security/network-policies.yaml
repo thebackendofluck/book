@@ -1,0 +1,549 @@
+# Companion code for "The Backend of Luck" - Chapter 23, DevSecOps for iGaming.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# =============================================================================
+# Kubernetes NetworkPolicy Templates for iGaming Platform
+# =============================================================================
+# Implements network segmentation for gambling platform namespaces.
+# Each namespace gets a default-deny policy plus explicit allow rules
+# for required communication paths.
+#
+# Namespaces covered:
+#   - payment-system    (PCI DSS CDE scope)
+#   - game-engine       (Game integrity scope)
+#   - rng-service       (GLI-33 certified RNG)
+#   - kyc-system        (KYC/AML compliance)
+#   - anti-fraud        (Fraud detection)
+#   - bonus-engine      (Promotion/bonus management)
+#   - player-api        (Player-facing API gateway)
+#
+# Apply: kubectl apply -f network-policies.yaml
+# =============================================================================
+
+---
+# ===========================================================================
+# PAYMENT-SYSTEM NAMESPACE — PCI DSS Cardholder Data Environment
+# ===========================================================================
+
+# Default deny all traffic in payment namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: payment-system
+  labels:
+    app.kubernetes.io/part-of: acme-casino
+    compliance: pci-dss
+    environment: production
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+
+---
+# Allow payment service to receive traffic from player-api only
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-payment-from-api
+  namespace: payment-system
+  labels:
+    compliance: pci-dss
+spec:
+  podSelector:
+    matchLabels:
+      app: payment-service
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: player-api
+          podSelector:
+            matchLabels:
+              app: api-gateway
+      ports:
+        - protocol: TCP
+          port: 8443
+
+---
+# Allow payment service to reach payment providers (Adyen, Nuvei, etc.)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-payment-egress-providers
+  namespace: payment-system
+  labels:
+    compliance: pci-dss
+spec:
+  podSelector:
+    matchLabels:
+      app: payment-service
+  policyTypes:
+    - Egress
+  egress:
+    # DNS resolution
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Payment provider APIs (HTTPS only)
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+    # Internal database
+    - to:
+        - podSelector:
+            matchLabels:
+              app: payment-db
+      ports:
+        - protocol: TCP
+          port: 5432
+
+---
+# Allow wallet service internal communication within payment namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-wallet-internal
+  namespace: payment-system
+  labels:
+    compliance: pci-dss
+spec:
+  podSelector:
+    matchLabels:
+      app: wallet-service
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: payment-service
+      ports:
+        - protocol: TCP
+          port: 8443
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: player-api
+          podSelector:
+            matchLabels:
+              app: api-gateway
+      ports:
+        - protocol: TCP
+          port: 8443
+  egress:
+    # DNS
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+    # Internal database
+    - to:
+        - podSelector:
+            matchLabels:
+              app: wallet-db
+      ports:
+        - protocol: TCP
+          port: 5432
+
+---
+# ===========================================================================
+# RNG-SERVICE NAMESPACE — Maximum Isolation (GLI-33 Compliance)
+# ===========================================================================
+
+# Default deny all
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: rng-service
+  labels:
+    compliance: gli-33
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+
+---
+# RNG service only accepts requests from game-engine namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-rng-from-game-engine
+  namespace: rng-service
+  labels:
+    compliance: gli-33
+spec:
+  podSelector:
+    matchLabels:
+      app: rng-service
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: game-engine
+          podSelector:
+            matchLabels:
+              role: rng-consumer
+      ports:
+        - protocol: TCP
+          port: 8443
+
+---
+# RNG service egress: ONLY internal DNS and its own database
+# NO external internet access allowed
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-rng-egress-minimal
+  namespace: rng-service
+  labels:
+    compliance: gli-33
+spec:
+  podSelector:
+    matchLabels:
+      app: rng-service
+  policyTypes:
+    - Egress
+  egress:
+    # DNS only
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+    # RNG seed database (internal only)
+    - to:
+        - podSelector:
+            matchLabels:
+              app: rng-db
+      ports:
+        - protocol: TCP
+          port: 5432
+
+---
+# ===========================================================================
+# GAME-ENGINE NAMESPACE
+# ===========================================================================
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: game-engine
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+
+---
+# Game engine receives traffic from player API and communicates with RNG
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-game-engine-traffic
+  namespace: game-engine
+spec:
+  podSelector:
+    matchLabels:
+      app: game-engine
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: player-api
+      ports:
+        - protocol: TCP
+          port: 8080
+        # WebSocket for live games
+        - protocol: TCP
+          port: 8081
+  egress:
+    # DNS
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+    # RNG service
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: rng-service
+      ports:
+        - protocol: TCP
+          port: 8443
+    # Payment service (for bet settlement)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: payment-system
+      ports:
+        - protocol: TCP
+          port: 8443
+    # Game provider external APIs
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+    # Game state database
+    - to:
+        - podSelector:
+            matchLabels:
+              app: game-db
+      ports:
+        - protocol: TCP
+          port: 5432
+    # Redis for game sessions
+    - to:
+        - podSelector:
+            matchLabels:
+              app: game-redis
+      ports:
+        - protocol: TCP
+          port: 6379
+
+---
+# ===========================================================================
+# KYC-SYSTEM NAMESPACE
+# ===========================================================================
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: kyc-system
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-kyc-traffic
+  namespace: kyc-system
+spec:
+  podSelector:
+    matchLabels:
+      app: kyc-service
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Only player-api can trigger KYC checks
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: player-api
+      ports:
+        - protocol: TCP
+          port: 8443
+    # Backoffice for manual review
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: backoffice
+      ports:
+        - protocol: TCP
+          port: 8443
+  egress:
+    # DNS
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+    # External KYC/AML providers (Onfido, Jumio, etc.)
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+    # KYC database
+    - to:
+        - podSelector:
+            matchLabels:
+              app: kyc-db
+      ports:
+        - protocol: TCP
+          port: 5432
+
+---
+# ===========================================================================
+# ANTI-FRAUD NAMESPACE
+# ===========================================================================
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: anti-fraud
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-antifraud-traffic
+  namespace: anti-fraud
+spec:
+  podSelector:
+    matchLabels:
+      app: anti-fraud-service
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Receives events from multiple namespaces for analysis
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: player-api
+        - namespaceSelector:
+            matchLabels:
+              name: payment-system
+        - namespaceSelector:
+            matchLabels:
+              name: game-engine
+        - namespaceSelector:
+            matchLabels:
+              name: bonus-engine
+      ports:
+        - protocol: TCP
+          port: 8443
+  egress:
+    # DNS
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+    # Fraud database and ML model store
+    - to:
+        - podSelector:
+            matchLabels:
+              app: fraud-db
+      ports:
+        - protocol: TCP
+          port: 5432
+    # Kafka for event streaming
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: messaging
+          podSelector:
+            matchLabels:
+              app: kafka
+      ports:
+        - protocol: TCP
+          port: 9092
+    # External fraud intelligence feeds
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+
+---
+# ===========================================================================
+# MONITORING NAMESPACE — Allow Prometheus scraping from all namespaces
+# ===========================================================================
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-prometheus-scrape
+  namespace: monitoring
+spec:
+  podSelector:
+    matchLabels:
+      app: prometheus
+  policyTypes:
+    - Egress
+  egress:
+    # Scrape metrics from all namespaces
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 9090
+        - protocol: TCP
+          port: 9100
+        - protocol: TCP
+          port: 8080
+    # DNS
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53

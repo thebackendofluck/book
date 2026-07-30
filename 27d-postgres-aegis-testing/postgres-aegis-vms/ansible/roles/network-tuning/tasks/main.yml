@@ -1,0 +1,162 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 27d, PostgreSQL Aegis.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# network-tuning — configures MTU and TCP kernel parameters on every VM,
+# then verifies end-to-end MTU reachability and warns on any mismatch.
+#
+# Run order in site.yml: before postgres-16 (so sysctl is applied before PG
+# starts and so MTU is set before Patroni establishes replication streams).
+
+# ── 1. MTU on the primary interface ─────────────────────────────────────────
+
+- name: Detect actual interface MTU
+  ansible.builtin.command: "cat /sys/class/net/{{ network_iface }}/mtu"
+  register: current_mtu
+  changed_when: false
+
+- name: Warn if MTU does not match desired value
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: {{ inventory_hostname }} interface {{ network_iface }}
+      has MTU {{ current_mtu.stdout | trim }} but network_mtu={{ network_mtu }}.
+      Applying now — if this is a cloud/hybrid host, override network_mtu=1500
+      in host_vars/{{ inventory_hostname }}.yml to silence this warning.
+  when: (current_mtu.stdout | trim | int) != (network_mtu | int)
+
+- name: Set MTU on primary interface (runtime)
+  ansible.builtin.command: "ip link set {{ network_iface }} mtu {{ network_mtu }}"
+  when: (current_mtu.stdout | trim | int) != (network_mtu | int)
+  changed_when: true
+
+- name: Persist MTU via netplan (Ubuntu 22.04+)
+  ansible.builtin.template:
+    src: netplan-mtu.yaml.j2
+    dest: /etc/netplan/60-mtu.yaml
+    owner: root
+    group: root
+    mode: "0600"
+  notify: apply netplan
+
+# ── 2. Sysctl — network buffer + MTU probing ────────────────────────────────
+
+- name: Apply network sysctl tuning
+  ansible.posix.sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    sysctl_file: "{{ network_sysctl_file }}"
+    state: present
+    reload: true
+  loop:
+    # MTU black-hole detection — CRITICAL: prevents 30s TCP stalls when ICMP
+    # Type 3 Code 4 is filtered on any path segment.
+    - { name: net.ipv4.tcp_mtu_probing,      value: "{{ network_tcp_mtu_probing }}" }
+
+    # Receive / send buffers — sized for 10 Gbps + jumbo frames.
+    - { name: net.core.rmem_max,             value: "{{ network_rmem_max }}" }
+    - { name: net.core.wmem_max,             value: "{{ network_wmem_max }}" }
+    - { name: net.core.rmem_default,         value: "{{ network_rmem_default }}" }
+    - { name: net.core.wmem_default,         value: "{{ network_wmem_default }}" }
+    - { name: net.ipv4.tcp_rmem,             value: "{{ network_tcp_rmem }}" }
+    - { name: net.ipv4.tcp_wmem,             value: "{{ network_tcp_wmem }}" }
+
+    # Congestion control — BBR outperforms CUBIC on high-BDP 10 Gbps paths.
+    - { name: net.core.default_qdisc,        value: "fq" }
+    - { name: net.ipv4.tcp_congestion_control, value: "{{ network_tcp_cc }}" }
+
+    # Connection backlog — absorbs burst reconnections during Patroni failover.
+    - { name: net.core.somaxconn,            value: "{{ network_somaxconn }}" }
+    - { name: net.core.netdev_max_backlog,   value: "{{ network_netdev_max_backlog }}" }
+    - { name: net.ipv4.tcp_max_syn_backlog,  value: "{{ network_tcp_max_syn_backlog }}" }
+
+    # tcp_fin_timeout bounds orphaned FIN_WAIT_2 sockets; tw_reuse handles TIME_WAIT.
+    # Together they prevent port exhaustion during pgcat burst reconnections.
+    - { name: net.ipv4.tcp_fin_timeout,      value: "5" }
+    - { name: net.ipv4.tcp_tw_reuse,         value: "1" }
+
+    # TCP Fast Open — shaves one RTT from new connections (Patroni + pgcat).
+    - { name: net.ipv4.tcp_fastopen,         value: "3" }
+
+# ── 3. End-to-end MTU verification ──────────────────────────────────────────
+
+- name: Test MTU reachability to each peer in the postgres group
+  ansible.builtin.shell: >-
+    ping -M do -c 2 -W 2
+    -s {{ (network_mtu | int) - 28 }}
+    {{ hostvars[item].ansible_host }}
+  register: mtu_ping
+  changed_when: false
+  failed_when: false
+  loop: "{{ groups['postgres'] | difference([inventory_hostname]) }}"
+  when: network_mtu | int > 1500
+
+- name: Warn on MTU ping failure between postgres peers
+  ansible.builtin.debug:
+    msg: >-
+      MTU WARNING: {{ inventory_hostname }} → {{ item.item }}
+      ({{ hostvars[item.item].ansible_host }}) failed ping at
+      MTU {{ network_mtu }} (payload {{ (network_mtu | int) - 28 }} B, DF set).
+      Possible causes: bridge MTU mismatch on Proxmox host, VLAN 802.1Q
+      overhead not accounted for, or tap device MTU not propagated via
+      VIRTIO_NET_F_MTU (check 'mtu=1' in VM config on Proxmox host).
+      Run: ssh root@<proxmox> ip link show vmbr0 | grep mtu
+  when:
+    - network_mtu | int > 1500
+    - item.rc != 0
+  loop: "{{ mtu_ping.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Test MTU reachability to each etcd peer
+  ansible.builtin.shell: >-
+    ping -M do -c 2 -W 2
+    -s {{ (network_mtu | int) - 28 }}
+    {{ hostvars[item].ansible_host }}
+  register: mtu_ping_etcd
+  changed_when: false
+  failed_when: false
+  loop: "{{ groups['etcd'] }}"
+  when: network_mtu | int > 1500
+
+- name: Warn on MTU ping failure to etcd peers
+  ansible.builtin.debug:
+    msg: >-
+      MTU WARNING: {{ inventory_hostname }} → etcd {{ item.item }}
+      ({{ hostvars[item.item].ansible_host }}) failed ping at MTU {{ network_mtu }}.
+      etcd Raft heartbeats will degrade to fragmented paths — false leader
+      elections possible under load. Fix bridge MTU before running in production.
+  when:
+    - network_mtu | int > 1500
+    - item.rc != 0
+  loop: "{{ mtu_ping_etcd.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+# ── 4. Verify congestion control module is available ────────────────────────
+
+- name: Ensure BBR kernel module is loaded
+  community.general.modprobe:
+    name: tcp_bbr
+    state: present
+  when: network_tcp_cc == "bbr"
+  ignore_errors: true     # older kernels may not have BBR; sysctl fallback is safe
+
+- name: Confirm active congestion control
+  ansible.builtin.command: sysctl -n net.ipv4.tcp_congestion_control
+  register: active_cc
+  changed_when: false
+
+- name: Warn if congestion control did not apply (BBR module missing)
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: requested tcp_congestion_control={{ network_tcp_cc }} but
+      active value is {{ active_cc.stdout | trim }}.
+      Install kernel-modules-extra or use 'network_tcp_cc: cubic' for this host.
+  when: active_cc.stdout | trim != network_tcp_cc

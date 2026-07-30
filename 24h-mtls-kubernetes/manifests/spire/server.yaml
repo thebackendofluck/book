@@ -1,0 +1,127 @@
+# Companion code for "The Backend of Luck" - Chapter 24h, Mutual TLS Between Kubernetes Services for iGaming Platforms.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# File: manifests/spire/server.yaml (abbreviated — full manifest is 150+ lines)
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: spire
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: spire-server
+  namespace: spire
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: spire-server
+  template:
+    metadata:
+      labels:
+        app: spire-server
+    spec:
+      serviceAccountName: spire-server
+      securityContext:
+        runAsNonRoot: true
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: spire-server
+          image: ghcr.io/spiffe/spire-server:1.15.2
+          args:
+            - -config
+            - /run/spire/config/server.conf
+          ports:
+            - containerPort: 8081
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+          volumeMounts:
+            - name: spire-config
+              mountPath: /run/spire/config
+              readOnly: true
+            - name: spire-data
+              mountPath: /run/spire/data
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: spire-config
+          configMap:
+            name: spire-server-config
+        - name: spire-data
+          persistentVolumeClaim:
+            claimName: spire-server-data
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spire-server-config
+  namespace: spire
+data:
+  server.conf: |
+    server {
+      bind_address = "0.0.0.0"
+      bind_port = "8081"
+      trust_domain = "casino.internal"
+      data_dir = "/run/spire/data"
+      log_level = "INFO"
+      # SVIDs are valid for 1 hour; agents renew before expiry
+      default_x509_svid_ttl = "1h"
+      default_jwt_svid_ttl = "5m"
+      ca_ttl = "24h"
+    }
+
+    plugins {
+      DataStore "sql" {
+        plugin_data {
+          database_type = "sqlite3"
+          connection_string = "/run/spire/data/datastore.sqlite3"
+        }
+      }
+
+      NodeAttestor "k8s_psat" {
+        plugin_data {
+          clusters = {
+            "ops-host" = {
+              service_account_allow_list = ["spire:spire-agent"]
+            }
+          }
+        }
+      }
+
+      KeyManager "disk" {
+        plugin_data {
+          keys_path = "/run/spire/data/keys.json"
+        }
+      }
+
+      Notifier "k8sbundle" {
+        plugin_data {
+          namespace = "spire"
+          config_map = "spire-bundle"
+          config_map_key = "bundle.crt"
+        }
+      }
+    }

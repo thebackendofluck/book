@@ -1,0 +1,20 @@
+name = "egambling-backoffice"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+routes = [
+  { pattern = "backoffice.cloud-acmetocasino.com/*", zone_name = "cloud-acmetocasino.com" }
+]
+
+[vars]
+ENVIRONMENT = "development"
+
+[[d1_databases]]
+binding = "AUDIT_LOG"
+database_name = "egambling-backoffice-audit"
+database_id = "4b1c13ca-16a5-475c-9dba-c6fe78bbc4a3"
+
+[observability]
+enabled = true
+head_sampling_rate = 1

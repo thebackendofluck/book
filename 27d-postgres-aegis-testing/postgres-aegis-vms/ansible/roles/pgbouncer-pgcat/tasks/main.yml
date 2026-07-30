@@ -1,0 +1,74 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 27d, PostgreSQL Aegis.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# pgbouncer-pgcat — installs PgCat (Rust-based Postgres sharding pooler)
+# on pgcat hosts; hash-shards on player_id; transaction pool mode.
+
+- name: Install PgCat via static binary
+  ansible.builtin.get_url:
+    url: "https://github.com/postgresml/pgcat/releases/download/v1.3.0/pgcat-1.3.0-x86_64-unknown-linux-gnu.tar.gz"
+    dest: /tmp/pgcat.tar.gz
+    mode: "0644"
+    checksum: "sha256:b2c9e5f3b0b3b4e2f6d8a1e7c4d9f2b3a8c5d6e7f1a2b3c4d5e6f7a8b9c0d1e2"
+
+- name: Extract PgCat
+  ansible.builtin.unarchive:
+    src: /tmp/pgcat.tar.gz
+    dest: /usr/local/bin/
+    remote_src: true
+    extra_opts:
+      - --strip-components=1
+  # If the archive structure differs, the extra_opts above will need review —
+  # this is a placeholder checksum; replace with real release SHA.
+
+- name: Ensure pgcat config dir
+  ansible.builtin.file:
+    path: /etc/pgcat
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Render pgcat.toml
+  ansible.builtin.template:
+    src: pgcat.toml.j2
+    dest: /etc/pgcat/pgcat.toml
+    owner: root
+    group: root
+    mode: "0640"
+  notify: Reload pgcat
+
+- name: systemd unit
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/pgcat.service
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=PgCat sharding pooler
+      Requires=network-online.target
+      After=network-online.target
+      [Service]
+      Type=simple
+      ExecStart=/usr/local/bin/pgcat /etc/pgcat/pgcat.toml
+      Restart=on-failure
+      LimitNOFILE=65535
+      [Install]
+      WantedBy=multi-user.target
+  notify: Reload systemd
+
+- name: Enable pgcat
+  ansible.builtin.systemd:
+    name: pgcat
+    enabled: true
+    state: started
+    daemon_reload: true

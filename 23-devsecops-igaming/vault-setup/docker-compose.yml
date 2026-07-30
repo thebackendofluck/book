@@ -1,0 +1,165 @@
+# Companion code for "The Backend of Luck" - Chapter 23, DevSecOps for iGaming.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# =============================================================================
+# HashiCorp Vault Setup for iGaming Secret Management
+# =============================================================================
+# Provides both development and production-like Vault configurations for
+# managing secrets across the gambling platform.
+#
+# Development mode:
+#   docker compose up -d
+#
+# Production-like mode (with Consul backend):
+#   docker compose --profile production up -d
+#
+# After startup, run vault-init.sh to configure secret engines and policies.
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # Vault Server — Development Mode
+  # ---------------------------------------------------------------------------
+  vault:
+    image: hashicorp/vault:1.15
+    container_name: vault-igaming
+    restart: unless-stopped
+    cap_add:
+      - IPC_LOCK
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: "${VAULT_DEV_TOKEN:-igaming-dev-token-change-me}"
+      VAULT_DEV_LISTEN_ADDRESS: "0.0.0.0:8200"
+      VAULT_ADDR: "http://127.0.0.1:8200"
+      VAULT_API_ADDR: "http://vault:8200"
+      VAULT_LOG_LEVEL: "info"
+    ports:
+      - "127.0.0.1:8200:8200"
+    volumes:
+      - vault-data:/vault/data
+      - vault-logs:/vault/logs
+      - ./vault-policies.hcl:/vault/config/policies.hcl:ro
+      - ./vault-config.hcl:/vault/config/vault.hcl:ro
+    networks:
+      - vault-net
+    labels:
+      - "com.acme-casino.service=vault"
+      - "com.acme-casino.team=platform"
+    healthcheck:
+      test: ["CMD", "vault", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+    profiles:
+      - default
+
+  # ---------------------------------------------------------------------------
+  # Vault Server — Production Mode (with Consul backend)
+  # ---------------------------------------------------------------------------
+  vault-prod:
+    image: hashicorp/vault:1.15
+    container_name: vault-igaming-prod
+    restart: unless-stopped
+    cap_add:
+      - IPC_LOCK
+    environment:
+      VAULT_ADDR: "http://127.0.0.1:8200"
+      VAULT_API_ADDR: "http://vault-prod:8200"
+      VAULT_LOG_LEVEL: "info"
+    entrypoint: vault server -config=/vault/config/vault.hcl
+    ports:
+      - "127.0.0.1:8200:8200"
+    volumes:
+      - vault-prod-data:/vault/data
+      - vault-logs:/vault/logs
+      - ./vault-policies.hcl:/vault/config/policies.hcl:ro
+      - ./vault-config-prod.hcl:/vault/config/vault.hcl:ro
+    depends_on:
+      consul:
+        condition: service_healthy
+    networks:
+      - vault-net
+    labels:
+      - "com.acme-casino.service=vault"
+      - "com.acme-casino.environment=production"
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "2.0"
+    profiles:
+      - production
+
+  # ---------------------------------------------------------------------------
+  # Consul — Storage Backend for Production Vault
+  # ---------------------------------------------------------------------------
+  consul:
+    image: hashicorp/consul:1.17
+    container_name: consul-vault-backend
+    restart: unless-stopped
+    command: agent -server -bootstrap -ui -bind=0.0.0.0 -client=0.0.0.0
+    environment:
+      CONSUL_LOCAL_CONFIG: '{"datacenter": "igaming-dc1", "encrypt": "${CONSUL_ENCRYPT_KEY:-}"}'
+    ports:
+      - "127.0.0.1:8500:8500"
+    volumes:
+      - consul-data:/consul/data
+    networks:
+      - vault-net
+    healthcheck:
+      test: ["CMD", "consul", "members"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - production
+
+  # ---------------------------------------------------------------------------
+  # Vault Agent — Sidecar for Applications
+  # ---------------------------------------------------------------------------
+  vault-agent:
+    image: hashicorp/vault:1.15
+    container_name: vault-agent-igaming
+    restart: unless-stopped
+    entrypoint: vault agent -config=/vault/config/agent.hcl
+    environment:
+      VAULT_ADDR: "http://vault:8200"
+    volumes:
+      - ./vault-agent-config.hcl:/vault/config/agent.hcl:ro
+      - vault-agent-secrets:/vault/secrets
+    depends_on:
+      vault:
+        condition: service_healthy
+    networks:
+      - vault-net
+    profiles:
+      - agent
+
+networks:
+  vault-net:
+    driver: bridge
+    name: igaming-vault-net
+
+volumes:
+  vault-data:
+    name: vault-igaming-data
+  vault-prod-data:
+    name: vault-igaming-prod-data
+  vault-logs:
+    name: vault-igaming-logs
+  consul-data:
+    name: consul-vault-data
+  vault-agent-secrets:
+    name: vault-agent-secrets

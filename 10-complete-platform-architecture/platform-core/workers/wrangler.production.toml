@@ -1,0 +1,151 @@
+# wrangler.production.toml
+# -------------------------
+# Combined reference showing all four workers deployed together in production.
+#
+# This file is NOT a valid single wrangler.toml — Cloudflare Workers does not
+# support multi-worker configs in one file.  Each worker is deployed from its
+# own directory using its own wrangler.toml.
+#
+# Use this file as an architectural reference and to document the full
+# production configuration in one place.
+#
+# Deploy all workers (from this directory):
+#   for dir in payments-worker risk-worker exclusion-worker backoffice-worker; do
+#     echo "Deploying $dir..."
+#     (cd $dir && npm install && npx wrangler deploy)
+#   done
+#
+# ---------------------------------------------------------------------------
+# WORKER 1 — payments-worker
+# URL: https://egambling-payments.<account>.workers.dev
+# ---------------------------------------------------------------------------
+# name = "egambling-payments"
+# main = "payments-worker/src/index.ts"
+# compatibility_date = "2024-12-01"
+# compatibility_flags = ["nodejs_compat"]
+#
+# [vars]
+# ENVIRONMENT = "production"
+#
+# [[d1_databases]]
+# binding = "TRANSACTIONS"
+# database_name = "egambling-payments-txlog"
+# database_id = "<D1_DATABASE_ID>"   # wrangler d1 create egambling-payments-txlog
+#
+# [[kv_namespaces]]
+# binding = "PSP_CONFIG"
+# id = "<KV_NAMESPACE_ID>"            # wrangler kv namespace create PSP_CONFIG
+#
+# Secrets (set via: wrangler secret put SECRET_NAME --name egambling-payments):
+#   WEBHOOK_SECRET   — PSP webhook signing secret
+#
+# ---------------------------------------------------------------------------
+# WORKER 2 — risk-worker
+# URL: https://egambling-risk.<account>.workers.dev
+# ---------------------------------------------------------------------------
+# name = "egambling-risk"
+# main = "risk-worker/src/index.ts"
+# compatibility_date = "2024-12-01"
+# compatibility_flags = ["nodejs_compat"]
+#
+# [vars]
+# ENVIRONMENT = "production"
+#
+# [[kv_namespaces]]
+# binding = "PLAYER_RISK_CACHE"
+# id = "<KV_NAMESPACE_ID>"            # wrangler kv namespace create PLAYER_RISK_CACHE
+#
+# Secrets:
+#   ALERT_WEBHOOK_URL — SIEM / Slack / PagerDuty webhook for CRITICAL alerts
+#
+# ---------------------------------------------------------------------------
+# WORKER 3 — exclusion-worker
+# URL: https://egambling-exclusion.<account>.workers.dev
+# ---------------------------------------------------------------------------
+# name = "egambling-exclusion"
+# main = "exclusion-worker/src/index.ts"
+# compatibility_date = "2024-12-01"
+# compatibility_flags = ["nodejs_compat"]
+#
+# [vars]
+# ENVIRONMENT = "production"
+#
+# [[kv_namespaces]]
+# binding = "EXCLUSION_CACHE"
+# id = "<KV_NAMESPACE_ID>"            # wrangler kv namespace create EXCLUSION_CACHE
+#
+# Secrets:
+#   GAMSTOP_API_KEY        — GamStop operator API key (UKGC licence required)
+#   SPELPAUS_API_TOKEN     — Spelpaus bearer token (Swedish licence)
+#   ROFUS_LICENSE_NUMBER   — ROFUS operator licence number (Danish licence)
+#
+# ---------------------------------------------------------------------------
+# WORKER 4 — backoffice-worker
+# URL: https://egambling-backoffice.<account>.workers.dev
+# ---------------------------------------------------------------------------
+# name = "egambling-backoffice"
+# main = "backoffice-worker/src/index.ts"
+# compatibility_date = "2024-12-01"
+# compatibility_flags = ["nodejs_compat"]
+#
+# [vars]
+# ENVIRONMENT = "production"
+#
+# [[d1_databases]]
+# binding = "AUDIT_LOG"
+# database_name = "egambling-backoffice-audit"
+# database_id = "<D1_DATABASE_ID>"   # wrangler d1 create egambling-backoffice-audit
+#
+# Secrets:
+#   JWT_SECRET   — HS256 signing secret (min 32 bytes, rotate quarterly)
+#                  Upgrade to RS256/JWKS for zero-secret architecture.
+#
+# ---------------------------------------------------------------------------
+# D1 DATABASE SCHEMA MIGRATIONS
+# Run after creating each D1 database:
+# ---------------------------------------------------------------------------
+#
+# payments D1 schema:
+#   wrangler d1 execute egambling-payments-txlog --command "
+#     CREATE TABLE IF NOT EXISTS payments (
+#       id TEXT PRIMARY KEY,
+#       player_id TEXT NOT NULL,
+#       type TEXT NOT NULL,
+#       status TEXT NOT NULL,
+#       amount INTEGER NOT NULL,
+#       currency TEXT NOT NULL,
+#       psp_ref TEXT,
+#       psp_name TEXT,
+#       failure_reason TEXT,
+#       created_at INTEGER NOT NULL,
+#       updated_at INTEGER NOT NULL,
+#       metadata TEXT DEFAULT '{}'
+#     );
+#     CREATE INDEX IF NOT EXISTS idx_payments_player ON payments(player_id);
+#     CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status);
+#   "
+#
+# backoffice audit D1 schema:
+#   wrangler d1 execute egambling-backoffice-audit --command "
+#     CREATE TABLE IF NOT EXISTS audit_log (
+#       id TEXT PRIMARY KEY,
+#       action TEXT NOT NULL,
+#       admin_id TEXT NOT NULL,
+#       target_id TEXT NOT NULL,
+#       details TEXT DEFAULT '{}',
+#       created_at INTEGER NOT NULL
+#     );
+#     CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_log(action);
+#     CREATE INDEX IF NOT EXISTS idx_audit_admin ON audit_log(admin_id);
+#     CREATE INDEX IF NOT EXISTS idx_audit_target ON audit_log(target_id);
+#     CREATE INDEX IF NOT EXISTS idx_audit_time ON audit_log(created_at);
+#   "
+#
+# ---------------------------------------------------------------------------
+# FREE TIER LIMITS (as of 2025)
+# ---------------------------------------------------------------------------
+# Workers:       100,000 requests/day
+# KV reads:      100,000/day | KV writes: 1,000/day | storage: 1 GB
+# D1 reads:      5,000,000/day | D1 writes: 100,000/day | storage: 5 GB
+# All four workers + 2 D1 + 3 KV stay comfortably within free tier for
+# dev/staging.  Switch to paid ($5/mo Workers Paid) for production.

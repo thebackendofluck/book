@@ -1,0 +1,101 @@
+# Companion code for "The Backend of Luck" - Chapter 24h, Mutual TLS Between Kubernetes Services for iGaming Platforms.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# File: monitoring/prometheus/cert-expiry-rules.yaml
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: casino-mtls-certificate-alerts
+  namespace: monitoring
+  labels:
+    app: kube-prometheus-stack
+    release: prometheus
+spec:
+  groups:
+    - name: casino.mtls.certificates
+      interval: 60s
+      rules:
+        # Critical: certificate expires in less than 7 days
+        - alert: CasinoCertificateExpiryCritical
+          expr: |
+            (certmanager_certificate_expiration_timestamp_seconds - time()) < (7 * 24 * 3600)
+          for: 5m
+          labels:
+            severity: critical
+            team: platform-security
+          annotations:
+            summary: "Certificate {{ $labels.name }} in {{ $labels.namespace }} expires in less than 7 days"
+            description: |
+              Certificate {{ $labels.namespace }}/{{ $labels.name }} expires at
+              {{ $value | humanizeTimestamp }}. Automatic renewal should have triggered
+              already. Check cert-manager logs and issuer status immediately.
+            runbook_url: "https://wiki.casino.internal/runbooks/cert-expiry"
+
+        # Warning: certificate expires in less than 14 days
+        - alert: CasinoCertificateExpiryWarning
+          expr: |
+            (certmanager_certificate_expiration_timestamp_seconds - time()) < (14 * 24 * 3600)
+          for: 15m
+          labels:
+            severity: warning
+            team: platform-security
+          annotations:
+            summary: "Certificate {{ $labels.name }} in {{ $labels.namespace }} expires in less than 14 days"
+            description: |
+              Certificate {{ $labels.namespace }}/{{ $labels.name }} expiry approaching.
+              Automatic renewal should be in progress. Monitor cert-manager controller logs.
+
+        # Certificate is not in Ready state
+        - alert: CasinoCertificateNotReady
+          expr: |
+            certmanager_certificate_ready_status{condition="False"} == 1
+          for: 5m
+          labels:
+            severity: critical
+            team: platform-security
+          annotations:
+            summary: "Certificate {{ $labels.name }} in {{ $labels.namespace }} is not Ready"
+            description: |
+              Certificate {{ $labels.namespace }}/{{ $labels.name }} has condition Ready=False.
+              This may indicate CA unavailability, RBAC issue, or issuer misconfiguration.
+              Run: kubectl describe certificate {{ $labels.name }} -n {{ $labels.namespace }}
+
+        # Issuance duration spike — indicates CA or network problems
+        - alert: CasinoCertificateIssuanceSlow
+          expr: |
+            histogram_quantile(0.99,
+              rate(certmanager_certificate_issuance_duration_seconds_bucket[5m])
+            ) > 30
+          for: 5m
+          labels:
+            severity: warning
+            team: platform-security
+          annotations:
+            summary: "Certificate issuance P99 latency exceeds 30 seconds"
+            description: |
+              Certificate issuance P99 has been above 30s for 5 minutes. This indicates
+              the internal CA or the cert-manager controller is under stress. Check
+              cert-manager controller logs and the intermediate CA secret availability.
+
+        # Trust bundle not propagated to all mtls-enabled namespaces
+        - alert: CasinoCaBundlePropagationFailed
+          expr: |
+            increase(certmanager_bundle_sync_failed_total[5m]) > 0
+          for: 5m
+          labels:
+            severity: warning
+            team: platform-security
+          annotations:
+            summary: "CA bundle propagation failures detected"
+            description: |
+              trust-manager has failed to propagate the CA bundle to one or more namespaces.
+              Affected services may reject new connections after their cert rotates.
+              Check: kubectl describe bundle casino-internal-ca-bundle -n cert-manager

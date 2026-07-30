@@ -1,0 +1,190 @@
+# Companion code for "The Backend of Luck" - Chapter 23b, DevSecOps Pipeline Implementation.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# ---------------------------------------------------------------------------
+# Emergency compensating controls for high-risk dependency exposure
+#
+# Use this file when a vulnerable dependency is confirmed in an exposed code
+# path but a safe upgrade plus regression test window cannot be completed in a
+# few days. These controls reduce exploitability; they do not replace the patch.
+#
+# This variant targets the ops-host/K3s stack used by the chapter:
+#   - namespace: casino-prod
+#   - ingress controller: Traefik CRDs (traefik.io/v1alpha1)
+#   - egress containment: Kubernetes NetworkPolicy
+#
+# Before applying:
+#   1. Replace placeholder PSP/fraud/observability IP ranges.
+#   2. Attach the Middleware names to the affected IngressRoute routes.
+#   3. Configure the WAF signatures in Cloudflare, ModSecurity, Coraza, or the
+#      edge WAF actually in front of the route; Traefik OSS does not inspect
+#      request bodies or arbitrary payload strings by itself.
+#   4. Record owner, expiry, revenue impact, and rollback command in the ticket.
+#
+# Dry-run validation:
+#   kubectl apply --dry-run=server --validate=true \
+#     -f emergency-compensating-controls.yaml
+# ---------------------------------------------------------------------------
+
+---
+# High-confidence WAF signatures to configure at the edge during a Log4Shell-
+# style patch window. Kept as a ConfigMap so the exact strings are reviewable
+# alongside the middleware and NetworkPolicy controls.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: emergency-waf-signatures
+  namespace: casino-prod
+  labels:
+    app.kubernetes.io/part-of: casino-security
+    security.acmetocasino.com/control-type: compensating
+  annotations:
+    security.acmetocasino.com/owner: "security-oncall"
+    security.acmetocasino.com/expires-at: "2026-04-25T23:59:59Z"
+    security.acmetocasino.com/remove-after-patch: "true"
+data:
+  modsecurity-log4shell.conf: |
+    SecRule REQUEST_URI|ARGS|REQUEST_HEADERS "@rx (?i)(\\$\\{jndi:|\\$\\{lower:|\\$\\{upper:|\\$\\{::-|jndi%3a|ldap://|rmi://|dns://)" \
+      "id:21044228,phase:2,deny,status:403,log,msg:'Emergency Log4Shell-style exploit string block'"
+  cloudflare-expression.txt: |
+    lower(http.request.uri.query) contains "${jndi:" or
+    lower(http.request.uri.query) contains "jndi%3a" or
+    lower(http.user_agent) contains "${jndi:" or
+    lower(http.user_agent) contains "ldap://" or
+    lower(http.referer) contains "${jndi:"
+
+---
+# Attach to upload/KYC/support routes while validating a multipart or file
+# parser patch. 2 MiB is intentionally tight; raise it only for routes where
+# revenue or KYC completion is measurably affected.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: emergency-upload-limit
+  namespace: casino-prod
+  labels:
+    app.kubernetes.io/part-of: casino-security
+    security.acmetocasino.com/control-type: compensating
+  annotations:
+    security.acmetocasino.com/owner: "platform-oncall"
+    security.acmetocasino.com/expires-at: "2026-04-25T23:59:59Z"
+    security.acmetocasino.com/revenue-impact: "May block oversized KYC/support uploads; monitor conversion and support queue."
+spec:
+  buffering:
+    maxRequestBodyBytes: 2097152
+    memRequestBodyBytes: 262144
+
+---
+# Attach to the affected public API route during exploit attempts. Keep the
+# value low enough to slow scanning, high enough to avoid broad checkout/login
+# revenue loss. Exempt trusted PSP callback routes separately if needed.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: emergency-api-rate-limit
+  namespace: casino-prod
+  labels:
+    app.kubernetes.io/part-of: casino-security
+    security.acmetocasino.com/control-type: compensating
+  annotations:
+    security.acmetocasino.com/owner: "platform-oncall"
+    security.acmetocasino.com/expires-at: "2026-04-25T23:59:59Z"
+    security.acmetocasino.com/revenue-impact: "May throttle aggressive clients; monitor login, deposit, and checkout conversion."
+spec:
+  rateLimit:
+    average: 10
+    burst: 20
+    period: 1s
+    sourceCriterion:
+      ipStrategy:
+        depth: 1
+
+---
+# Attach only to withdrawal and account-change routes. If the authenticated
+# player identifier is injected by a trusted auth layer, switch sourceCriterion
+# from IP to requestHeaderName: X-Player-Id. Do not trust a client-supplied
+# header directly.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: emergency-withdrawal-rate-limit
+  namespace: casino-prod
+  labels:
+    app.kubernetes.io/part-of: casino-security
+    security.acmetocasino.com/control-type: compensating
+  annotations:
+    security.acmetocasino.com/owner: "risk-oncall"
+    security.acmetocasino.com/expires-at: "2026-04-25T23:59:59Z"
+    security.acmetocasino.com/revenue-impact: "Protects funds movement but may delay VIP withdrawals; coordinate manual review."
+spec:
+  rateLimit:
+    average: 5
+    burst: 2
+    period: 1m
+    sourceCriterion:
+      ipStrategy:
+        depth: 1
+
+---
+# Egress containment for exploit chains that try to call back to LDAP/RMI/DNS
+# or download a second-stage payload. This assumes the namespace already has a
+# default-deny egress policy. Network policies are additive; do not apply broad
+# allow-all policies in parallel.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: emergency-casino-api-egress-allowlist
+  namespace: casino-prod
+  labels:
+    app.kubernetes.io/part-of: casino-security
+    security.acmetocasino.com/control-type: compensating
+  annotations:
+    security.acmetocasino.com/owner: "platform-oncall"
+    security.acmetocasino.com/expires-at: "2026-04-25T23:59:59Z"
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: casino-api
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: postgresql
+      ports:
+        - port: 5432
+          protocol: TCP
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: redis
+      ports:
+        - port: 6379
+          protocol: TCP
+    - to:
+        - ipBlock:
+            cidr: 198.51.100.10/32   # replace with PSP callback IP/CIDR
+        - ipBlock:
+            cidr: 198.51.100.20/32   # replace with fraud API IP/CIDR
+        - ipBlock:
+            cidr: 198.51.100.30/32   # replace with observability collector IP/CIDR
+      ports:
+        - port: 443
+          protocol: TCP

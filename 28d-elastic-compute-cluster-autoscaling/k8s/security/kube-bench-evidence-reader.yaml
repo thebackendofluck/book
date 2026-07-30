@@ -1,0 +1,65 @@
+# Companion code for "The Backend of Luck" - Chapter 28d, Elastic Compute and Cluster Autoscaling on EKS.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# Retrieval pod for the accumulated CIS evidence.
+# ---------------------------------------------------------------------------
+# A completed Job's pod cannot be `kubectl cp`'d from, so the way to read past
+# kube-bench results is to mount the PVC read-only somewhere else:
+#
+#   kubectl apply -f kube-bench-evidence-reader.yaml
+#   kubectl exec -n kube-system evidence-reader -- ls -la /evidence
+#   kubectl cp kube-system/evidence-reader:/evidence ./cis-evidence
+#   kubectl delete -f kube-bench-evidence-reader.yaml
+#
+# Deliberately short-lived and deliberately read-only: evidence an operator can
+# edit in place is evidence a regulator can dismiss. The durable answer is to
+# ship these files to the Chapter 24c S3 archive, where versioning and the
+# lifecycle policy (and, if enabled, Object Lock) make them tamper-evident.
+#
+# Runs under `restricted` even though kube-system is not enforced, because
+# nothing here needs any privilege at all.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: evidence-reader
+  namespace: kube-system
+  labels:
+    app: kube-bench
+    purpose: cis-evidence-retrieval
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  containers:
+    - name: reader
+      image: public.ecr.aws/docker/library/busybox:1.37.0
+      command: ["sleep", "3600"]
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+        readOnlyRootFilesystem: true
+        seccompProfile:
+          type: RuntimeDefault
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+      volumeMounts:
+        - { name: evidence, mountPath: /evidence, readOnly: true }
+  volumes:
+    - name: evidence
+      persistentVolumeClaim:
+        claimName: kube-bench-evidence
+        readOnly: true

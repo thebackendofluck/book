@@ -1,0 +1,741 @@
+# Companion code for "The Backend of Luck" - Chapter 24, Security and Compliance.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+%YAML 1.1
+---
+##############################################################################
+# Suricata 7.x Configuration - iGaming / Online Gambling Platform
+#
+# Target environment:
+#   - Mid-size iGaming operator (sportsbook + casino)
+#   - 10 Gbps passive TAP on ingress/egress perimeter
+#   - 16-core CPU (Intel Xeon or AMD EPYC), 64 GB RAM
+#   - Deployment mode: IDS (inline IPS via nfqueue also supported; see af-packet)
+#   - OS: Ubuntu 22.04 / Debian 12
+#
+# Key security objectives:
+#   - Detect payment fraud, account takeover, API abuse, and bonus abuse
+#   - Support AML/KYC transaction monitoring triggers
+#   - Feed EVE JSON to SIEM (Elasticsearch/Splunk) for compliance reporting
+#   - Satisfy PCI-DSS req 10.x (logging) and 11.4 (IDS/IPS)
+#   - Support UKGC, MGA, and Isle of Man licence audit requirements
+#
+# Tuning notes:
+#   - ring-size and stream.memcap sized for 10 Gbps sustained at ~50% utilisation
+#   - Increase ring-size to 400000 and stream.memcap to 16gb for 20 Gbps
+#   - JA3/JA4 fingerprinting enabled: critical for detecting C2 and scrapers
+#     masquerading as legitimate TLS clients
+#   - Websocket inspection enabled: modern betting platforms use WS heavily
+#     for live odds and in-play updates
+##############################################################################
+
+##############################################################################
+# Section 1 - Variable definitions
+# These are referenced throughout the rule set. Adjust subnets to match your
+# actual network topology. Use CIDR notation.
+##############################################################################
+
+vars:
+  address-groups:
+
+    # Your entire internal address space. Include all DMZ, app-tier, and
+    # internal subnets. Anything NOT in HOME_NET is treated as EXTERNAL_NET.
+    HOME_NET: "[10.0.0.0/8,172.16.0.0/12,192.168.0.0/16]"
+
+    # Traffic originating from outside HOME_NET.
+    EXTERNAL_NET: "!$HOME_NET"
+
+    # Payment processing subnet - PCI-DSS in-scope systems
+    # Adjust to match your cardholder data environment (CDE).
+    PAYMENT_NET: "[10.20.0.0/24,10.20.1.0/24]"
+
+    # Backend API servers (betting engine, wallet, game servers)
+    API_SERVERS: "[10.10.10.0/24,10.10.11.0/24]"
+
+    # Internal monitoring / synthetic transaction / health-check hosts
+    # These are suppressed in threshold.conf to reduce noise
+    MONITORING_NET: "[10.10.50.0/24]"
+
+    # Database servers - should never receive direct internet traffic
+    DB_SERVERS: "[10.30.0.0/24]"
+
+    # Suricata sensor itself (used in some rules to exclude sensor noise)
+    SENSOR_IP: "[10.10.5.10]"
+
+    DNS_SERVERS: "[10.10.1.10,10.10.1.11,8.8.8.8,8.8.4.4]"
+    SMTP_SERVERS: "[10.10.2.0/24]"
+    HTTP_SERVERS: "$HOME_NET"
+    SQL_SERVERS: "$DB_SERVERS"
+
+  port-groups:
+    # Standard HTTP/HTTPS
+    HTTP_PORTS: "80"
+    HTTPS_PORTS: "443"
+
+    # All web traffic (used in app-layer protocol detection)
+    SHELLCODE_PORTS: "!80"
+    ORACLE_PORTS: 1521
+    SSH_PORTS: 22
+
+    # Payment gateway API endpoints
+    # PSP APIs: Worldpay, Adyen, PaySafe, Nuvei typical ports
+    PAYMENT_PORTS: "[443,8443,8080,8444]"
+
+    # Internal betting / gaming API bus
+    # Adjust to match your microservice mesh ports
+    BETTING_API_PORTS: "[8080,8081,8443,9090,9091,50051]"
+
+    # WebSocket ports used for live odds, in-play betting, casino streaming
+    WEBSOCKET_PORTS: "[443,8080,8081,8443]"
+
+    # RDP for jump-box monitoring (detect lateral movement)
+    RDP_PORTS: "3389"
+
+    # DNS
+    DNS_PORTS: "53"
+
+    # Sportsbook feed ingestion ports (B2B data providers)
+    FEED_PORTS: "[7000,7001,7100,7200]"
+
+##############################################################################
+# Section 2 - Default Rule Path and Rule Files
+##############################################################################
+
+default-rule-path: /etc/suricata/rules
+
+rule-files:
+  # Base Suricata ruleset (ET Open or ET Pro)
+  - suricata.rules
+
+  # iGaming-specific custom rules (see companion files)
+  # Payment fraud: card testing, velocity attacks, PSP enumeration
+  - igaming-payment.rules
+
+  # API abuse: credential stuffing, scraping, bonus abuse automation
+  - igaming-api-abuse.rules
+
+  # Account security: ATO, multi-accounting, suspicious login patterns
+  - igaming-account.rules
+
+  # AML: unusual transaction flows, structuring, rapid withdrawal patterns
+  - igaming-aml.rules
+
+  # Compliance: geo-block evasion, VPN/proxy detection, age-verification bypass
+  - igaming-compliance.rules
+
+##############################################################################
+# Section 3 - Outputs
+##############################################################################
+
+outputs:
+  # -------------------------------------------------------------------------
+  # EVE JSON - primary structured log for SIEM ingestion
+  # Ships to Elasticsearch via Filebeat (see filebeat.yml)
+  # PCI-DSS 10.2 requires logging of all access to cardholder data; the
+  # extended http and tls fields satisfy this for web-based payment flows.
+  # -------------------------------------------------------------------------
+  - eve-log:
+      enabled: yes
+      filetype: regular
+      filename: /var/log/suricata/eve.json
+
+      # community-id: RFC-compliant flow identifier; enables correlation
+      # across Suricata, Zeek, and endpoint logs in your SIEM
+      community-id: yes
+      community-id-seed: 0
+
+      types:
+        - alert:
+            # Include raw payload (base64-encoded) for forensic investigations.
+            # Rotate or redact before long-term storage for GDPR compliance.
+            payload: yes
+            payload-buffer-size: 4kb
+            payload-printable: yes
+            packet: yes
+            # HTTP and TLS metadata inline with alert for one-event-per-alert
+            http-body: yes
+            http-body-printable: yes
+            metadata: yes
+            tagged-packets: yes
+
+        - http:
+            extended: yes          # Captures referrer, user-agent, URI, body
+            dump-all-headers: both # Captures all request and response headers
+                                   # Useful for detecting X-Forwarded-For spoofing
+
+        - dns:
+            # Log both requests and responses; needed for C2 domain detection
+            query: yes
+            answer: yes
+
+        - tls:
+            extended: yes          # Captures JA3/JA4, certificate chain, SNI
+            session-resumption: yes # Detect resumption abuse (session hijacking)
+
+        - files:
+            force-magic: yes       # File type detection by content, not extension
+            force-hash: [md5, sha256]
+
+        - smtp:
+            extended: yes
+
+        - ssh
+
+        - flow                     # Per-flow stats; needed for behavioural analytics
+
+        - netflow                  # Lightweight alternative for high-volume flows
+
+        - dhcp
+
+        - stats:
+            # Emit capture stats every 10 minutes; feed to Grafana/Prometheus
+            totals: yes
+            threads: yes
+            deltas: yes
+
+        - anomaly:
+            types:
+              decode: yes
+              stream: yes
+              applayer: yes
+
+  # -------------------------------------------------------------------------
+  # Fast log - human-readable one-liner per alert; useful for tail -f
+  # monitoring and NOC dashboards during incidents
+  # -------------------------------------------------------------------------
+  - fast:
+      enabled: yes
+      filename: /var/log/suricata/fast.log
+      append: yes
+
+  # -------------------------------------------------------------------------
+  # Stats log - periodic performance counters
+  # Use to monitor capture drop rate; alert ops if drops exceed 0.1%
+  # -------------------------------------------------------------------------
+  - stats:
+      enabled: yes
+      filename: /var/log/suricata/stats.log
+      append: yes
+      # Emit every 60 seconds
+      interval: 60
+      # Include per-thread breakdown for CPU affinity tuning
+      threads: yes
+
+  # -------------------------------------------------------------------------
+  # Syslog output for integration with on-prem SIEM or SOC tools
+  # -------------------------------------------------------------------------
+  - syslog:
+      enabled: no
+      # Uncomment and configure if routing to syslog/rsyslog
+      # facility: local5
+      # level: Info
+      # identity: "suricata"
+
+  # -------------------------------------------------------------------------
+  # PCAP log - write full PCAPs on alert (forensics)
+  # CAUTION: High disk I/O at 10 Gbps; enable selectively or size storage
+  # accordingly. GDPR note: PCAPs containing player data must be treated as
+  # personal data under Art. 4(1) GDPR.
+  # -------------------------------------------------------------------------
+  - pcap-log:
+      enabled: no
+      # Uncomment to enable on-alert PCAP capture
+      # filename: /var/log/suricata/pcap/log.%n.pcap
+      # limit: 250mb
+      # max-files: 1000
+      # mode: normal   # or multi for per-flow files
+      # compression: lz4
+
+##############################################################################
+# Section 4 - Logging (Suricata internal / operational logs)
+##############################################################################
+
+logging:
+  default-log-level: notice
+  outputs:
+    - console:
+        enabled: yes
+    - file:
+        enabled: yes
+        level: info
+        filename: /var/log/suricata/suricata.log
+    - syslog:
+        enabled: no
+        facility: local5
+        format: "[%i] <%d> -- "
+
+##############################################################################
+# Section 5 - AF-Packet capture (Linux high-performance TAP/mirror)
+#
+# Uses TPACKET_V3 + MMAP for zero-copy kernel-to-userspace.
+# cluster_flow ensures all packets of a single TCP flow land on the same
+# thread (critical for stream reassembly correctness).
+#
+# Interface: bond0 or the NIC receiving the TAP span.
+# Adjust iface to match your environment (e.g., ens3f0, p1p1, eth1).
+#
+# For inline IPS replace with:
+#   - iface: eth1
+#     copy-mode: ips
+#     copy-iface: eth2
+##############################################################################
+
+af-packet:
+  - iface: bond0
+    # One worker thread per physical RX queue / CPU core receiving traffic.
+    # Match this to the number of RSS queues configured on the NIC.
+    threads: 16
+
+    # cluster_flow: same 5-tuple always hashed to same thread.
+    # Critical for stateful inspection. Do not use cluster_qm unless you
+    # handle reassembly externally (e.g., with Zeek).
+    cluster-id: 99
+    cluster-type: cluster_flow
+
+    # TPACKET_V3 provides batched reads, reducing system call overhead.
+    # Requires kernel >= 3.2 (all modern distros qualify).
+    use-mmap: yes
+    tpacket-v3: yes
+    mmap-locked: yes
+
+    # Ring buffer: 200000 frames * ~1500 bytes ≈ 300 MB per thread.
+    # At 10 Gbps, this provides ~240 ms of buffer headroom.
+    # Increase to 400000 for higher throughput or busier environments.
+    ring-size: 200000
+
+    # Buffer size passed to the kernel socket.
+    # Must be large enough to cover ring-size * frame-size.
+    buffer-size: 67108864   # 64 MB
+
+    # Promiscuous mode required for passive TAP/SPAN deployments.
+    promisc: yes
+
+    # Emergency failopen: if Suricata is overwhelmed, pass traffic through
+    # unanalysed rather than dropping (IDS mode behaviour).
+    # For IPS deployments, set to 'no' for fail-closed behaviour.
+    emergency-mode: yes
+
+    # Checksum offload: NICs often offload checksum computation.
+    # 'kernel' uses kernel-validated checksums; set to 'no' if you see
+    # false checksum-failure alerts on legitimate traffic.
+    checksum-checks: kernel
+
+    # BPF pre-filter: exclude noise before Suricata processes traffic.
+    # This example excludes OSPF and common multicast to reduce load.
+    # Adjust to match your network topology.
+    # bpf-filter: "not (proto ospf or (dst net 224.0.0.0/4))"
+
+    # For VLAN-tagged traffic (common in data-centre environments):
+    # vlan-strip-inner-layer: yes
+
+##############################################################################
+# Section 6 - Threading
+#
+# workers mode: each thread independently handles both detection and packet
+# I/O. Best performance on high-core-count systems.
+# autofp mode: separate packet capture and detection threads (lower latency
+# but more synchronisation overhead — not recommended above 8 Gbps).
+##############################################################################
+
+threading:
+  set-cpu-affinity: yes
+  cpu-affinity:
+    # Management thread: low-traffic admin operations
+    - management-cpu-set:
+        cpu: [ 0 ]
+    # Verdict thread (used in IPS / nfqueue mode)
+    - verdict-cpu-set:
+        cpu: [ 1 ]
+        prio:
+          default: high
+    # Worker threads: one per RX queue. Cores 2-15 dedicated to packet work.
+    # On NUMA systems, pin to cores on the same NUMA node as the NIC.
+    - worker-cpu-set:
+        cpu: [ "2-15" ]
+        mode: "exclusive"
+        prio:
+          low: [ 0 ]
+          medium: [ "2-7" ]
+          high: [ "8-15" ]
+          default: high
+
+  detect-thread-ratio: 1.0
+
+# Run Suricata in workers mode for maximum throughput.
+runmode: workers
+
+##############################################################################
+# Section 7 - Stream / TCP reassembly
+#
+# Sized for 64 GB RAM. The rule of thumb is:
+#   stream.memcap = ~12% of total RAM for high-throughput deployments
+#   reassembly.memcap = ~6% of total RAM
+# These figures accommodate ~500k concurrent TCP sessions at a gaming platform.
+##############################################################################
+
+stream:
+  memcap: 8gb               # Maximum memory for TCP state tracking
+  checksum-validation: yes   # Drop packets with invalid checksums (set no on
+                              # asymmetric routing or checksum offload NICs)
+  inline: no                 # Set yes for inline IPS mode
+  reassembly:
+    memcap: 4gb             # Memory for TCP stream reassembly buffers
+    depth: 1mb              # Reassemble up to 1 MB per stream segment
+                             # Increase for large file upload/download inspection
+    toserver-chunk-size: 2560
+    toclient-chunk-size: 2560
+    randomize-chunk-size: yes  # Evasion resistance
+
+  max-sessions: 500000        # Maximum concurrent tracked TCP sessions
+  prealloc-sessions: 32768    # Pre-allocate to reduce malloc overhead at startup
+  midstream: yes              # Pick up flows already in progress (TAP mode)
+  async-oneside: yes          # Handle asymmetric routing gracefully
+  drop-invalid: no            # Keep invalid packets for logging (IDS mode)
+                               # Set yes for IPS mode
+
+##############################################################################
+# Section 8 - Flow engine
+#
+# Tracks layer-4 flows for both TCP and UDP. The memcap here covers the
+# flow table metadata (not payload data, which is tracked by stream engine).
+##############################################################################
+
+flow:
+  memcap: 2gb
+  hash-size: 65536           # Hash table buckets; increase for high flow rates
+  prealloc: 100000           # Pre-allocate flow objects
+  emergency-recovery: 30     # Seconds before recovering from emergency state
+  prune-flows: 5             # Flows to prune per tick when table is full
+
+  timeouts:
+    # Aggressive timeouts for gaming traffic (short-lived HTTPS sessions)
+    tcp:
+      new: 60
+      established: 600
+      closed: 60
+      bypassed: 100
+    udp:
+      new: 30
+      established: 300
+      bypassed: 100
+    icmp:
+      new: 30
+      established: 300
+
+##############################################################################
+# Section 9 - App-layer protocol detection and inspection
+#
+# iGaming-specific notes:
+#   - TLS: JA3/JA4 fingerprinting enabled for TLS client classification.
+#     Scrapers, bots, and automation tools often have distinctive JA3 hashes.
+#   - HTTP2: modern betting frontends use HTTP/2 extensively.
+#   - WebSocket: live in-play betting and casino streaming rely on WebSocket.
+#     Monitor for WS abuse (automated bet placement, RNG probing).
+#   - RDP: monitor for lateral movement into back-office systems.
+#   - FTP/SMTP: disabled to reduce CPU overhead; re-enable if your platform
+#     uses them for B2B file exchange.
+##############################################################################
+
+app-layer:
+  protocols:
+
+    # ------------------------------------------------------------------
+    # TLS / SSL
+    # JA3: MD5 fingerprint of ClientHello parameters; well-known hashes
+    #      exist for Cobalt Strike, Metasploit, and common bots.
+    # JA4: Next-gen fingerprint with better accuracy; recommended.
+    # ------------------------------------------------------------------
+    tls:
+      enabled: yes
+      detection-ports:
+        dp: "$HTTPS_PORTS,$PAYMENT_PORTS,$BETTING_API_PORTS"
+      ja3-fingerprints: yes     # Legacy but widely supported in rules/SIEM
+      ja4-fingerprints: yes     # Recommended for new deployments
+      # Decrypt traffic if you have a decryption proxy feeding Suricata
+      # tls-decrypt-keylog-file: /var/log/suricata/tls-keys.log
+
+    # ------------------------------------------------------------------
+    # HTTP / HTTPS (plaintext or post-decryption)
+    # ------------------------------------------------------------------
+    http:
+      enabled: yes
+      detection-ports:
+        dp: "$HTTP_PORTS,$HTTPS_PORTS,$BETTING_API_PORTS"
+      libhtp:
+        default-config:
+          personality: IDS
+          request-body-limit: 100kb    # Limit body inspection depth
+          response-body-limit: 100kb
+          # Decompress gzip/brotli responses (needed for modern APIs)
+          response-body-decompress-size-limit: 2mb
+          # Double-decode URI to catch evasion attempts
+          double-decode-path: yes
+          double-decode-query: yes
+          uri-include-all: yes
+
+    # ------------------------------------------------------------------
+    # HTTP/2 - common in gRPC-based microservice architectures
+    # ------------------------------------------------------------------
+    http2:
+      enabled: yes
+      detection-ports:
+        dp: "$HTTPS_PORTS,$BETTING_API_PORTS"
+
+    # ------------------------------------------------------------------
+    # WebSocket - live odds feeds, in-play betting, casino RNG streams
+    # Detect automated bet placement bots abusing WS connections
+    # ------------------------------------------------------------------
+    websocket:
+      enabled: yes
+      detection-ports:
+        dp: "$WEBSOCKET_PORTS"
+
+    # ------------------------------------------------------------------
+    # DNS - monitor for DNS tunnelling, C2 beaconing, DGA domains
+    # ------------------------------------------------------------------
+    dns:
+      tcp:
+        enabled: yes
+        detection-ports:
+          dp: 53
+      udp:
+        enabled: yes
+        detection-ports:
+          dp: 53
+
+    # ------------------------------------------------------------------
+    # RDP - back-office and VPN jump-box monitoring
+    # Alert on RDP from external IPs to internal non-DMZ hosts
+    # ------------------------------------------------------------------
+    rdp:
+      enabled: yes
+      detection-ports:
+        dp: "3389"
+
+    # ------------------------------------------------------------------
+    # SSH - monitor for brute force and unauthorised access
+    # ------------------------------------------------------------------
+    ssh:
+      enabled: yes
+      detection-ports:
+        dp: "22"
+
+    # ------------------------------------------------------------------
+    # DCERPC / SMB - internal lateral movement detection
+    # ------------------------------------------------------------------
+    dcerpc:
+      udp:
+        enabled: yes
+      tcp:
+        enabled: yes
+
+    smb:
+      enabled: yes
+      detection-ports:
+        dp: "[139,445]"
+
+    # ------------------------------------------------------------------
+    # Disabled protocols - reduce CPU overhead for iGaming deployments
+    # Re-enable if your platform uses these for B2B exchange
+    # ------------------------------------------------------------------
+    ftp:
+      enabled: no
+
+    smtp:
+      enabled: no
+      # Re-enable if monitoring player-communication email servers
+      # enabled: yes
+      # mime:
+      #   decode-mime: yes
+      #   decode-base64: yes
+
+    imap:
+      enabled: no
+
+    pop3:
+      enabled: no
+
+    modbus:
+      enabled: no   # Not applicable to iGaming environments
+
+    enip:
+      enabled: no
+
+    dnp3:
+      enabled: no
+
+    ikev2:
+      enabled: yes  # Useful for detecting VPN tunnels / geo-evasion
+
+    nfs:
+      enabled: no
+
+    tftp:
+      enabled: no
+
+##############################################################################
+# Section 10 - Detection engine
+#
+# detect.profile: high - enables all rule optimisations and MPM algorithms.
+# Suitable for systems with ample RAM. Use 'medium' if memory is constrained.
+##############################################################################
+
+detect:
+  profile: high
+  custom-values:
+    toclient-groups: 50
+    toserver-groups: 50
+  sgh-mpm-context: auto
+  inspection-recursion-limit: 3000
+  # Prefilter using MPM before full rule evaluation
+  prefilter:
+    default: mpm
+
+  # Per-flow detection state table
+  flow-id: yes
+
+  # Threshold configuration file
+  # Contains rate-limits, event suppressions, and per-rule thresholds
+  threshold-file: /etc/suricata/threshold.conf
+
+  # -----------------------------------------------------------------------
+  # Profiling: enable during tuning to identify slow rules
+  # Disable in production to avoid overhead
+  # -----------------------------------------------------------------------
+  # profiling:
+  #   rules:
+  #     enabled: yes
+  #     filename: /var/log/suricata/rule-perf.log
+  #     append: yes
+  #     sort: avgticks
+  #     limit: 100
+
+##############################################################################
+# Section 11 - Defragmentation
+##############################################################################
+
+defrag:
+  memcap: 256mb
+  hash-size: 65536
+  trackers: 65535
+  max-frags: 65535
+  prealloc: yes
+  timeout: 60
+
+##############################################################################
+# Section 12 - Decoder settings
+##############################################################################
+
+decoder:
+  teredo:
+    enabled: yes    # Detect IPv6-in-IPv4 tunnels (geo-evasion vector)
+  vxlan:
+    enabled: yes    # Inspect VXLAN-encapsulated traffic in cloud deployments
+  vlan:
+    use-for-tracking: true  # Track flows per-VLAN in multi-tenant environments
+
+##############################################################################
+# Section 13 - Host table (for host-based tracking)
+##############################################################################
+
+host:
+  hash-size: 4096
+  prealloc: 1000
+  memcap: 256mb
+
+##############################################################################
+# Section 14 - File extraction
+#
+# Extract files seen in HTTP/SMTP/FTP for malware scanning.
+# CAUTION: High storage requirements at 10 Gbps. Use magic/hash filtering.
+##############################################################################
+
+file-store:
+  version: 2
+  enabled: no   # Enable selectively for incident response
+  # dir: /var/log/suricata/files
+  # write-fileinfo: yes
+  # stream-depth: 0    # 0 = no limit
+  # max-open-files: 1000
+
+##############################################################################
+# Section 15 - Lua scripting
+# Enable if you use custom Lua detection scripts for complex behavioural rules
+##############################################################################
+
+luajit:
+  states: 128
+
+##############################################################################
+# Section 16 - Profiling (operational metrics)
+##############################################################################
+
+profiling:
+  # Per-rule performance counters (enable during tuning only)
+  rules:
+    enabled: no
+    filename: /var/log/suricata/rule-perf.log
+    append: yes
+
+  # Per-keyword performance counters
+  keywords:
+    enabled: no
+    filename: /var/log/suricata/keyword-perf.log
+    append: yes
+
+  # RuleGroups counters
+  rulegroups:
+    enabled: no
+    filename: /var/log/suricata/rulegroup-perf.log
+    append: yes
+
+  # Packet profiling
+  packets:
+    enabled: no
+    filename: /var/log/suricata/packet-stats.log
+    append: yes
+    csv:
+      enabled: no
+      filename: /var/log/suricata/packet-stats.csv
+
+  # Locking profiling (identify contention in worker threads)
+  locks:
+    enabled: no
+    filename: /var/log/suricata/lock-perf.log
+    append: yes
+
+##############################################################################
+# Section 17 - Misc / legacy
+##############################################################################
+
+pid-file: /var/run/suricata.pid
+
+# UNIX socket for suricatasc control
+unix-command:
+  enabled: yes
+  filename: /var/run/suricata/suricata-command.socket
+
+# Coredump (disable in production; enable briefly for debugging)
+coredump:
+  max-dump: 0
+
+# Legacy pcap capture mode (use af-packet instead for 10 Gbps)
+pcap:
+  - interface: default
+
+# NFQ (inline IPS via Netfilter) - configure if switching to IPS mode
+# nfq:
+#   mode: accept  # 'accept' = IDS passthrough; 'drop' = IPS mode
+#   batchcount: 20
+#   fail-open: yes
+
+##############################################################################
+# End of suricata.yaml
+##############################################################################

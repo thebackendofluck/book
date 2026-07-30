@@ -1,0 +1,34 @@
+Assunto: [DSR {{id}}] Sua solicitação de privacidade foi recebida
+
+Olá,
+
+Obrigado por escrever para dpo@backendofluck.com. Sua solicitação foi
+registrada como {{id}} no regime {{jurisdiction}} e está na fila.
+
+Prazo:
+  * Recebida:        {{received_at}}
+  * Prazo de resposta: {{deadline_at}} ({{sla_days}} dias a partir do recebimento)
+
+Próximos passos:
+  1. Se precisarmos confirmar sua identidade (por exemplo, para vincular
+     este e-mail a uma compra anterior do Livro), pediremos uma única
+     evidência adicional — o número do recibo da Gumroad, enviado no ato
+     da compra, costuma bastar. Só pedimos quando há dúvida razoável.
+  2. Em seguida processamos sua solicitação: coletamos os dados no caso
+     de acesso ou portabilidade; excluímos no caso de eliminação;
+     interrompemos o tratamento específico em caso de oposição.
+  3. Você receberá uma mensagem final com o desfecho antes do prazo acima.
+     Se por algum motivo não for possível atender, explicaremos o porquê
+     e indicaremos o caminho até a autoridade nacional (ANPD).
+
+Seus direitos (LGPD Art. 18 / GDPR Art. 15-22) não dependem da compra do
+Livro, e exercê-los é gratuito.
+
+Esta conversa é usada apenas para atender à sua solicitação. Não adicionamos
+quem escreve ao DPO à newsletter ou a qualquer campanha de marketing. Se
+também quiser se inscrever na newsletter, basta responder "inscrever
+newsletter" — tratamos como um consentimento específico e separado.
+
+— Encarregado (DPO), dpo@backendofluck.com
+  Por Trás da Sorte / The Backend of Luck
+  Site: https://portrasdasorte.com.br/privacy.html

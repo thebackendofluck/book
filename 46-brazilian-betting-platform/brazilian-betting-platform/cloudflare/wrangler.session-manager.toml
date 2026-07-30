@@ -1,0 +1,21 @@
+name = "bet-brazil-session-manager"
+main = "src/session-manager.ts"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Never expose a public *.workers.dev subdomain — the session Durable Object is
+# only invoked internally via the gateway service binding.
+workers_dev = false
+
+[vars]
+ENVIRONMENT = "staging"
+PLATFORM_NAME = "AcmeToCasino Brasil"
+
+[durable_objects]
+bindings = [
+  { name = "BETTING_SESSION", class_name = "BettingSession" }
+]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["BettingSession"]

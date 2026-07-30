@@ -1,0 +1,244 @@
+# Companion code for "The Backend of Luck" - Chapter 23, DevSecOps for iGaming.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# Checkov Configuration for DevSecOps Standard
+# Comprehensive infrastructure security scanning configuration
+
+# Framework Configuration
+framework:
+- terraform
+- terraform_plan
+- dockerfile
+- kubernetes
+- github_actions
+- azure
+- aws
+- gcp
+- secrets
+- openapi
+
+# Output Configuration
+output: cli
+output_format: json
+compact: false
+quiet: false
+summary-position: top
+
+# Directory and File Configuration
+directory:
+- .
+
+# Skip paths that are not relevant for security scanning
+skip-path:
+- .git/
+- .terraform/
+- .venv/
+- venv/
+- node_modules/
+- __pycache__/
+- "*.tfstate*"
+- "*.tfstate.backup"
+- .terraform.tfstate.lock.info
+- terraform.tfstate.d/
+- terraform.tfstate
+- .terraformrc
+- terraform.rc
+- "*.auto.tfvars"
+- terraform.tfvars
+- examples/
+- test/
+- tests/
+- docs/
+- scripts/
+- bin/
+- tmp/
+- temp/
+- .DS_Store
+- Thumbs.db
+
+# External Modules
+download-external-modules: true
+evaluate-variables: true
+
+# Policy Configuration
+# Enable all built-in policies
+use-enforcement-rules: true
+
+# Skip specific checks if needed (add check IDs here)
+skip-check: []
+  # Azure-specific checks that might not apply to all projects
+  # - CKV_AZURE_1  # Ensure Azure Storage Account is not publicly accessible
+  # - CKV_AZURE_2  # Ensure Azure Storage Account has secure transfer required
+
+# Include specific checks (if you want to run only certain checks)
+check: []
+  # - CKV_AWS_1
+  # - CKV_AWS_2
+
+# Severity Configuration
+# Override severity levels for specific checks
+severity-override: {}
+  # Example: Treat medium severity as high for specific checks
+  # CKV_AWS_123: HIGH
+  # CKV_AZURE_456: CRITICAL
+
+# Compliance Configuration
+# Map checks to compliance frameworks
+compliance:
+- pci-dss
+- soc2
+- iso-27001
+- gdpr
+- hipaa
+- fedramp
+- nist
+- cis
+- aws-foundations
+- azure-foundations
+- gcp-foundations
+
+# Custom Policy Configuration
+custom-policy:
+  # Enable custom policies if available
+  enabled: true
+  directory: custom-policies/
+
+# Secrets Scanning
+secrets-scan-file-type:
+- .tf
+- .yaml
+- .yml
+- .json
+- .py
+- .js
+- .ts
+- .java
+- .go
+- .php
+- .cs
+- .rb
+- .scala
+- .kt
+- .dockerfile
+- Dockerfile
+
+# API Configuration
+api-url: https://www.bridgecrew.cloud/api/v1
+api-key: ${CHECKOV_API_KEY}
+
+# Certificate Validation
+ca-certificate: null
+no-cert-verify: false
+
+# Logging Configuration
+logging-level: INFO
+log-file: checkov.log
+
+# Performance Configuration
+max-workers: 4
+parallelism: 4
+
+# Output File Configuration
+output-file-path: checkov-results
+output-file-format: json
+
+# Baseline Configuration
+# Use baseline to compare against previous scans
+baseline: null
+create-baseline: false
+
+# Suppression Configuration
+# File containing suppressions
+suppressions-file: .checkov-suppressions.yml
+
+# Custom Guidelines
+guidelines: null
+
+# Branch Protection (for CI/CD integration)
+branch: main
+repo-id: devsecops-universal-standard
+repo-root-for-plan-enrichment: .
+
+# Terraform Specific Configuration
+terraform:
+  # Terraform plan file scanning
+  plan-file: null
+  plan-file-json: null
+
+  # Terraform state file scanning
+  state-file: null
+
+  # Terraform variable files
+  var-file: []
+
+  # Terraform variable values
+  var: []
+
+  # Terraform module version
+  module-version: null
+
+# Docker Specific Configuration
+docker:
+  # Docker file paths
+  dockerfile-path: Dockerfile
+
+  # Docker image scanning
+  image-scan: true
+
+  # Docker image name
+  image-name: null
+
+  # Docker image tag
+  image-tag: latest
+
+# Kubernetes Specific Configuration
+kubernetes:
+  # Kubernetes manifest files
+  manifest-file: null
+
+  # Kubernetes namespace
+  namespace: default
+
+  # Kubernetes context
+  context: null
+
+# GitHub Actions Configuration
+github-actions:
+  # GitHub Actions workflow files
+  workflow-file: null
+
+  # GitHub repository
+  repository: null
+
+  # GitHub token
+  token: ${GITHUB_TOKEN}
+
+# Cloud Provider Configuration
+cloud:
+  # AWS Configuration
+  aws:
+    region: us-east-1
+    profile: default
+    access-key-id: ${AWS_ACCESS_KEY_ID}
+    secret-access-key: ${AWS_SECRET_ACCESS_KEY}
+    session-token: ${AWS_SESSION_TOKEN}
+
+  # Azure Configuration
+  azure:
+    subscription-id: ${AZURE_SUBSCRIPTION_ID}
+    client-id: ${AZURE_CLIENT_ID}
+    client-secret: ${AZURE_CLIENT_SECRET}
+    tenant-id: ${AZURE_TENANT_ID}
+
+  # GCP Configuration
+  gcp:
+    project-id: ${GCP_PROJECT_ID}
+    credentials-file: ${GOOGLE_APPLICATION_CREDENTIALS}
+    region: us-central1

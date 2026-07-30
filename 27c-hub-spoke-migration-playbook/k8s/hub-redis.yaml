@@ -1,0 +1,61 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 27c, Migrating a Single-Jurisdiction Casino Platform to Hub & Spo.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hub-redis
+  namespace: hub
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: hub-redis}}
+  template:
+    metadata: {labels: {app: hub-redis}}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: redis
+          image: redis:8-alpine
+          args: ["--save", "", "--appendonly", "no"]
+          ports: [{containerPort: 6379, name: redis}]
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          resources:
+            requests: {memory: 64Mi, cpu: 25m}
+            limits: {memory: 256Mi, cpu: 250m}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+          readinessProbe:
+            exec: {command: [redis-cli, ping]}
+            initialDelaySeconds: 2
+            periodSeconds: 5
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hub-redis
+  namespace: hub
+spec:
+  type: ClusterIP
+  selector: {app: hub-redis}
+  ports: [{port: 6379, targetPort: 6379, name: redis}]

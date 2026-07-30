@@ -1,0 +1,104 @@
+{
+  "comment": "Lighthouse performance budget for iGaming PWA — Chapter 14",
+  "timings": [
+    {
+      "metric": "first-contentful-paint",
+      "budget": 1500,
+      "comment": "FCP < 1.5s on 3G mid-range device"
+    },
+    {
+      "metric": "largest-contentful-paint",
+      "budget": 2500,
+      "comment": "LCP < 2.5s — Core Web Vitals Good threshold"
+    },
+    {
+      "metric": "total-blocking-time",
+      "budget": 200,
+      "comment": "TBT < 200ms — proxy for FID/INP"
+    },
+    {
+      "metric": "cumulative-layout-shift",
+      "budget": 0.1,
+      "comment": "CLS < 0.1 — Core Web Vitals Good threshold"
+    },
+    {
+      "metric": "speed-index",
+      "budget": 3000,
+      "comment": "Speed Index < 3s on mobile 3G"
+    },
+    {
+      "metric": "interactive",
+      "budget": 3500,
+      "comment": "TTI < 3.5s — player can interact with lobby"
+    },
+    {
+      "metric": "max-potential-fid",
+      "budget": 130,
+      "comment": "Max potential FID < 130ms"
+    }
+  ],
+  "resourceSizes": [
+    {
+      "resourceType": "script",
+      "budget": 400,
+      "comment": "Total JS < 400KB parsed (not gzipped)"
+    },
+    {
+      "resourceType": "stylesheet",
+      "budget": 50,
+      "comment": "Total CSS < 50KB"
+    },
+    {
+      "resourceType": "image",
+      "budget": 500,
+      "comment": "Images on lobby < 500KB (lazy loaded beyond fold)"
+    },
+    {
+      "resourceType": "font",
+      "budget": 100,
+      "comment": "Web fonts < 100KB"
+    },
+    {
+      "resourceType": "media",
+      "budget": 0,
+      "comment": "No video/audio on initial lobby load"
+    },
+    {
+      "resourceType": "third-party",
+      "budget": 100,
+      "comment": "Third-party scripts < 100KB (analytics, chat)"
+    },
+    {
+      "resourceType": "document",
+      "budget": 50,
+      "comment": "HTML document < 50KB"
+    },
+    {
+      "resourceType": "total",
+      "budget": 1200,
+      "comment": "Total page weight < 1.2MB"
+    }
+  ],
+  "resourceCounts": [
+    {
+      "resourceType": "script",
+      "budget": 10,
+      "comment": "Max 10 JS requests (use code splitting)"
+    },
+    {
+      "resourceType": "image",
+      "budget": 20,
+      "comment": "Max 20 images above fold (use lazy loading)"
+    },
+    {
+      "resourceType": "third-party",
+      "budget": 3,
+      "comment": "Max 3 third-party origins"
+    },
+    {
+      "resourceType": "total",
+      "budget": 50,
+      "comment": "Max 50 HTTP requests total"
+    }
+  ]
+}

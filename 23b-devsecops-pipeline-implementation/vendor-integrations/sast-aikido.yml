@@ -1,0 +1,37 @@
+# Companion code for "The Backend of Luck" - Chapter 23b, DevSecOps Pipeline Implementation.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# GitHub Actions: Aikido platform scan (baseline for vendor comparison).
+# Covers SAST, SCA, IaC, secrets, container, and surface monitoring in one pass.
+name: aikido
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  aikido:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: AikidoSec/github-actions-workflow@v1
+        with:
+          secret-key: ${{ secrets.AIKIDO_SECRET_KEY }}
+          fail-on-dependency-scan: high
+          fail-on-sast-scan: high
+          fail-on-iac-scan: high
+          fail-on-secrets-scan: critical
+          post-scan-status-comment: true
+          minimum-severity: LOW

@@ -1,0 +1,68 @@
+{
+  "fields": {
+    "project": {
+      "key": "CASINO"
+    },
+    "summary": "[{{SEVERITY}}] {{TITLE}}",
+    "description": "h2. Incident Details\n*Source:* {{SOURCE}}\n*Alert Key:* {{INCIDENT_KEY}}\n*Severity:* {{SEVERITY}}\n*Triggered at:* {{TRIGGERED_AT}}\n\nh2. Description\n{{DESCRIPTION}}\n\nh2. Impact\n{{IMPACT}}\n\nh2. Runbook\n[View Runbook|{{RUNBOOK_URL}}]",
+    "issuetype": {
+      "name": "Incident"
+    },
+    "priority": {
+      "name": "{{PRIORITY}}"
+    },
+    "labels": [
+      "auto-created",
+      "monitoring",
+      "{{SOURCE}}"
+    ],
+    "customfield_10100": "{{JURISDICTION}}",
+    "customfield_10101": "{{SEVERITY}}",
+    "customfield_10102": "{{AFFECTED_GAMES}}",
+    "customfield_10103": "{{PLAYER_IMPACT}}",
+    "customfield_10104": "{{RTP_IMPACT}}",
+    "customfield_10105": "{{GAME_ID}}",
+    "customfield_10106": "{{REGULATORY_DEADLINE}}"
+  },
+  "metadata": {
+    "template_version": "1.0.0",
+    "description": "Jira incident creation template for iGaming platform monitoring alerts",
+    "custom_field_mapping": {
+      "customfield_10100": "Jurisdiction (MGA, UKGC, Curacao, etc.)",
+      "customfield_10101": "Severity Level (SEV1-SEV4)",
+      "customfield_10102": "Affected Games (comma-separated list)",
+      "customfield_10103": "Player Count Affected (integer)",
+      "customfield_10104": "RTP Impact (percentage deviation)",
+      "customfield_10105": "Game ID (internal identifier)",
+      "customfield_10106": "Regulatory Deadline (ISO 8601 datetime)"
+    },
+    "severity_to_priority": {
+      "SEV1": "Highest",
+      "SEV2": "High",
+      "SEV3": "Medium",
+      "SEV4": "Low"
+    },
+    "sla_targets": {
+      "SEV1": {
+        "response_minutes": 15,
+        "resolution_hours": 4,
+        "regulatory_report": true
+      },
+      "SEV2": {
+        "response_minutes": 60,
+        "resolution_hours": 12,
+        "regulatory_report": true
+      },
+      "SEV3": {
+        "response_hours": 4,
+        "resolution_days": 2,
+        "regulatory_report": false
+      },
+      "SEV4": {
+        "response_hours": 24,
+        "resolution_days": 5,
+        "regulatory_report": false
+      }
+    }
+  }
+}

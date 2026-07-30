@@ -1,0 +1,242 @@
+# Companion code for "The Backend of Luck" - Chapter 30, FinOps Deep Dive.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# GitLab CI/CD Configuration for License Scanning
+# =================================================
+#
+# This configuration integrates Aqua Security Trivy for comprehensive
+# license scanning and SBOM generation in GitLab CI/CD pipelines.
+#
+# Usage: Include this file in your .gitlab-ci.yml or copy to your project
+
+variables:
+  TRIVY_VERSION: "0.50.0"
+  SBOM_FORMAT: "spdx-json"
+  SEVERITY_THRESHOLD: "HIGH"
+  # License policy
+  ALLOWED_LICENSES: "MIT,Apache-2.0,BSD-2-Clause,BSD-3-Clause,ISC,CC0-1.0"
+  DENIED_LICENSES: "GPL-2.0-only,GPL-3.0-only,AGPL-3.0-only,SSPL-1.0,BSL-1.1"
+
+stages:
+  - scan
+  - report
+  - deploy
+
+# Template for Trivy scanning
+.trivy-scan:
+  image:
+    name: aquasec/trivy:latest
+    entrypoint: [""]
+  before_script:
+    - trivy --version
+  artifacts:
+    reports:
+      sast: gl-sast-report.json
+    paths:
+      - reports/
+    expire_in: 30 days
+
+# License compliance scan
+license-scan:
+  extends: .trivy-scan
+  stage: scan
+  script:
+    - mkdir -p reports
+
+    # Run license scan
+    - |
+      trivy filesystem . \
+        --scanners license \
+        --license-full \
+        --format json \
+        --output reports/license-scan.json
+
+    # Check for denied licenses
+    - |
+      echo "Checking for denied licenses..."
+      VIOLATIONS=0
+      for license in $(echo $DENIED_LICENSES | tr ',' ' '); do
+        COUNT=$(jq --arg lic "$license" '[.Results[]?.Licenses[]? | select(.Name == $lic)] | length' reports/license-scan.json)
+        if [ "$COUNT" -gt 0 ]; then
+          echo "ERROR: Denied license found: $license ($COUNT occurrences)"
+          VIOLATIONS=$((VIOLATIONS + COUNT))
+        fi
+      done
+
+      if [ "$VIOLATIONS" -gt 0 ]; then
+        echo "Total violations: $VIOLATIONS"
+        exit 1
+      fi
+      echo "No license violations found"
+
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+
+# Generate SBOM
+sbom-generation:
+  extends: .trivy-scan
+  stage: scan
+  script:
+    - mkdir -p reports
+
+    # Generate SPDX SBOM
+    - |
+      trivy filesystem . \
+        --format spdx-json \
+        --output reports/sbom.spdx.json
+
+    # Generate CycloneDX SBOM
+    - |
+      trivy filesystem . \
+        --format cyclonedx \
+        --output reports/sbom.cyclonedx.json
+
+    - echo "SBOMs generated successfully"
+
+  artifacts:
+    paths:
+      - reports/sbom.spdx.json
+      - reports/sbom.cyclonedx.json
+    expire_in: 90 days
+
+# Vulnerability scan
+vulnerability-scan:
+  extends: .trivy-scan
+  stage: scan
+  script:
+    - mkdir -p reports
+
+    - |
+      trivy filesystem . \
+        --scanners vuln \
+        --severity ${SEVERITY_THRESHOLD},CRITICAL \
+        --format json \
+        --output reports/vuln-scan.json
+
+    # Generate SARIF for GitLab Security Dashboard
+    - |
+      trivy filesystem . \
+        --scanners vuln \
+        --severity ${SEVERITY_THRESHOLD},CRITICAL \
+        --format sarif \
+        --output gl-sast-report.json
+
+    # Count vulnerabilities
+    - |
+      VULNS=$(jq '[.Results[]?.Vulnerabilities // [] | length] | add // 0' reports/vuln-scan.json)
+      echo "Found $VULNS vulnerabilities at ${SEVERITY_THRESHOLD}+ severity"
+
+  allow_failure: true
+
+# Container image scan (if Dockerfile exists)
+container-scan:
+  extends: .trivy-scan
+  stage: scan
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+  services:
+    - docker:dind
+  before_script:
+    - apk add --no-cache docker-cli
+  script:
+    - |
+      if [ -f Dockerfile ]; then
+        echo "Building container image..."
+        docker build -t ${CI_PROJECT_PATH}:${CI_COMMIT_SHA} .
+
+        echo "Scanning container image..."
+        trivy image ${CI_PROJECT_PATH}:${CI_COMMIT_SHA} \
+          --scanners vuln,license \
+          --format json \
+          --output reports/container-scan.json
+      else
+        echo "No Dockerfile found, skipping container scan"
+      fi
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      exists:
+        - Dockerfile
+
+# Generate compliance report
+compliance-report:
+  stage: report
+  image: python:3.11-slim
+  needs:
+    - license-scan
+    - sbom-generation
+    - vulnerability-scan
+  script:
+    - pip install jinja2
+
+    - |
+      python3 << 'EOF'
+      import json
+      import os
+      from datetime import datetime
+
+      # Load scan results
+      with open('reports/license-scan.json') as f:
+          license_data = json.load(f)
+
+      with open('reports/vuln-scan.json') as f:
+          vuln_data = json.load(f)
+
+      # Calculate metrics
+      licenses = []
+      for result in license_data.get('Results', []):
+          licenses.extend(result.get('Licenses', []))
+
+      vulns = []
+      for result in vuln_data.get('Results', []):
+          vulns.extend(result.get('Vulnerabilities', []))
+
+      # Generate report
+      report = {
+          'timestamp': datetime.utcnow().isoformat(),
+          'project': os.environ.get('CI_PROJECT_PATH', 'unknown'),
+          'commit': os.environ.get('CI_COMMIT_SHA', 'unknown')[:8],
+          'total_packages': len(licenses),
+          'total_vulnerabilities': len(vulns),
+          'license_summary': {},
+      }
+
+      for lic in licenses:
+          name = lic.get('Name', 'Unknown')
+          report['license_summary'][name] = report['license_summary'].get(name, 0) + 1
+
+      with open('reports/compliance-report.json', 'w') as f:
+          json.dump(report, f, indent=2)
+
+      print(f"Report generated: {len(licenses)} packages, {len(vulns)} vulnerabilities")
+      EOF
+
+  artifacts:
+    paths:
+      - reports/compliance-report.json
+    expire_in: 90 days
+
+# Upload SBOM to GitLab Dependency List
+upload-sbom:
+  stage: deploy
+  needs:
+    - sbom-generation
+  script:
+    - |
+      echo "Uploading SBOM to GitLab..."
+      # GitLab Dependency Scanning integration
+      cp reports/sbom.cyclonedx.json gl-sbom-report.json
+  artifacts:
+    reports:
+      dependency_scanning: gl-sbom-report.json
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH

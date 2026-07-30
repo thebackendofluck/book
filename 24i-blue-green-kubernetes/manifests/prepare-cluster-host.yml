@@ -1,0 +1,155 @@
+# Companion code for "The Backend of Luck" - Chapter 24i, Blue-Green Cluster Switching for iGaming Kubernetes Environm.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# playbooks/prepare-cluster-host.yml
+---
+- name: Prepare casino cluster host
+  hosts: cluster_nodes
+  become: true
+  vars:
+    k3s_version: "v1.29.4+k3s1"
+    audit_log_dir: "/var/log/kubernetes"
+    sysctl_settings:
+      net.ipv4.ip_forward: 1
+      net.bridge.bridge-nf-call-iptables: 1
+      net.bridge.bridge-nf-call-ip6tables: 1
+      kernel.dmesg_restrict: 1
+      net.ipv4.conf.all.rp_filter: 1
+      net.ipv4.conf.all.accept_redirects: 0
+      net.ipv4.conf.all.send_redirects: 0
+      net.ipv4.tcp_syncookies: 1
+      fs.protected_hardlinks: 1
+      fs.protected_symlinks: 1
+
+  tasks:
+    - name: Install required packages
+      ansible.builtin.package:
+        name:
+          - curl
+          - jq
+          - iptables
+          - iptables-persistent
+          - nfs-common
+          - open-iscsi
+          - auditd
+          - aide
+        state: present
+
+    - name: Apply sysctl hardening
+      ansible.posix.sysctl:
+        name: "{{ item.key }}"
+        value: "{{ item.value }}"
+        state: present
+        sysctl_set: true
+        reload: true
+      loop: "{{ sysctl_settings | dict2items }}"
+
+    - name: Configure auditd rules for K3s
+      ansible.builtin.copy:
+        dest: /etc/audit/rules.d/k3s.rules
+        content: |
+          # Monitor K3s configuration changes
+          -w /etc/rancher/k3s/ -p wa -k k3s_config
+          -w /var/lib/rancher/k3s/ -p wa -k k3s_data
+          -w /etc/kubernetes/ -p wa -k kubernetes_config
+          # Monitor kubectl usage
+          -a always,exit -F path=/usr/local/bin/kubectl -F perm=x -k kubectl_exec
+          # Monitor container runtime
+          -a always,exit -F arch=b64 -S execve -F path=/usr/local/bin/containerd -k container_exec
+        mode: '0640'
+      notify: Reload auditd
+
+    - name: Create audit log directory
+      ansible.builtin.file:
+        path: "{{ audit_log_dir }}"
+        state: directory
+        mode: '0750'
+        owner: root
+        group: root
+
+    - name: Disable swap (K3s requirement)
+      ansible.builtin.command: swapoff -a
+      changed_when: false
+
+    - name: Remove swap from fstab
+      ansible.builtin.replace:
+        path: /etc/fstab
+        regexp: '^([^#].*\s+swap\s+.*)$'
+        replace: '# \1'
+
+    - name: Load required kernel modules
+      community.general.modprobe:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - br_netfilter
+        - overlay
+        - ip_vs
+        - ip_vs_rr
+        - ip_vs_wrr
+        - ip_vs_sh
+
+    - name: Persist kernel modules
+      ansible.builtin.copy:
+        dest: /etc/modules-load.d/k3s.conf
+        content: |
+          br_netfilter
+          overlay
+          ip_vs
+          ip_vs_rr
+          ip_vs_wrr
+          ip_vs_sh
+        mode: '0644'
+
+    - name: Configure fail2ban for SSH
+      ansible.builtin.copy:
+        dest: /etc/fail2ban/jail.d/sshd.conf
+        content: |
+          [sshd]
+          enabled = true
+          port = ssh
+          filter = sshd
+          maxretry = 3
+          bantime = 3600
+          findtime = 600
+        mode: '0644'
+      notify: Restart fail2ban
+
+    - name: Harden SSH configuration
+      ansible.builtin.copy:
+        dest: /etc/ssh/sshd_config.d/casino-hardening.conf
+        content: |
+          PermitRootLogin prohibit-password
+          PasswordAuthentication no
+          ChallengeResponseAuthentication no
+          X11Forwarding no
+          AllowAgentForwarding no
+          MaxAuthTries 3
+          LoginGraceTime 30
+          ClientAliveInterval 300
+          ClientAliveCountMax 2
+        mode: '0600'
+      notify: Restart sshd
+
+  handlers:
+    - name: Reload auditd
+      ansible.builtin.service:
+        name: auditd
+        state: restarted
+
+    - name: Restart fail2ban
+      ansible.builtin.service:
+        name: fail2ban
+        state: restarted
+
+    - name: Restart sshd
+      ansible.builtin.service:
+        name: sshd
+        state: restarted

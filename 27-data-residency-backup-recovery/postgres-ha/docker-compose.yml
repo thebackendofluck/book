@@ -1,0 +1,169 @@
+# Companion code for "The Backend of Luck" - Chapter 27, Data Residency and Backup/Recovery.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+version: "3.9"
+
+# PostgreSQL HA with Patroni — iGaming book demo
+# Architecture: etcd → Patroni (primary + replica) → HAProxy
+# External ports (avoids conflict with host services):
+#   15432 → pg-primary:5432  (direct, host pg uses 5432)
+#   15433 → pg-replica:5432   (direct, host pg uses 5433)
+#   15000 → HAProxy primary   (read-write, host registry uses 5000)
+#   15001 → HAProxy replicas  (read-only)
+#   17000 → HAProxy stats UI  (http://localhost:17000/stats)
+#   8008  → Patroni REST API primary
+#   8009  → Patroni REST API replica
+
+networks:
+  pg-ha-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+
+volumes:
+  etcd-data:
+  pg-primary-data:
+  pg-replica-data:
+  wal-archive:
+
+services:
+
+  # ─── etcd: distributed consensus / DCS ────────────────────────────────────
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.12
+    container_name: pg-ha-etcd
+    hostname: etcd
+    restart: unless-stopped
+    networks:
+      pg-ha-net:
+        ipv4_address: 172.30.0.10
+    ports:
+      - "2379:2379"
+      - "2380:2380"
+    volumes:
+      - etcd-data:/etcd-data
+    environment:
+      ETCD_NAME: etcd0
+      ETCD_DATA_DIR: /etcd-data
+      ETCD_LISTEN_CLIENT_URLS: http://0.0.0.0:2379
+      ETCD_ADVERTISE_CLIENT_URLS: http://etcd:2379
+      ETCD_LISTEN_PEER_URLS: http://0.0.0.0:2380
+      ETCD_INITIAL_ADVERTISE_PEER_URLS: http://etcd:2380
+      ETCD_INITIAL_CLUSTER: etcd0=http://etcd:2380
+      ETCD_INITIAL_CLUSTER_STATE: new
+      ETCD_INITIAL_CLUSTER_TOKEN: pg-ha-cluster-token
+      ETCD_AUTO_COMPACTION_RETENTION: "1"
+      ETCD_SNAPSHOT_COUNT: "5000"
+    command: /usr/local/bin/etcd
+    healthcheck:
+      test: ["CMD", "etcdctl", "--endpoints=http://127.0.0.1:2379", "endpoint", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ─── pg-primary: PostgreSQL 16 + Patroni ──────────────────────────────────
+  pg-primary:
+    build:
+      context: ./patroni
+      dockerfile: Dockerfile
+    container_name: pg-ha-primary
+    hostname: pg-primary
+    restart: unless-stopped
+    depends_on:
+      etcd:
+        condition: service_healthy
+    networks:
+      pg-ha-net:
+        ipv4_address: 172.30.0.20
+    ports:
+      - "15432:5432"
+      - "8008:8008"
+    volumes:
+      - pg-primary-data:/var/lib/postgresql/data
+      - wal-archive:/wal-archive
+      - ./patroni/patroni-primary.yml:/etc/patroni.yml:ro
+    environment:
+      PATRONI_NAME: pg-primary
+      PATRONI_SCOPE: pg-ha-cluster
+      PATRONI_POSTGRESQL_CONNECT_ADDRESS: pg-primary:5432
+      PATRONI_RESTAPI_CONNECT_ADDRESS: pg-primary:8008
+      PATRONI_ETCD3_HOSTS: "etcd:2379"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}"
+      PATRONI_REPLICATION_PASSWORD: "${REPLICATION_PASSWORD:?REPLICATION_PASSWORD must be set}"
+      PATRONI_SUPERUSER_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -h 127.0.0.1 -p 5432 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # ─── pg-replica: PostgreSQL 16 + Patroni ──────────────────────────────────
+  pg-replica:
+    build:
+      context: ./patroni
+      dockerfile: Dockerfile
+    container_name: pg-ha-replica
+    hostname: pg-replica
+    restart: unless-stopped
+    depends_on:
+      pg-primary:
+        condition: service_healthy
+    networks:
+      pg-ha-net:
+        ipv4_address: 172.30.0.21
+    ports:
+      - "15433:5432"
+      - "8009:8008"
+    volumes:
+      - pg-replica-data:/var/lib/postgresql/data
+      - wal-archive:/wal-archive
+      - ./patroni/patroni-replica.yml:/etc/patroni.yml:ro
+    environment:
+      PATRONI_NAME: pg-replica
+      PATRONI_SCOPE: pg-ha-cluster
+      PATRONI_POSTGRESQL_CONNECT_ADDRESS: pg-replica:5432
+      PATRONI_RESTAPI_CONNECT_ADDRESS: pg-replica:8008
+      PATRONI_ETCD3_HOSTS: "etcd:2379"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}"
+      PATRONI_REPLICATION_PASSWORD: "${REPLICATION_PASSWORD:?REPLICATION_PASSWORD must be set}"
+      PATRONI_SUPERUSER_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -h 127.0.0.1 -p 5432 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+  # ─── haproxy: connection routing ──────────────────────────────────────────
+  haproxy:
+    image: haproxy:2.9-alpine
+    container_name: pg-ha-haproxy
+    hostname: haproxy
+    restart: unless-stopped
+    depends_on:
+      - pg-primary
+      - pg-replica
+    networks:
+      pg-ha-net:
+        ipv4_address: 172.30.0.30
+    ports:
+      - "15000:5000"   # primary (read-write)
+      - "15001:5001"   # replicas (read-only)
+      - "17000:7000"   # HAProxy stats UI
+    volumes:
+      - ./haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    healthcheck:
+      test: ["CMD", "haproxy", "-c", "-f", "/usr/local/etc/haproxy/haproxy.cfg"]
+      interval: 10s
+      timeout: 5s
+      retries: 3

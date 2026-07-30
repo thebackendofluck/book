@@ -1,0 +1,24 @@
+# /etc/systemd/system/casino-cluster-provision.service
+[Unit]
+Description=Casino K3s Cluster Provisioner
+After=network-online.target vault.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=casino-deploy
+Group=casino-deploy
+EnvironmentFile=/etc/casino/deploy.env
+WorkingDirectory=/opt/casino/scripts
+ExecStart=/opt/casino/scripts/rotation-driver.sh provision
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=1800
+SyslogIdentifier=casino-provision
+
+# Security hardening for the service itself
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log/casino /tmp /root/.kube /etc/haproxy
+PrivateTmp=true

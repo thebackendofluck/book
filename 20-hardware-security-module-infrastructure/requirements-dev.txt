@@ -1,0 +1,59 @@
+# Development dependencies for YubiHSM 2 FIPS Enterprise Security Infrastructure
+
+# Core dependencies (also in production)
+yubihsm[http,usb]==3.1.1
+cryptography>=46.0.6
+boto3==1.43.8
+pyyaml==6.0.3
+requests>=2.34.2
+
+# Testing
+pytest==9.0.3
+pytest-cov==7.1.0
+pytest-mock==3.15.1
+pytest-xdist==3.8.0
+
+# Code quality
+black>=26.5.1
+flake8==7.3.0
+isort==8.0.1
+mypy==1.20.1
+bandit==1.9.4
+safety==3.7.0
+
+# Pre-commit hooks
+pre-commit==4.6.0
+
+# Documentation
+mkdocs==1.6.1
+mkdocs-material==9.7.6
+
+# Development tools
+jupyter==1.1.1
+ipython>=8.30.0
+
+# Terraform validation (optional)
+# Checkov is run as a CLI/pipx tool in the security audit pipeline.
+# Keeping it outside this requirements file avoids boto3 dependency conflicts.
+
+# Security scanning
+# Trivy is a standalone CLI/container image, not a PyPI package.
+# Install and pin it in the CI image, Homebrew, apt package, or GitHub/GitLab job image.
+
+# Performance testing
+locust==2.44.0
+
+# API testing
+httpx==0.28.1
+
+# Database testing
+psycopg2-binary==2.9.12
+
+# AWS testing
+moto==5.2.1
+
+# Docker testing
+docker==7.1.0
+
+# Git hooks
+gitpython>=3.1.50

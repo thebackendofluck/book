@@ -1,0 +1,24 @@
+name = "acmetocasino-api"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+ENVIRONMENT = "development"
+PLATFORM_NAME = "AcmeToCasino Platform"
+JWT_SECRET = "<YOUR-JWT-SECRET>"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "acmetocasino-db"
+database_id = "<YOUR-D1-DATABASE-ID>"
+
+[[kv_namespaces]]
+binding = "CACHE"
+id = "<YOUR-KV-CACHE-ID>"
+preview_id = "<YOUR-KV-CACHE-ID>"
+
+[[kv_namespaces]]
+binding = "SESSIONS"
+id = "<YOUR-KV-SESSIONS-ID>"
+preview_id = "<YOUR-KV-SESSIONS-ID>"

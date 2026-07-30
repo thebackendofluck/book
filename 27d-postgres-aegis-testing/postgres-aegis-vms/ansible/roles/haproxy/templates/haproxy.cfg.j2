@@ -1,0 +1,60 @@
+#
+# haproxy.cfg for postgres-aegis ({{ inventory_hostname }})
+# Rendered by Ansible role haproxy.
+# One front/back per shard × {writer, reader}.
+
+global
+    log /dev/log local0
+    log /dev/log local1 notice
+    maxconn 8000
+    user haproxy
+    group haproxy
+
+defaults
+    mode tcp
+    timeout connect 4s
+    timeout client  30m
+    timeout server  30m
+    log global
+    option tcplog
+
+# ------ stats ------
+listen stats
+    bind *:{{ haproxy_stats_port }}
+    mode http
+    stats enable
+    stats uri /
+    stats refresh 5s
+
+{% for shard_name, shard in pgcat_shards.items() %}
+# ================= {{ shard_name }} WRITER =================
+listen {{ shard_name }}_writer
+    bind *:{{ haproxy_listen_writer | int + loop.index0 }}
+    option httpchk
+    http-check send meth GET uri /master
+    http-check expect status 200
+    # Patroni exposes /master on leader only; replicas return 503.
+{%   for writer in [shard.primary_host] + (shard.replicas | default([])) %}
+    server {{ shard_name }}_node_{{ loop.index }} {{ writer }}:{{ pg_port }} check port {{ patroni_rest_api_port }} inter 3s fall 2 rise 2 on-marked-down shutdown-sessions
+{%   endfor %}
+
+# ================= {{ shard_name }} READER =================
+listen {{ shard_name }}_reader
+    bind *:{{ haproxy_listen_reader | int + loop.index0 }}
+    balance leastconn
+    option httpchk
+    http-check send meth GET uri /replica?lag=1048576
+    http-check expect status 200
+{%   for replica in shard.replicas %}
+    server {{ shard_name }}_reader_{{ loop.index }} {{ replica }}:{{ pg_port }} check port {{ patroni_rest_api_port }} inter 3s fall 2 rise 3
+{%   endfor %}
+
+{% endfor %}
+
+# ------ fallback TCP logging (debug) ------
+frontend fe_tls_debug
+    bind *:9999
+    default_backend be_black_hole
+backend be_black_hole
+    # Drops everything; useful to confirm bindings are live.
+    option dontlog-normal

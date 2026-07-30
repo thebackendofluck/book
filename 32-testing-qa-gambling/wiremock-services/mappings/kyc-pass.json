@@ -1,0 +1,21 @@
+{
+    "uuid": "53223615-98f9-4f7e-adfc-093acc673f00",
+    "persistent": true,
+    "request": {
+        "urlPath": "/online/authentication_kyc_url.asp",
+        "method": "POST",
+        "bodyPatterns": [
+            {
+                "matches": ".*address=kyc_pass_\\d{1,4}.*"
+            }
+        ]
+    },
+    "response": {
+        "status": 200,
+        "bodyFileName": "kyc-pass-template.txt",
+        "headers": {
+            "Content-Type": "text/html"
+        }
+    },
+    "priority": 1
+}

@@ -1,0 +1,64 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 23, DevSecOps for iGaming.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+- hosts: de_c8_machines:la_c8_machines:ia_c8_machines
+  name: Configure C8 machines
+  pre_tasks:
+    - name: Adding Public IP to Tag Dictionary and combining dd_checks from host and group vars
+      set_fact:
+        dd_site_tags: "{{ dd_site_tags | combine({ 'public_ip': ansible_host }) }}"
+        dd_checks: "{{ dd_checks | combine(dd_custom_checks) }}"
+        datadog_additional_groups: "{{ 'docker' if ansible_docker0|default(false) else '' }}"
+        datadog_local_checks: ''
+      tags:
+        - monitoring
+    - name: Convert the Tag Dictionary into a list of strings because DD developers are strange
+      set_fact:
+        dd_tags: "{{ dd_tags|default([]) + [ item.key + ':' + item.value ] }}"
+      loop: "{{ lookup('dict', dd_site_tags) }}"
+      tags:
+        - monitoring
+  post_tasks:
+    - name: Enable service datadog-agent
+      ansible.builtin.systemd:
+        name: datadog-agent
+        enabled: yes
+      tags:
+        - monitoring
+  roles:
+    - role: datadog-agent-cleanup
+      tags:
+        - cleanup
+    - role: setup-ipmitools
+      tags:
+        - tools
+    - role: setup-hardware-tools
+      tags:
+        - tools
+    - role: hw_monitoring
+      tags:
+        - hardware
+    - role: datadog-config
+      # datadog_api_key moved to group_vars/all
+      datadog_agent_major_version: "7"
+      datadog_site: "datadoghq.com"
+      datadog_config:
+        hostname: "{{ host_fqdn }}"
+        tags: "{{ dd_tags }}"
+        logs_enabled: true
+        process_config:
+          enabled: 'true'
+      datadog_checks:
+        "{{ dd_checks }}"
+      tags:
+        - monitoring
+      vars:
+        host_fqdn: "{{ ansible_hostname }}.live.acmetocasino.com"

@@ -1,0 +1,57 @@
+# Companion code for "The Backend of Luck" - Chapter 24j, IP Reputation and Blocklist Integration for iGaming Platform.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# /etc/suricata/suricata.yaml (relevant sections for iprep and inline IPS)
+
+# ---------------------------------------------------------------------------
+# IP reputation (iprep)
+#
+# These are three TOP-LEVEL keys. Suricata has no "reputation:" section, so
+# nesting them under one (as earlier revisions of this fragment did) makes
+# Suricata ignore all three: it loads zero reputation entries and every
+# iprep rule silently never matches. There is no warning on startup.
+#
+# Verify after any change:
+#   suricata -T -c /etc/suricata/suricata.yaml
+#   grep -i reputation /var/log/suricata/suricata.log
+# The log line reports how many IPs were loaded. Zero means the wiring is
+# still wrong, whatever the config test said.
+# ---------------------------------------------------------------------------
+
+# Maps numeric category IDs to the short names the iprep keyword uses
+# (iprep:src,DataShield,>,50 resolves "DataShield" through this file).
+reputation-categories-file: /etc/suricata/iprep/categories.txt
+
+# Prepended to any entry in reputation-files that is not an absolute path.
+default-reputation-path: /etc/suricata/iprep
+
+# Reputation data files, loaded in order. iprep_update.py writes both:
+#   reputation.list — blocklist categories, one line per (IP, category) pair
+#   whitelist.list  — category 15 only, drives the pass rule (sid 9100090)
+reputation-files:
+  - reputation.list
+  - whitelist.list
+
+# Inline IPS configuration for af-packet
+af-packet:
+  - interface: ens3f0
+    cluster-id: 99
+    cluster-type: cluster_flow
+    defrag: yes
+    use-mmap: yes
+    copy-mode: ips
+    copy-iface: ens3f1
+  - interface: ens3f1
+    cluster-id: 98
+    cluster-type: cluster_flow
+    defrag: yes
+    use-mmap: yes
+    copy-mode: ips
+    copy-iface: ens3f0

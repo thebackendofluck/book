@@ -1,0 +1,4 @@
+requests>=2.33.0
+dnspython>=2.3.0
+html-similarity>=0.3.0
+censys>=2.1.0

@@ -1,0 +1,84 @@
+# Companion code for "The Backend of Luck" - Chapter 23b, DevSecOps Pipeline Implementation.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# ---------------------------------------------------------------------------
+# Kong IP Restriction Plugin
+#
+# Usage:
+#   Annotate the admin/ops Ingress or KongRoute with:
+#     konghq.com/plugins: ip-restrict-admin
+#
+# The allow list covers:
+#   - YOUR_LAN_CIDR    — internal LAN (management host, K3s nodes, firewall)
+#   - YOUR_PFSENSE_IP  — pfSense/firewall gateway
+#   - YOUR_NPM_HOST_IP — NPM reverse proxy
+#   - YOUR_KONG_IP     — Kong ingress
+# ---------------------------------------------------------------------------
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: ip-restrict-admin
+  namespace: acmetocasino-prod
+  labels:
+    app.kubernetes.io/part-of: casino-security
+spec:
+  plugin: ip-restriction
+  config:
+    # Explicit allow list — only these CIDRs/IPs can reach /admin and /ops
+    allow:
+      - YOUR_LAN_CIDR       # internal LAN — e.g. 10.0.0.0/24
+    # Deny list — known attack sources and scanners.
+    # Extend this list as new IPs are identified during incidents.
+    deny:
+      - 0.0.0.0/8           # IANA reserved / invalid source
+      - 10.0.0.0/8          # RFC 1918 (should not reach WAN-exposed paths)
+      - 100.64.0.0/10       # carrier-grade NAT (RFC 6598)
+    status: 403
+    message: "Forbidden"
+
+---
+# Separate plugin that blocks a curated list of known bad IPs globally.
+# Add to every Ingress that faces the WAN by annotating:
+#   konghq.com/plugins: ip-blocklist-global
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: ip-blocklist-global
+  namespace: acmetocasino-prod
+  labels:
+    app.kubernetes.io/part-of: casino-security
+spec:
+  plugin: ip-restriction
+  config:
+    deny:
+      # Tor exit nodes and known VPN/proxy ranges (sample — expand via threat intel)
+      - 185.220.100.0/22   # Tor exit relay block
+      - 185.220.101.0/24   # Tor exit relay block
+      - 162.247.72.0/22    # Tor exit relay block
+      - 198.96.155.0/24    # Tor exit relay block
+      # Add further IPs observed during incidents here
+    status: 403
+    message: "Access denied"
+
+---
+# KongIngress to attach ip-restrict-admin to the /admin and /ops routes.
+# Reference this via konghq.com/override annotation on the relevant Ingress.
+apiVersion: configuration.konghq.com/v1
+kind: KongIngress
+metadata:
+  name: admin-route-config
+  namespace: acmetocasino-prod
+  labels:
+    app.kubernetes.io/part-of: casino-security
+route:
+  strip_path: false
+  preserve_host: true
+  protocols:
+    - https

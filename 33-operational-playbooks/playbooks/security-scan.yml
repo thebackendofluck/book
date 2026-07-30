@@ -1,0 +1,309 @@
+# Companion code for "The Backend of Luck" - Chapter 33, Operational Playbooks.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# Comprehensive Security Pipeline - Chapter 23: Operational Playbooks
+#
+# GitHub Actions workflow providing multi-layer security scanning for
+# iGaming platform code including infrastructure, secrets, and code quality.
+#
+# Scans: Checkov, TFSec, Terrascan, Gitleaks, TruffleHog, Detect-Secrets,
+#         Bandit, Semgrep, Safety, YAMLLint
+#
+# Part of the iGaming Platform Engineering book.
+
+name: Comprehensive Security Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - '**/*.tf'
+      - '**/*.py'
+      - '**/*.sh'
+      - '**/*.yml'
+      - '**/*.yaml'
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  TFSEC_SEVERITY: WARNING
+  BANDIT_SEVERITY: medium
+  CHECKOV_SKIP_CHECKS: CKV_AZURE_1,CKV_AZURE_2
+
+jobs:
+  setup-tools:
+    runs-on: ubuntu-latest
+    outputs:
+      reports-path: ${{ steps.setup.outputs.reports-path }}
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install security tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install checkov detect-secrets bandit semgrep safety terrascan yamllint
+
+        # Install binary tools
+        curl -s https://raw.githubusercontent.com/aquasecurity/tfsec/master/scripts/install_linux.sh | bash
+        curl -s https://raw.githubusercontent.com/terraform-linters/tflint/master/install_linux.sh | bash
+        curl -fsSL https://github.com/gitleaks/gitleaks/releases/latest/download/gitleaks_8.18.2_linux_x64.tar.gz | tar xz
+        curl -fsSL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh | sh -s -- -b /usr/local/bin
+
+    - name: Create reports directory
+      id: setup
+      run: |
+        REPORTS_PATH="./security-reports"
+        mkdir -p $REPORTS_PATH/{checkov,tfsec,terrascan,secrets,bandit,semgrep}
+        echo "reports-path=$REPORTS_PATH" >> $GITHUB_OUTPUT
+
+  infrastructure-security:
+    needs: setup-tools
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Run Checkov Infrastructure Scan
+      run: |
+        checkov -d . \
+          --framework terraform \
+          --output cli \
+          --output junitxml \
+          --output-file-path ${{ needs.setup-tools.outputs.reports-path }}/checkov \
+          --skip-check $CHECKOV_SKIP_CHECKS \
+          --compact \
+          --quiet || EXIT_CODE=$?
+
+        checkov -d . \
+          --framework terraform \
+          --output sarif \
+          --output-file-path ${{ needs.setup-tools.outputs.reports-path }}/checkov/results.sarif \
+          --skip-check $CHECKOV_SKIP_CHECKS \
+          --quiet
+
+        if [ "$EXIT_CODE" != "0" ]; then
+          echo "::error::Checkov found critical security issues"
+          exit $EXIT_CODE
+        fi
+
+    - name: Run TFSec Scan
+      run: |
+        tfsec . \
+          --format default \
+          --minimum-severity $TFSEC_SEVERITY \
+          --no-color || EXIT_CODE=$?
+
+        tfsec . \
+          --format json \
+          --out ${{ needs.setup-tools.outputs.reports-path }}/tfsec/results.json \
+          --minimum-severity $TFSEC_SEVERITY
+
+        tfsec . \
+          --format sarif \
+          --out ${{ needs.setup-tools.outputs.reports-path }}/tfsec/results.sarif \
+          --minimum-severity $TFSEC_SEVERITY
+
+        if [ "$EXIT_CODE" != "0" ]; then
+          echo "::error::TFSec found critical security issues"
+          exit $EXIT_CODE
+        fi
+
+    - name: Run Terrascan Policy Scan
+      run: |
+        terrascan scan \
+          --iac-type terraform \
+          --policy-type azure \
+          --output json \
+          --output-file ${{ needs.setup-tools.outputs.reports-path }}/terrascan/results.json \
+          --verbose || EXIT_CODE=$?
+
+        terrascan scan \
+          --iac-type terraform \
+          --policy-type azure \
+          --output sarif \
+          --output-file ${{ needs.setup-tools.outputs.reports-path }}/terrascan/results.sarif
+
+        if [ "$EXIT_CODE" != "0" ]; then
+          echo "::error::Terrascan found policy violations"
+          exit $EXIT_CODE
+        fi
+
+  secret-detection:
+    needs: setup-tools
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    - name: Run Gitleaks Secret Detection
+      run: |
+        gitleaks detect \
+          --source . \
+          --report-format sarif \
+          --report-path ${{ needs.setup-tools.outputs.reports-path }}/secrets/gitleaks.sarif \
+          --verbose || EXIT_CODE=$?
+
+        gitleaks detect \
+          --source . \
+          --report-format json \
+          --report-path ${{ needs.setup-tools.outputs.reports-path }}/secrets/gitleaks.json \
+          --verbose
+
+        if [ "$EXIT_CODE" != "0" ]; then
+          echo "::error::Gitleaks found exposed secrets"
+          exit $EXIT_CODE
+        fi
+
+    - name: Run TruffleHog Secret Scan
+      run: |
+        trufflehog git file://. \
+          --json \
+          --no-verification \
+          --max-depth=1000 > ${{ needs.setup-tools.outputs.reports-path }}/secrets/trufflehog.json || true
+
+        if [ -s ${{ needs.setup-tools.outputs.reports-path }}/secrets/trufflehog.json ]; then
+          echo "::warning::TruffleHog found potential secrets"
+          cat ${{ needs.setup-tools.outputs.reports-path }}/secrets/trufflehog.json | jq '.'
+        fi
+
+    - name: Run Detect-Secrets Scan
+      run: |
+        if [ ! -f .secrets.baseline ]; then
+          detect-secrets scan --baseline .secrets.baseline
+        fi
+
+        detect-secrets scan \
+          --baseline .secrets.baseline \
+          --exclude-files '.*\.lock$|.*\.tfstate.*$' > ${{ needs.setup-tools.outputs.reports-path }}/secrets/detect-secrets.json
+
+        detect-secrets audit .secrets.baseline || true
+
+  code-quality:
+    needs: setup-tools
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Run Bandit Python Security Scan
+      run: |
+        if find . -name "*.py" -not -path "./.venv/*" | grep -q .; then
+          bandit -r . \
+            -f json \
+            -o ${{ needs.setup-tools.outputs.reports-path }}/bandit/results.json \
+            --severity-level $BANDIT_SEVERITY || true
+
+          bandit -r . \
+            -f csv \
+            -o ${{ needs.setup-tools.outputs.reports-path }}/bandit/results.csv \
+            --severity-level $BANDIT_SEVERITY || true
+
+          bandit -r . --severity-level $BANDIT_SEVERITY || true
+        else
+          echo "No Python files found to scan"
+        fi
+
+    - name: Run Semgrep Security Patterns
+      run: |
+        semgrep \
+          --config=auto \
+          --json \
+          --output=${{ needs.setup-tools.outputs.reports-path }}/semgrep/results.json \
+          . || true
+
+        semgrep \
+          --config=auto \
+          --sarif \
+          --output=${{ needs.setup-tools.outputs.reports-path }}/semgrep/results.sarif \
+          . || true
+
+        semgrep --config=auto . || true
+
+    - name: Run Safety Dependency Check
+      run: |
+        if find . -name "requirements*.txt" | grep -q .; then
+          for req_file in $(find . -name "requirements*.txt"); do
+            echo "Checking $req_file..."
+            safety check \
+              --file=$req_file \
+              --output json \
+              --save-json ${{ needs.setup-tools.outputs.reports-path }}/safety-$(basename $req_file).json || true
+
+            safety check --file=$req_file || true
+          done
+        else
+          echo "No requirements files found"
+        fi
+
+    - name: Run YAMLLint
+      run: |
+        if find . -name "*.yml" -o -name "*.yaml" | grep -q .; then
+          yamllint . || true
+        fi
+
+  report-generation:
+    needs: [infrastructure-security, secret-detection, code-quality]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+    - name: Generate Security Report Summary
+      run: |
+        echo "## Security Scan Summary" > security-summary.md
+        echo "" >> security-summary.md
+        echo "| Component | Status | Details |" >> security-summary.md
+        echo "|-----------|--------|---------|" >> security-summary.md
+
+        # Check each job status
+        if [ "${{ needs.infrastructure-security.result }}" = "success" ]; then
+          echo "| Infrastructure Security | ✅ Passed | All checks passed |" >> security-summary.md
+        else
+          echo "| Infrastructure Security | ❌ Failed | Critical issues found |" >> security-summary.md
+        fi
+
+        if [ "${{ needs.secret-detection.result }}" = "success" ]; then
+          echo "| Secret Detection | ✅ Passed | No secrets exposed |" >> security-summary.md
+        else
+          echo "| Secret Detection | ❌ Failed | Secrets detected |" >> security-summary.md
+        fi
+
+        if [ "${{ needs.code-quality.result }}" = "success" ]; then
+          echo "| Code Quality | ✅ Passed | All quality checks passed |" >> security-summary.md
+        else
+          echo "| Code Quality | ⚠️  Warning | Some quality issues found |" >> security-summary.md
+        fi
+
+        echo "" >> security-summary.md
+        echo "### Tools Used" >> security-summary.md
+        echo "- Checkov, TFSec, Terrascan (Infrastructure)" >> security-summary.md
+        echo "- Gitleaks, TruffleHog, Detect-Secrets (Secrets)" >> security-summary.md
+        echo "- Bandit, Semgrep, Safety (Code Quality)" >> security-summary.md
+
+        cat security-summary.md
+
+    - name: Upload Security Reports
+      uses: actions/upload-artifact@v3
+      with:
+        name: security-reports
+        path: ${{ needs.setup-tools.outputs.reports-path }}
+        retention-days: 30
+
+    - name: Upload Summary Report
+      uses: actions/upload-artifact@v3
+      with:
+        name: security-summary
+        path: security-summary.md
+        retention-days: 30

@@ -1,0 +1,84 @@
+{
+  "scan_metadata": {
+    "tool": "trivy",
+    "version": "0.58.0",
+    "scan_type": "license",
+    "repository": "acmetocasino/platform",
+    "commit": "a3f2c1d4e5b6789",
+    "branch": "main",
+    "scanned_at": "2026-04-01T10:00:00Z"
+  },
+  "summary": {
+    "total_packages": 347,
+    "approved": 312,
+    "review_required": 28,
+    "blocked": 7,
+    "unknown": 0
+  },
+  "risk_distribution": {
+    "low": 312,
+    "medium": 28,
+    "high": 5,
+    "critical": 2
+  },
+  "blocked_packages": [
+    {
+      "name": "elasticsearch",
+      "version": "8.12.0",
+      "license": "SSPL-1.0",
+      "risk": "critical",
+      "reason": "SSPL prohibits SaaS use without open-sourcing entire stack. Blocked for iGaming platform.",
+      "action": "REMOVE - replace with OpenSearch or self-hosted alternative"
+    },
+    {
+      "name": "grafana-enterprise-plugin",
+      "version": "10.3.0",
+      "license": "LicenseRef-Grafana-1.0",
+      "risk": "critical",
+      "reason": "Grafana Labs Enterprise license - commercial use requires paid license",
+      "action": "REMOVE - use OSS Grafana or obtain commercial license"
+    },
+    {
+      "name": "commons-io",
+      "version": "2.15.1",
+      "license": "GPL-2.0",
+      "risk": "high",
+      "reason": "GPL-2.0 is copyleft - may require open-sourcing platform code",
+      "action": "REPLACE - use Apache-licensed alternative (e.g., apache-commons-io 2.x)"
+    }
+  ],
+  "review_required": [
+    {
+      "name": "slf4j-api",
+      "version": "2.0.9",
+      "license": "LGPL-2.1",
+      "risk": "medium",
+      "reason": "LGPL - permissive if used as dynamic library, requires review",
+      "action": "APPROVED - linked dynamically, no modification"
+    },
+    {
+      "name": "scala-library",
+      "version": "2.13.12",
+      "license": "Apache-2.0",
+      "risk": "low",
+      "reason": "Apache-2.0 - approved",
+      "action": "APPROVED"
+    }
+  ],
+  "approved_licenses": [
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unlicense",
+    "CC0-1.0",
+    "0BSD"
+  ],
+  "policy": {
+    "block_licenses": ["GPL-2.0", "GPL-3.0", "AGPL-3.0", "SSPL-1.0", "BUSL-1.1"],
+    "review_licenses": ["LGPL-2.1", "LGPL-3.0", "MPL-2.0", "EPL-2.0", "CDDL-1.0"],
+    "ci_action_on_block": "fail",
+    "ci_action_on_review": "warn"
+  }
+}

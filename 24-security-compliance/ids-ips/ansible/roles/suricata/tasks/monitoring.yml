@@ -1,0 +1,167 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 24, Security and Compliance.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# roles/suricata/tasks/monitoring.yml
+# Deploy health checks, rule update cron jobs, and observability integrations.
+
+# =============================================================================
+# HEALTH CHECK SCRIPT
+# =============================================================================
+
+- name: "Deploy Suricata health check script"
+  ansible.builtin.template:
+    src: suricata-health-check.sh.j2
+    dest: /usr/local/bin/suricata-health-check
+    owner: root
+    group: root
+    mode: "0755"
+  tags: [monitoring, health]
+
+- name: "Deploy rule update script"
+  ansible.builtin.template:
+    src: suricata-rule-update.sh.j2
+    dest: /usr/local/bin/suricata-rule-update
+    owner: root
+    group: root
+    mode: "0755"
+  tags: [monitoring, rules]
+
+# =============================================================================
+# CRON JOBS
+# =============================================================================
+
+- name: "Schedule health check every {{ health_check_interval_minutes }} minutes"
+  ansible.builtin.cron:
+    name: "Suricata health check"
+    minute: "*/{{ health_check_interval_minutes }}"
+    job: "/usr/local/bin/suricata-health-check >> /var/log/suricata/health-check.log 2>&1"
+    user: root
+    state: present
+  tags: [monitoring, cron]
+
+- name: "Schedule daily rule update at 03:00 (low-traffic window)"
+  ansible.builtin.cron:
+    name: "Suricata rule update"
+    hour: "3"
+    minute: "0"
+    job: "/usr/local/bin/suricata-rule-update >> /var/log/suricata/rule-update.log 2>&1"
+    user: root
+    state: present
+  tags: [monitoring, cron]
+
+# =============================================================================
+# PROMETHEUS TEXTFILE COLLECTOR
+# =============================================================================
+
+- name: "Ensure node_exporter textfile collector directory exists"
+  ansible.builtin.file:
+    path: /var/lib/node_exporter/textfile_collector
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: prometheus_exporter_enabled | bool
+  tags: [monitoring, prometheus]
+
+- name: "Create initial empty Suricata metrics prom file"
+  ansible.builtin.copy:
+    dest: /var/lib/node_exporter/textfile_collector/suricata.prom
+    content: "# Suricata metrics — populated by health check cron\n"
+    owner: root
+    group: root
+    mode: "0644"
+    force: false   # don't overwrite live metrics
+  when: prometheus_exporter_enabled | bool
+  tags: [monitoring, prometheus]
+
+# =============================================================================
+# RSYSLOG / SYSLOG FORWARDING
+# =============================================================================
+
+- name: "Deploy rsyslog configuration for EVE JSON forwarding"
+  ansible.builtin.copy:
+    dest: /etc/rsyslog.d/40-suricata.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Suricata EVE JSON forwarding — managed by Ansible
+      # Forward to centralised SIEM via {{ syslog_protocol | upper }}
+      module(load="imfile")
+
+      input(type="imfile"
+            File="{{ suricata_log_dir }}/eve.json"
+            Tag="suricata"
+            Severity="info"
+            Facility="local7")
+
+      if $syslogtag contains 'suricata' then {
+        action(type="omfwd"
+               Target="{{ syslog_server }}"
+               Port="{{ syslog_port }}"
+               Protocol="{{ syslog_protocol }}"
+               Template="RSYSLOG_SyslogProtocol23Format")
+        stop
+      }
+  notify:
+    - restart rsyslog
+  tags: [monitoring, syslog]
+
+- name: "Ensure rsyslog is running"
+  ansible.builtin.systemd:
+    name: rsyslog
+    state: started
+    enabled: true
+  tags: [monitoring, syslog]
+
+# =============================================================================
+# STATS LOGGING (for Prometheus scraping)
+# =============================================================================
+# Suricata can write stats to a file every N seconds.
+# The health check script reads these stats and converts them to prom format.
+
+- name: "Verify stats output is enabled in suricata.yaml"
+  ansible.builtin.command: >
+    grep -q 'stats:' {{ suricata_config_dir }}/suricata.yaml
+  register: stats_check
+  changed_when: false
+  failed_when: false
+  tags: [monitoring, stats]
+
+- name: "Display stats configuration status"
+  ansible.builtin.debug:
+    msg: >
+      Stats block {{ 'found' if stats_check.rc == 0 else 'NOT found' }}
+      in suricata.yaml — ensure stats.enabled: yes in the template.
+  tags: [monitoring, stats]
+
+# =============================================================================
+# LOGROTATE FOR MONITORING LOGS
+# =============================================================================
+
+- name: "Add logrotate entry for health check and rule update logs"
+  ansible.builtin.copy:
+    dest: /etc/logrotate.d/suricata-ops
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      {{ suricata_log_dir }}/health-check.log
+      {{ suricata_log_dir }}/rule-update.log
+      {
+          weekly
+          rotate 4
+          compress
+          delaycompress
+          missingok
+          notifempty
+      }
+  tags: [monitoring, logrotate]

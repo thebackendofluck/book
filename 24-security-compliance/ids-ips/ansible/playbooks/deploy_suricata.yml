@@ -1,0 +1,110 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 24, Security and Compliance.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# playbooks/deploy_suricata.yml
+# Full Suricata deployment: install, configure, tune, load rules, monitor, harden.
+#
+# Usage:
+#   # Full deployment
+#   ansible-playbook -i inventory/production.yml playbooks/deploy_suricata.yml
+#
+#   # Specific tags
+#   ansible-playbook -i inventory/production.yml playbooks/deploy_suricata.yml \
+#     --tags install
+#   ansible-playbook -i inventory/production.yml playbooks/deploy_suricata.yml \
+#     --tags configure,rules
+#
+#   # Single host
+#   ansible-playbook -i inventory/production.yml playbooks/deploy_suricata.yml \
+#     --limit ids-dmz-01.prod.igaming.internal
+#
+#   # Dry run
+#   ansible-playbook -i inventory/production.yml playbooks/deploy_suricata.yml \
+#     --check --diff
+
+- name: Deploy Suricata IDS/IPS sensors — iGaming Platform
+  hosts: suricata_sensors
+  become: true
+  gather_facts: true
+  any_errors_fatal: false     # continue other hosts if one fails
+  serial: "{{ deploy_serial | default('100%') }}"   # override with --extra-vars deploy_serial=1 for rolling
+
+  pre_tasks:
+    - name: "Validate required variables are defined"
+      ansible.builtin.assert:
+        that:
+          - monitored_interface is defined
+          - sensor_zone is defined
+          - suricata_mode in ['ids', 'ips']
+        fail_msg: >
+          Host {{ inventory_hostname }} is missing required variables.
+          Ensure monitored_interface, sensor_zone, and suricata_mode are set.
+      tags: [always]
+
+    - name: "Gather OS facts"
+      ansible.builtin.setup:
+        gather_subset:
+          - hardware
+          - network
+          - virtual
+      tags: [always]
+
+    - name: "Display deployment context"
+      ansible.builtin.debug:
+        msg: >
+          Deploying Suricata {{ suricata_version }} to {{ inventory_hostname }}
+          | Zone: {{ sensor_zone }}
+          | Mode: {{ suricata_mode | upper }}
+          | Interface: {{ monitored_interface }}
+          | OS: {{ ansible_distribution }} {{ ansible_distribution_version }}
+          | RAM: {{ ansible_memtotal_mb }} MB
+          | CPUs: {{ ansible_processor_vcpus }}
+      tags: [always]
+
+    - name: "Warn if less than 4 GB RAM (may affect performance)"
+      ansible.builtin.debug:
+        msg: >
+          WARNING: Host {{ inventory_hostname }} has only {{ ansible_memtotal_mb }} MB RAM.
+          Suricata recommends at least 4 GB for production use.
+          Consider reducing stream_memcap and flow_memcap in group_vars.
+      when: ansible_memtotal_mb < 4096
+      tags: [always]
+
+  roles:
+    - role: suricata
+      tags: [suricata]
+
+  post_tasks:
+    - name: "Verify Suricata is running after deployment"
+      ansible.builtin.systemd:
+        name: suricata
+      register: suricata_status
+      tags: [always]
+
+    - name: "Assert Suricata service is active"
+      ansible.builtin.assert:
+        that:
+          - suricata_status.status.ActiveState == "active"
+        fail_msg: >
+          Suricata is not running on {{ inventory_hostname }}.
+          Check: journalctl -u suricata -n 50
+        success_msg: "Suricata is running on {{ inventory_hostname }}"
+      tags: [always]
+
+    - name: "Display post-deployment summary"
+      ansible.builtin.debug:
+        msg: >
+          Deployment complete on {{ inventory_hostname }}.
+          Mode: {{ suricata_mode | upper }} | Zone: {{ sensor_zone }}
+          EVE JSON: {{ suricata_log_dir }}/eve.json
+          Health check: /usr/local/bin/suricata-health-check
+          Rule update:  /usr/local/bin/suricata-rule-update
+      tags: [always]

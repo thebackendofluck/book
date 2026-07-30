@@ -1,0 +1,460 @@
+# Companion code for "The Backend of Luck" - Chapter 24, Security and Compliance.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# CIS Docker Benchmark Compliance - Ansible Playbook
+---
+- name: CIS Docker Security Benchmark Implementation
+  hosts: docker_hosts
+  become: yes
+  vars:
+    cis_docker_version: "1.6.0"
+    docker_daemon_config: "/etc/docker/daemon.json"
+    docker_service_config: "/lib/systemd/system/docker.service"
+
+  tasks:
+    # CIS 1.1.1 - Ensure a separate partition for containers has been created
+    - name: CIS 1.1.1 - Create separate partition for containers
+      filesystem:
+        fstype: ext4
+        dev: "/dev/sdb"
+        path: "/var/lib/docker"
+      when: ansible_devices.sdb is defined
+
+    # CIS 1.2.1 - Ensure only trusted users are allowed to control Docker daemon
+    - name: CIS 1.2.1 - Configure Docker group with restricted users
+      group:
+        name: docker
+        state: present
+
+    - name: CIS 1.2.1 - Add authorized users to docker group
+      user:
+        name: "{{ item }}"
+        groups: docker
+        append: yes
+      loop: "{{ docker_authorized_users | default([]) }}"
+
+    # CIS 2.1 - Ensure network traffic is restricted between containers on the default bridge
+    - name: CIS 2.1 - Configure Docker daemon with inter-container communication disabled
+      copy:
+        dest: "{{ docker_daemon_config }}"
+        content: |
+          {
+            "icc": false,
+            "iptables": true
+          }
+      notify: restart docker
+
+    # CIS 2.2 - Ensure the logging level is set to 'info'
+    - name: CIS 2.2 - Set Docker daemon log level to info
+      lineinfile:
+        path: "{{ docker_service_config }}"
+        regexp: "^ExecStart="
+        line: "ExecStart=/usr/bin/dockerd --log-level=info"
+      notify: restart docker
+
+    # CIS 2.3 - Ensure Docker is allowed to make changes to iptables
+    - name: CIS 2.3 - Enable iptables management
+      copy:
+        dest: "{{ docker_daemon_config }}"
+        content: |
+          {
+            "iptables": true
+          }
+      notify: restart docker
+
+    # CIS 2.4 - Ensure insecure registries are not used
+    - name: CIS 2.4 - Configure only secure registries
+      copy:
+        dest: "{{ docker_daemon_config }}"
+        content: |
+          {
+            "insecure-registries": []
+          }
+      notify: restart docker
+
+    # CIS 2.5 - Ensure aufs storage driver is not used
+    - name: CIS 2.5 - Configure overlay2 storage driver
+      copy:
+        dest: "{{ docker_daemon_config }}"
+        content: |
+          {
+            "storage-driver": "overlay2"
+          }
+      notify: restart docker
+
+    # CIS 2.6 - Ensure TLS authentication for Docker daemon is configured
+    - name: CIS 2.6 - Configure TLS for Docker daemon
+      copy:
+        dest: "{{ docker_service_config }}"
+        regexp: "^ExecStart="
+        line: "ExecStart=/usr/bin/dockerd --tlsverify --tlscacert=/etc/docker/ca.pem --tlscert=/etc/docker/server-cert.pem --tlskey=/etc/docker/server-key.pem -H=0.0.0.0:2376"
+      notify: restart docker
+
+    # CIS 2.7 - Ensure the default ulimit is configured appropriately
+    - name: CIS 2.7 - Configure default ulimits
+      copy:
+        dest: "{{ docker_daemon_config }}"
+        content: |
+          {
+            "default-ulimits": {
+              "nofile": {
+                "Name": "nofile",
+                "Hard": 64000,
+                "Soft": 64000
+              }
+            }
+          }
+      notify: restart docker
+
+    # CIS 2.8 - Enable user namespace support
+    - name: CIS 2.8 - Enable user namespaces
+      copy:
+        dest: "{{ docker_daemon_config }}"
+        content: |
+          {
+            "userns-remap": "default"
+          }
+      notify: restart docker
+
+    # CIS 2.9 - Ensure the default cgroup usage has been confirmed
+    - name: CIS 2.9 - Configure cgroup driver
+      copy:
+        dest: "{{ docker_daemon_config }}"
+        content: |
+          {
+            "exec-opts": ["native.cgroupdriver=systemd"]
+          }
+      notify: restart docker
+
+    # CIS 2.10 - Ensure base device size is not changed until needed
+    - name: CIS 2.10 - Set base device size appropriately
+      copy:
+        dest: "{{ docker_daemon_config }}"
+        content: |
+          {
+            "storage-opts": ["dm.basesize=10G"]
+          }
+      notify: restart docker
+
+    # CIS 2.11 - Ensure authorization for Docker client commands is enabled
+    - name: CIS 2.11 - Configure authorization plugin
+      copy:
+        dest: "{{ docker_daemon_config }}"
+        content: |
+          {
+            "authorization-plugins": ["authz-broker"]
+          }
+      notify: restart docker
+
+    # CIS 2.12 - Ensure centralized and remote logging is configured
+    - name: CIS 2.12 - Configure logging driver
+      copy:
+        dest: "{{ docker_daemon_config }}"
+        content: |
+          {
+            "log-driver": "syslog",
+            "log-opts": {
+              "syslog-address": "tcp://logs.example.com:514"
+            }
+          }
+      notify: restart docker
+
+    # CIS 2.13 - Ensure operations on legacy registry (v1) are Disabled
+    - name: CIS 2.13 - Disable legacy registry
+      copy:
+        dest: "{{ docker_daemon_config }}"
+        content: |
+          {
+            "disable-legacy-registry": true
+          }
+      notify: restart docker
+
+    # CIS 2.14 - Ensure live restore is Enabled
+    - name: CIS 2.14 - Enable live restore
+      copy:
+        dest: "{{ docker_daemon_config }}"
+        content: |
+          {
+            "live-restore": true
+          }
+      notify: restart docker
+
+    # CIS 2.15 - Ensure Userland Proxy is Disabled
+    - name: CIS 2.15 - Disable userland proxy
+      copy:
+        dest: "{{ docker_daemon_config }}"
+        content: |
+          {
+            "userland-proxy": false
+          }
+      notify: restart docker
+
+    # CIS 4.1 - Ensure a user for the container has been created
+    - name: CIS 4.1 - Create non-root user for containers
+      user:
+        name: appuser
+        uid: 1000
+        shell: /bin/sh
+        create_home: yes
+        state: present
+
+    # CIS 4.2 - Ensure that containers use trusted base images
+    - name: CIS 4.2 - Validate base images are from trusted sources
+      command: docker pull {{ item }}
+      loop:
+        - "alpine:3.18"
+        - "ubuntu:22.04"
+        - "registry.access.redhat.com/ubi8/ubi-minimal:latest"
+
+    # CIS 4.3 - Ensure unnecessary packages are not installed in the container
+    - name: CIS 4.3 - Create minimal container images
+      template:
+        src: Dockerfile.j2
+        dest: /tmp/Dockerfile.secure
+      vars:
+        base_image: "alpine:3.18"
+        packages: ["ca-certificates", "curl"]
+
+    # CIS 4.4 - Ensure images are scanned and rebuilt to include security patches
+    - name: CIS 4.4 - Scan images for vulnerabilities
+      command: trivy image --exit-code 1 --no-progress {{ item }}
+      loop: "{{ docker_images_to_scan }}"
+      ignore_errors: yes
+
+    # CIS 4.5 - Ensure Content trust for Docker is Enabled
+    - name: CIS 4.5 - Enable Docker Content Trust
+      command: export DOCKER_CONTENT_TRUST=1
+      run_once: true
+
+    # CIS 4.6 - Ensure HEALTHCHECK instructions have been added to the container image
+    - name: CIS 4.6 - Add health checks to container images
+      template:
+        src: Dockerfile.healthcheck.j2
+        dest: /tmp/Dockerfile.healthcheck
+
+    # CIS 4.7 - Ensure update instructions are not use alone in the Dockerfile
+    - name: CIS 4.7 - Validate Dockerfile doesn't use 'apt-get update' alone
+      command: grep -n "apt-get update" {{ item }}
+      loop: "{{ dockerfile_paths }}"
+      register: apt_update_check
+      failed_when: false
+
+    # CIS 4.8 - Ensure setuid and setgid permissions are removed in the images
+    - name: CIS 4.8 - Remove setuid/setgid files from images
+      command: find / -perm +6000 -type f
+      register: setuid_files
+      failed_when: false
+
+    # CIS 4.9 - Ensure that COPY is used instead of ADD in Dockerfile
+    - name: CIS 4.9 - Validate Dockerfile uses COPY instead of ADD
+      command: grep -n "^ADD " {{ item }}
+      loop: "{{ dockerfile_paths }}"
+      register: add_usage
+      failed_when: false
+
+    # CIS 4.10 - Ensure secrets are not stored in images
+    - name: CIS 4.10 - Scan for secrets in container images
+      command: trivy image --scanners secret {{ item }}
+      loop: "{{ docker_images_to_scan }}"
+      ignore_errors: yes
+
+    # CIS 4.11 - Ensure verified packages are only Installed
+    - name: CIS 4.11 - Install packages from verified sources only
+      template:
+        src: sources.list.j2
+        dest: /tmp/sources.list.secure
+
+    # CIS 5.1 - Ensure AppArmor Profile is Enabled
+    - name: CIS 5.1 - Enable AppArmor profiles
+      command: apparmor_parser -r /etc/apparmor.d/docker-default
+      when: ansible_os_family == "Debian"
+
+    # CIS 5.2 - Ensure SELinux security options are set
+    - name: CIS 5.2 - Configure SELinux for containers
+      command: setsebool -P container_manage_cgroup on
+      when: ansible_os_family == "RedHat"
+
+    # CIS 5.3 - Ensure Linux Kernel Capabilities are restricted within containers
+    - name: CIS 5.3 - Create containers with restricted capabilities
+      command: docker run --cap-drop ALL --cap-add NET_BIND_SERVICE nginx:latest
+
+    # CIS 5.4 - Ensure privileged containers are not used
+    - name: CIS 5.4 - Audit privileged containers
+      command: docker ps --filter privileged=true --format "table {{.Names}}"
+      register: privileged_containers
+      failed_when: privileged_containers.stdout_lines | length > 0
+
+    # CIS 5.5 - Ensure sensitive host system directories are not mounted in containers
+    - name: CIS 5.5 - Audit container mounts
+      shell: >-
+        FMT='{{`{{.Name}}: {{.HostConfig.Binds}}`}}';
+        docker inspect --format="$FMT" $(docker ps -q)
+      register: container_mounts
+
+    # CIS 5.6 - Ensure sshd is not run within containers
+    - name: CIS 5.6 - Check for SSH in running containers
+      command: docker exec {{ item }} ps aux | grep sshd
+      loop: "{{ running_containers }}"
+      register: sshd_check
+      failed_when: false
+
+    # CIS 5.7 - Ensure privileged ports are not mapped within containers
+    - name: CIS 5.7 - Audit port mappings
+      command: docker port {{ item }}
+      loop: "{{ running_containers }}"
+      register: port_mappings
+
+    # CIS 5.8 - Ensure only needed ports are open on the container
+    - name: CIS 5.8 - Validate container port exposure
+      ansible.builtin.shell: |
+        docker inspect --format='{{`{{.Name}}: {{.NetworkSettings.Ports}}`}}' {{ item }}
+      loop: "{{ running_containers }}"
+
+    # CIS 5.9 - Ensure the host's network namespace is not shared
+    - name: CIS 5.9 - Check for host network mode
+      command: docker ps --filter network=host --format "table {{.Names}}"
+      register: host_network_containers
+      failed_when: host_network_containers.stdout_lines | length > 0
+
+    # CIS 5.10 - Ensure memory usage for container is limited
+    - name: CIS 5.10 - Set memory limits on containers
+      command: docker run -m 512m nginx:latest
+
+    # CIS 5.11 - Ensure CPU priority is set appropriately on the container
+    - name: CIS 5.11 - Set CPU limits on containers
+      command: docker run --cpus 0.5 nginx:latest
+
+    # CIS 5.12 - Ensure the container's root filesystem is mounted as read only
+    - name: CIS 5.12 - Run containers with read-only filesystem
+      command: docker run --read-only nginx:latest
+
+    # CIS 5.13 - Ensure incoming container traffic is binded to a specific host interface
+    - name: CIS 5.13 - Bind container ports to specific interfaces
+      command: docker run -p 127.0.0.1:8080:80 nginx:latest
+
+    # CIS 5.14 - Ensure 'on-failure' container restart policy is set to '5'
+    - name: CIS 5.14 - Set restart policy
+      command: docker run --restart on-failure:5 nginx:latest
+
+    # CIS 5.15 - Ensure the host's process namespace is not shared
+    - name: CIS 5.15 - Check for host PID namespace
+      command: docker ps --filter pid=host --format "table {{.Names}}"
+      register: host_pid_containers
+      failed_when: host_pid_containers.stdout_lines | length > 0
+
+    # CIS 5.16 - Ensure the host's IPC namespace is not shared
+    - name: CIS 5.16 - Check for host IPC namespace
+      command: docker ps --filter ipc=host --format "table {{.Names}}"
+      register: host_ipc_containers
+      failed_when: host_ipc_containers.stdout_lines | length > 0
+
+    # CIS 5.17 - Ensure host devices are not directly exposed to containers
+    - name: CIS 5.17 - Audit device exposure
+      ansible.builtin.shell: |
+        docker inspect --format='{{`{{.Name}}: {{.HostConfig.Devices}}`}}' $(docker ps -q)
+      register: device_exposure
+
+    # CIS 5.18 - Ensure the default ulimit is overwritten at runtime
+    - name: CIS 5.18 - Set ulimits at runtime
+      command: docker run --ulimit nofile=1024:1024 nginx:latest
+
+    # CIS 5.19 - Ensure mount propagation mode is not set to shared
+    - name: CIS 5.19 - Check mount propagation
+      ansible.builtin.shell: |
+        docker inspect --format='{{`{{.Name}}: {{.HostConfig.Mounts}}`}}' $(docker ps -q)
+      register: mount_propagation
+
+    # CIS 5.20 - Ensure the host's UTS namespace is not shared
+    - name: CIS 5.20 - Check for host UTS namespace
+      command: docker ps --filter uts=host --format "table {{.Names}}"
+      register: host_uts_containers
+      failed_when: host_uts_containers.stdout_lines | length > 0
+
+    # CIS 5.21 - Ensure the default seccomp profile is not Disabled
+    - name: CIS 5.21 - Enable seccomp profiles
+      command: docker run --security-opt seccomp=default nginx:latest
+
+    # CIS 5.22 - Ensure docker exec commands are not used with privileged option
+    - name: CIS 5.22 - Audit privileged exec commands
+      command: docker exec --privileged {{ item }} echo "test"
+      loop: "{{ running_containers }}"
+      register: privileged_exec
+      failed_when: false
+
+    # CIS 5.23 - Ensure docker exec commands are not used with user option
+    - name: CIS 5.23 - Audit user option in exec commands
+      command: docker exec --user root {{ item }} whoami
+      loop: "{{ running_containers }}"
+      register: user_exec
+      failed_when: false
+
+    # CIS 5.24 - Ensure cgroup usage is confirmed
+    - name: CIS 5.24 - Verify cgroup configuration
+      command: docker info | grep -i cgroup
+      register: cgroup_info
+
+    # CIS 5.25 - Ensure the container is restricted from acquiring additional privileges
+    - name: CIS 5.25 - Run containers without privilege escalation
+      command: docker run --security-opt no-new-privileges nginx:latest
+
+    # CIS 5.26 - Ensure container health is checked at runtime
+    - name: CIS 5.26 - Implement health checks
+      command: docker run --health-cmd "curl -f http://localhost/ || exit 1" nginx:latest
+
+    # CIS 5.27 - Ensure docker commands always get the latest version of the image
+    - name: CIS 5.27 - Use specific image versions
+      command: docker run nginx:1.23-alpine
+
+    # CIS 5.28 - Ensure PIDs cgroup limit is used
+    - name: CIS 5.28 - Set PID limits
+      command: docker run --pids-limit 1024 nginx:latest
+
+    # CIS 5.29 - Ensure Docker's default bridge docker0 is not used
+    - name: CIS 5.29 - Use custom networks
+      command: docker network create secure_network
+
+    # CIS 5.30 - Ensure the host's user namespaces is not shared
+    - name: CIS 5.30 - Check for host user namespace
+      command: docker ps --filter userns=host --format "table {{.Names}}"
+      register: host_userns_containers
+      failed_when: host_userns_containers.stdout_lines | length > 0
+
+    # CIS 5.31 - Ensure the Docker socket is not mounted inside any containers
+    - name: CIS 5.31 - Check for Docker socket mounts
+      ansible.builtin.shell: |
+        docker inspect --format='{{`{{.Name}}: {{.Mounts}}`}}' $(docker ps -q) | grep docker.sock
+      register: docker_socket_mounts
+      failed_when: docker_socket_mounts.stdout_lines | length > 0
+
+  handlers:
+    - name: restart docker
+      service:
+        name: docker
+        state: restarted
+
+    - name: reload systemd
+      systemd:
+        daemon_reload: yes
+
+    - name: restart auditd
+      service:
+        name: auditd
+        state: restarted
+
+    - name: reload apparmor
+      service:
+        name: apparmor
+        state: reloaded
+
+    - name: restorecon
+      command: restorecon -Rv /var/lib/docker
+
+  vars_files:
+    - vars/cis_docker_vars.yml

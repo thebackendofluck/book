@@ -1,0 +1,412 @@
+# Companion code for "The Backend of Luck" - Chapter 24, Security and Compliance.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+%YAML 1.1
+---
+##############################################################################
+# OPNsense Suricata Custom Override Configuration
+# iGaming Platform - Edge Firewall / Office / Backup Perimeter Deployment
+#
+# File location on OPNsense:
+#   /usr/local/etc/suricata/custom.yaml
+#
+# This file is INCLUDED by OPNsense's auto-generated suricata.yaml.
+# Settings here OVERRIDE the defaults written by the OPNsense GUI.
+# Do NOT edit the auto-generated suricata.yaml directly — the GUI will
+# overwrite your changes on next save. Only edit THIS file.
+#
+# To activate custom.yaml overrides in OPNsense:
+#   Services -> Intrusion Detection -> Advanced Settings
+#   -> Custom YAML file: /usr/local/etc/suricata/custom.yaml
+#
+# Target environment:
+#   - 8-core CPU (typical OPNsense hardware: Protectli VP2430, Supermicro
+#     A2SDi-4C-HLN4F, or similar x86 appliance)
+#   - 32-64 GB RAM (adjust memcap values if using 16 GB hardware)
+#   - 1-10 Gbps WAN (typical for iGaming office, small data centre, or DR site)
+#   - OPNsense 24.x / FreeBSD 14.x base
+#   - Suricata 7.x (OPNsense IDS/IPS plugin)
+#
+# Use case in iGaming deployments:
+#   - Office network protection (employee workstations, jump boxes)
+#   - Small data centre or co-location perimeter (secondary/DR site)
+#   - VPN concentrator protection (site-to-site and employee VPN)
+#   - Development and staging environment IDS
+#
+# iGaming-specific security concerns on OPNsense:
+#   - Protect back-office access: CMS, CRM, bonus management, trader tools
+#   - Monitor employee DNS for C2 beaconing and data exfiltration
+#   - Detect lateral movement from compromised workstations to core systems
+#   - Monitor VPN client traffic for insider threat indicators
+#
+# Tuning notes for OPNsense / FreeBSD:
+#   - FreeBSD does not support AF_PACKET; OPNsense uses netmap or pcap
+#     for packet capture. netmap is preferred for performance.
+#   - Disable hyperthreading in BIOS for dedicated Suricata cores (if possible)
+#   - On Protectli/Supermicro hardware, assign dedicated NICs to IDS
+#   - OPNsense memory is shared with firewall state table, NAT, and VPN;
+#     be conservative with Suricata memcap values compared to a standalone
+#     Linux sensor.
+##############################################################################
+
+##############################################################################
+# Memory Configuration
+#
+# The values below are tuned for an 8-core, 32-64 GB RAM OPNsense appliance.
+# OPNsense itself (pf, unbound, dhcpd, OpenVPN) uses approximately 4-8 GB.
+# Allocate the remainder to Suricata, leaving 4 GB OS headroom.
+#
+# For 32 GB RAM appliance:   stream.memcap 4gb, reassembly 2gb, flow 2gb
+# For 64 GB RAM appliance:   use values below (8gb / 4gb / 4gb)
+# For 16 GB RAM appliance:   stream.memcap 2gb, reassembly 1gb, flow 1gb, defrag 256mb
+##############################################################################
+
+stream:
+  # Maximum memory for TCP state tracking.
+  # Reduced from the Linux sensor (8gb) to account for shared memory with OPNsense.
+  memcap: 8gb
+
+  # Pre-allocate TCP session objects to reduce malloc overhead.
+  # 100000 sessions * ~2KB per session = ~200 MB pre-allocated.
+  # Suitable for an office/DR perimeter with up to 100k concurrent connections.
+  prealloc-sessions: 100000
+
+  reassembly:
+    # Memory for TCP stream reassembly buffers.
+    memcap: 4gb
+
+    # Reassemble up to 512 KB per stream (reduced from 1 MB on main sensor
+    # to conserve memory on smaller hardware)
+    depth: 512kb
+
+    # Chunk sizes for server->client and client->server directions.
+    toserver-chunk-size: 2560
+    toclient-chunk-size: 2560
+
+    # Randomise chunk sizes to resist evasion attacks that exploit
+    # fixed reassembly chunk boundaries.
+    randomize-chunk-size: yes
+
+  # Pick up TCP sessions already in progress (useful when Suricata restarts
+  # or rules are reloaded without a full service restart)
+  midstream: yes
+
+  # Handle asymmetric routing gracefully (common with OPNsense and multi-WAN)
+  async-oneside: yes
+
+##############################################################################
+# Flow Engine
+#
+# Flow table tracks layer-4 connections. Size for expected concurrent sessions.
+# Office/DR perimeter: 100k-500k concurrent flows is typical.
+##############################################################################
+
+flow:
+  # Maximum memory for the flow table (metadata only, not payload).
+  memcap: 4gb
+
+  # Pre-allocate flow objects at startup.
+  prealloc: 100000
+
+  # Emergency recovery: how quickly to recover from memory exhaustion
+  emergency-recovery: 30
+
+  # Prune oldest flows when table is full
+  prune-flows: 5
+
+  timeouts:
+    tcp:
+      new: 30
+      established: 300   # Shorter than main sensor; office sessions close faster
+      closed: 30
+      bypassed: 100
+    udp:
+      new: 30
+      established: 300
+      bypassed: 100
+    icmp:
+      new: 30
+      established: 300
+
+##############################################################################
+# Defragmentation
+#
+# Handles IP fragment reassembly. Reduced from main sensor values.
+##############################################################################
+
+defrag:
+  # Memory for IP fragment tracking
+  memcap: 1gb
+
+  # Hash table size (power of 2; increase for high fragment rates)
+  hash-size: 65536
+
+  # Maximum concurrent fragment trackers
+  trackers: 65535
+  max-frags: 65535
+
+  # Pre-allocate fragment tracking entries
+  prealloc: yes
+
+  # Fragment timeout (seconds)
+  timeout: 60
+
+##############################################################################
+# Threading
+#
+# OPNsense Suricata typically runs as a single process with multiple threads.
+# On an 8-core appliance, reserve cores 0-1 for OPNsense/FreeBSD OS tasks
+# and assign cores 2-7 to Suricata workers.
+#
+# OPNsense note: CPU affinity may be partially managed by the OPNsense
+# Suricata plugin. These settings provide hints; verify actual affinity
+# with 'top -p <suricata_pid>' after startup.
+#
+# FreeBSD CPU pinning uses cpuset(1). OPNsense may apply cpuset automatically
+# when this config is loaded. If not, add to /etc/rc.conf.local:
+#   suricata_cpuset_flags="-l 2-7"
+##############################################################################
+
+threading:
+  set-cpu-affinity: yes
+  cpu-affinity:
+    # Management thread: handles rule reload, stats, and socket commands
+    # Pin to core 0 alongside OS tasks (lightweight; low contention)
+    - management-cpu-set:
+        cpu: [ 0 ]
+
+    # Verdict thread (IPS mode / nfqueue)
+    # Pin to core 1 for quick verdict delivery
+    - verdict-cpu-set:
+        cpu: [ 1 ]
+        prio:
+          default: high
+
+    # Worker threads: dedicated to packet capture, detection, and logging
+    # Cores 2-7 (6 cores) for packet processing
+    - worker-cpu-set:
+        cpu: [ "2-7" ]
+        mode: "exclusive"
+        prio:
+          low: [ 2 ]
+          medium: [ "3-4" ]
+          high: [ "5-7" ]
+          default: high
+
+  detect-thread-ratio: 1.0
+
+# Run in workers mode for best performance on OPNsense
+runmode: workers
+
+##############################################################################
+# Application Layer Protocol Detection
+#
+# Enable protocols relevant to the iGaming office/perimeter context.
+##############################################################################
+
+app-layer:
+  protocols:
+
+    # TLS: inspect all encrypted traffic; JA3/JA4 fingerprinting for
+    # bot detection, C2 identification, and insider threat monitoring
+    tls:
+      enabled: yes
+      detection-ports:
+        dp: "443,8443"
+      ja3-fingerprints: yes
+      ja4-fingerprints: yes
+
+    # HTTP: inspect web traffic from employee workstations
+    http:
+      enabled: yes
+      detection-ports:
+        dp: "80,8080,8000,3000"
+      libhtp:
+        default-config:
+          personality: IDS
+          request-body-limit: 64kb
+          response-body-limit: 64kb
+          double-decode-path: yes
+          double-decode-query: yes
+
+    # HTTP/2: increasingly common even in office environments
+    http2:
+      enabled: yes
+      detection-ports:
+        dp: "443,8443"
+
+    # WebSocket: back-office trading tools and CMS often use WS
+    # Enable to detect automated back-office scraping or session hijacking
+    websocket:
+      enabled: yes
+      detection-ports:
+        dp: "443,8080,8443"
+
+    # DNS: critical for C2 detection in office networks
+    # Monitor for DNS tunnelling, DGA domains, and data exfiltration
+    dns:
+      tcp:
+        enabled: yes
+        detection-ports:
+          dp: 53
+      udp:
+        enabled: yes
+        detection-ports:
+          dp: 53
+
+    # SSH: monitor for unauthorised SSH to core systems from office
+    ssh:
+      enabled: yes
+      detection-ports:
+        dp: "22"
+
+    # RDP: back-office staff use RDP to jump boxes; detect brute force
+    rdp:
+      enabled: yes
+      detection-ports:
+        dp: "3389"
+
+    # SMB: detect lateral movement and ransomware propagation in office
+    smb:
+      enabled: yes
+      detection-ports:
+        dp: "[139,445]"
+
+    # DCERPC: Windows service communication; detect pass-the-hash attacks
+    dcerpc:
+      tcp:
+        enabled: yes
+      udp:
+        enabled: yes
+
+    # IKEv2: monitor VPN negotiations for unauthorized VPN client usage
+    ikev2:
+      enabled: yes
+
+    # Disable protocols not relevant to iGaming office environments
+    ftp:
+      enabled: no
+
+    smtp:
+      enabled: no
+
+    modbus:
+      enabled: no
+
+    enip:
+      enabled: no
+
+    dnp3:
+      enabled: no
+
+    tftp:
+      enabled: no
+
+    nfs:
+      enabled: no
+
+##############################################################################
+# Outputs (OPNsense-specific paths)
+#
+# OPNsense writes Suricata logs to /var/log/suricata/ by default.
+# The EVE JSON and fast log paths match OPNsense's built-in log viewer.
+##############################################################################
+
+outputs:
+  # EVE JSON — primary structured log
+  - eve-log:
+      enabled: yes
+      filetype: regular
+      filename: /var/log/suricata/eve.json
+      community-id: yes
+      community-id-seed: 0
+      types:
+        - alert:
+            payload: yes
+            payload-buffer-size: 4kb
+            payload-printable: yes
+            packet: yes
+            metadata: yes
+        - http:
+            extended: yes
+        - dns:
+            query: yes
+            answer: yes
+        - tls:
+            extended: yes
+            session-resumption: yes
+        - flow
+        - ssh
+        - rdp
+        - smb
+        - stats:
+            totals: yes
+            threads: no
+            deltas: yes
+
+  # Fast log for OPNsense log viewer
+  - fast:
+      enabled: yes
+      filename: /var/log/suricata/fast.log
+      append: yes
+
+  # Stats
+  - stats:
+      enabled: yes
+      filename: /var/log/suricata/stats.log
+      append: yes
+      interval: 60
+
+##############################################################################
+# Detection Profile
+#
+# 'high' profile on this hardware assumes at least 16 GB RAM.
+# If the appliance has less than 16 GB, use 'medium' to reduce memory
+# consumption of the MPM (multi-pattern matcher) structures.
+##############################################################################
+
+detect:
+  profile: high
+  custom-values:
+    toclient-groups: 25
+    toserver-groups: 25
+
+  sgh-mpm-context: auto
+  inspection-recursion-limit: 3000
+
+  prefilter:
+    default: mpm
+
+  threshold-file: /usr/local/etc/suricata/threshold.conf
+
+##############################################################################
+# Host Table
+##############################################################################
+
+host:
+  hash-size: 4096
+  prealloc: 1000
+  memcap: 128mb
+
+##############################################################################
+# End of opnsense-custom.yaml
+#
+# Deployment checklist:
+#   [ ] Copy to /usr/local/etc/suricata/custom.yaml on OPNsense host
+#   [ ] In OPNsense GUI: Services > Intrusion Detection > Advanced Settings
+#       Set "Custom YAML" to: /usr/local/etc/suricata/custom.yaml
+#   [ ] Adjust memcap values for your hardware RAM (see notes above)
+#   [ ] Adjust worker-cpu-set cpu list to match available core count
+#   [ ] Verify with: suricata --list-runmodes
+#   [ ] Test config: suricata -T -c /usr/local/etc/suricata/suricata.yaml
+#   [ ] Restart Suricata: Services > Intrusion Detection > Restart
+#   [ ] Monitor /var/log/suricata/suricata.log for startup errors
+#   [ ] Check drop rate: grep 'capture' /var/log/suricata/stats.log
+##############################################################################

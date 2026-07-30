@@ -1,0 +1,81 @@
+{
+  "$schema": "./license-policy-schema.json",
+  "name": "iGaming Denied Licenses",
+  "description": "Licenses not approved for iGaming production use",
+  "version": "1.0.0",
+  "last_updated": "2025-01-01",
+  "licenses": [
+    {
+      "spdx_id": "GPL-2.0-only",
+      "name": "GNU General Public License v2.0",
+      "reason": "Strong copyleft - requires derivative source disclosure",
+      "risk_level": "high",
+      "alternatives": ["MIT", "Apache-2.0", "BSD-3-Clause"],
+      "notes": "May require open-sourcing proprietary code if linked"
+    },
+    {
+      "spdx_id": "GPL-3.0-only",
+      "name": "GNU General Public License v3.0",
+      "reason": "Strong copyleft with anti-tivoization clause",
+      "risk_level": "high",
+      "alternatives": ["MIT", "Apache-2.0", "BSD-3-Clause"],
+      "notes": "Stricter than GPLv2, includes patent provisions"
+    },
+    {
+      "spdx_id": "AGPL-3.0-only",
+      "name": "GNU Affero General Public License v3.0",
+      "reason": "Network copyleft - requires source disclosure for SaaS",
+      "risk_level": "critical",
+      "alternatives": ["MIT", "Apache-2.0"],
+      "notes": "Critical for SaaS/iGaming platforms - source must be disclosed to users"
+    },
+    {
+      "spdx_id": "SSPL-1.0",
+      "name": "Server Side Public License v1",
+      "reason": "Not OSI-approved, extreme copyleft for services",
+      "risk_level": "critical",
+      "alternatives": ["MIT", "Apache-2.0"],
+      "notes": "MongoDB license - restricts cloud service offerings"
+    },
+    {
+      "spdx_id": "BSL-1.1",
+      "name": "Business Source License 1.1",
+      "reason": "Not OSI-approved, production use restricted",
+      "risk_level": "critical",
+      "alternatives": ["Apache-2.0", "MIT"],
+      "notes": "Time-delayed open source - may require commercial license"
+    },
+    {
+      "spdx_id": "Elastic-2.0",
+      "name": "Elastic License 2.0",
+      "reason": "Not OSI-approved, restricts managed service offerings",
+      "risk_level": "critical",
+      "alternatives": ["OpenSearch (Apache-2.0)"],
+      "notes": "Elasticsearch/Kibana license - use OpenSearch instead"
+    },
+    {
+      "spdx_id": "Commons-Clause",
+      "name": "Commons Clause",
+      "reason": "Restricts commercial sale/SaaS",
+      "risk_level": "critical",
+      "alternatives": ["Apache-2.0", "MIT"],
+      "notes": "Added to other licenses to restrict commercial use"
+    },
+    {
+      "spdx_id": "CC-BY-NC-4.0",
+      "name": "Creative Commons Attribution-NonCommercial 4.0",
+      "reason": "Prohibits commercial use",
+      "risk_level": "critical",
+      "alternatives": ["CC-BY-4.0", "CC0-1.0"],
+      "notes": "Cannot be used in commercial iGaming operations"
+    },
+    {
+      "spdx_id": "BUSL-1.1",
+      "name": "Business Source License 1.1",
+      "reason": "Production use requires license after threshold",
+      "risk_level": "high",
+      "alternatives": ["MIT", "Apache-2.0"],
+      "notes": "HashiCorp license - evaluate usage requirements"
+    }
+  ]
+}

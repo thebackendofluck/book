@@ -1,0 +1,27 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy"
+          content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'" />
+    <title>Poker Client</title>
+    <style>
+      body { margin: 0; background: #222; color: #eee; font-family: sans-serif; }
+      #table { display: block; margin: 0 auto; }
+      #controls { text-align: center; padding: 12px; }
+      button { font-size: 16px; padding: 8px 16px; margin: 0 6px; }
+      #status { text-align: center; padding: 4px; font-size: 13px; color: #9c9; }
+    </style>
+  </head>
+  <body>
+    <canvas id="table" width="1000" height="640"></canvas>
+    <div id="controls">
+      <button data-action="fold">Fold</button>
+      <button data-action="check">Check</button>
+      <button data-action="call">Call</button>
+      <button data-action="bet">Bet</button>
+    </div>
+    <div id="status">initializing...</div>
+    <script src="./renderer.js"></script>
+  </body>
+</html>

@@ -1,0 +1,120 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 27b, The Jurisdiction Transfer Gateway and Cookie Consent.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jgw-rules
+  namespace: compliance
+# rules.yaml is injected from etc/rules.yaml via `kubectl create configmap jgw-rules --from-file=rules.yaml=etc/rules.yaml -n compliance -o yaml --dry-run=client | kubectl apply -f -`
+data:
+  rules.yaml: |
+    # placeholder — real rules come from the create-cm command; helm/kustomize
+    # users should replace this block with the actual file content.
+    rules: []
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: jgw-admin
+  namespace: compliance
+type: Opaque
+stringData:
+  admin-token: "change-me-in-prod"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jurisdiction-gateway
+  namespace: compliance
+  labels:
+    app: jurisdiction-gateway
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels: { app: jurisdiction-gateway }
+  template:
+    metadata:
+      labels: { app: jurisdiction-gateway }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10010
+        fsGroup: 10010
+      containers:
+        - name: jgw
+          image: acmetocasino/jurisdiction-gateway:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8210
+              name: http
+          env:
+            - name: JGW_PORT
+              value: "8210"
+            - name: JGW_REDIS_URL
+              value: "redis://redis.compliance.svc.cluster.local:6379/0"
+            - name: JGW_RULES
+              value: "/etc/jurisdiction-gateway/rules.yaml"
+            - name: JGW_SQLITE
+              value: "/var/lib/jurisdiction-gateway/audit.db"
+            - name: JGW_LOG_DIR
+              value: "/var/log/jurisdiction-gateway"
+            - name: JGW_ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: jgw-admin
+                  key: admin-token
+          volumeMounts:
+            - name: rules
+              mountPath: /etc/jurisdiction-gateway
+              readOnly: true
+            - name: audit
+              mountPath: /var/lib/jurisdiction-gateway
+            - name: logs
+              mountPath: /var/log/jurisdiction-gateway
+          livenessProbe:
+            httpGet: { path: /v1/healthz, port: 8210 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: { path: /v1/readyz, port: 8210 }
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits:   { cpu: 500m, memory: 256Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+      volumes:
+        - name: rules
+          configMap:
+            name: jgw-rules
+        - name: audit
+          emptyDir: {}      # for multi-replica PV you'd swap for a PVC (RWX)
+        - name: logs
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jurisdiction-gateway
+  namespace: compliance
+  labels: { app: jurisdiction-gateway }
+spec:
+  type: ClusterIP
+  selector: { app: jurisdiction-gateway }
+  ports:
+    - port: 8210
+      targetPort: 8210
+      name: http

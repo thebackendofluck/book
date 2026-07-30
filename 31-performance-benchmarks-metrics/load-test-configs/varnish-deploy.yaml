@@ -1,0 +1,149 @@
+# Companion code for "The Backend of Luck" - Chapter 31, Performance Benchmarks and Metrics.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: varnish
+    team: platform
+    version: 9.0.0
+  name: varnish
+  namespace: casino-prod
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 6
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: varnish
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: varnish
+        team: platform
+        version: 9.0.0
+    spec:
+      containers:
+      - command:
+        - varnishd
+        - -F
+        - -f
+        - /etc/varnish/default.vcl
+        - -a
+        - 0.0.0.0:6081
+        - -s
+        - malloc,2G
+        - -T
+        - 127.0.0.1:6082
+        - -p
+        - thread_pool_min=200
+        - -p
+        - thread_pool_max=8000
+        - -p
+        - thread_pool_add_delay=2
+        - -p
+        - workspace_client=256k
+        - -p
+        - http_max_hdr=64
+        - -p
+        - timeout_idle=30
+        image: varnish:9.0
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 5
+          initialDelaySeconds: 10
+          periodSeconds: 15
+          successThreshold: 1
+          tcpSocket:
+            port: 6081
+          timeoutSeconds: 5
+        name: varnish
+        ports:
+        - containerPort: 6081
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 5
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          successThreshold: 1
+          tcpSocket:
+            port: 6081
+          timeoutSeconds: 5
+        resources:
+          limits:
+            cpu: "1"
+            memory: 3Gi
+          requests:
+            cpu: 200m
+            memory: 2Gi
+        securityContext:
+          allowPrivilegeEscalation: false
+          privileged: false
+          capabilities:
+            drop: ["ALL"]
+          readOnlyRootFilesystem: true
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /etc/varnish
+          name: vcl-working
+        - mountPath: /var/lib/varnish
+          name: varnish-lib
+      dnsPolicy: ClusterFirst
+      initContainers:
+      - command:
+        - /bin/sh
+        - -c
+        - cp /etc/varnish/conf/default.vcl /etc/varnish/default.vcl
+        image: varnish:9.0
+        imagePullPolicy: IfNotPresent
+        name: varnish-init
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          privileged: false
+          capabilities:
+            drop: ["ALL"]
+          readOnlyRootFilesystem: true
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /etc/varnish/conf
+          name: vcl-config
+        - mountPath: /etc/varnish
+          name: vcl-working
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - configMap:
+          defaultMode: 420
+          name: varnish-vcl
+        name: vcl-config
+      - emptyDir: {}
+        name: vcl-working
+      - emptyDir: {}
+        name: varnish-lib

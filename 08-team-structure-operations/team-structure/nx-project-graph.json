@@ -1,0 +1,151 @@
+{
+  "_comment": [
+    "Nx Project Dependency Graph -- Backoffice Admin Panel",
+    "This file illustrates the dependency relationships between projects",
+    "in the monorepo. Nx uses this graph to determine build order,",
+    "run affected tests, and enforce module boundaries.",
+    "",
+    "The graph reflects team topology: feature libraries are leaf nodes",
+    "owned by individual teams, while shared libraries (ui, interfaces,",
+    "services) form the inner layers that multiple teams depend on."
+  ],
+  "projects": {
+    "apps": {
+      "fe-main-app": {
+        "type": "application",
+        "team": "platform",
+        "depends_on": [
+          "feature-dashboard",
+          "feature-players",
+          "feature-search-and-tables",
+          "feature-knowledge-base",
+          "feature-modals",
+          "store-main",
+          "router-main",
+          "ui-layouts",
+          "plugins",
+          "composables"
+        ]
+      },
+      "fe-main-app-e2e": {
+        "type": "e2e",
+        "team": "qa",
+        "depends_on": ["fe-main-app"]
+      },
+      "player-service": {
+        "type": "application",
+        "team": "services",
+        "depends_on": [
+          "services-platform-database",
+          "libs-services-legacy-platform-service",
+          "shared-kong-client",
+          "interfaces"
+        ]
+      },
+      "search-service": {
+        "type": "application",
+        "team": "services",
+        "depends_on": [
+          "services-platform-database",
+          "shared-kong-client",
+          "interfaces"
+        ]
+      },
+      "utils-service": {
+        "type": "application",
+        "team": "services",
+        "depends_on": [
+          "services-platform-database",
+          "interfaces"
+        ]
+      }
+    },
+    "feature_libraries": {
+      "_comment": "Leaf nodes -- each owned by a single team, never depend on each other",
+      "feature-dashboard": {
+        "team": "dashboard-team",
+        "depends_on": [
+          "ui-components",
+          "ui-icons",
+          "store-main",
+          "composables",
+          "interfaces",
+          "service-clients-base"
+        ]
+      },
+      "feature-players": {
+        "team": "player-team",
+        "depends_on": [
+          "ui-components",
+          "ui-icons",
+          "store-main",
+          "composables",
+          "interfaces",
+          "service-clients-player-service",
+          "service-clients-search-service",
+          "feature-search-and-tables"
+        ]
+      },
+      "feature-search-and-tables": {
+        "team": "player-team",
+        "depends_on": [
+          "ui-components",
+          "composables",
+          "interfaces"
+        ]
+      },
+      "feature-knowledge-base": {
+        "team": "platform",
+        "depends_on": [
+          "ui-components",
+          "composables",
+          "interfaces"
+        ]
+      },
+      "feature-modals": {
+        "team": "platform",
+        "depends_on": [
+          "ui-components",
+          "composables",
+          "interfaces"
+        ]
+      }
+    },
+    "shared_libraries": {
+      "_comment": "Inner layers -- depended upon by multiple teams",
+      "ui-components":    { "team": "design-system", "depends_on": ["interfaces"] },
+      "ui-icons":         { "team": "design-system", "depends_on": [] },
+      "ui-layouts":       { "team": "design-system", "depends_on": ["ui-components", "ui-icons"] },
+      "store-main":       { "team": "platform",      "depends_on": ["interfaces"] },
+      "router-main":      { "team": "platform",      "depends_on": ["interfaces", "store-main"] },
+      "composables":      { "team": "platform",      "depends_on": ["interfaces"] },
+      "plugins":          { "team": "platform",      "depends_on": [] },
+      "interfaces":       { "team": "platform",      "depends_on": [] },
+      "util-js":          { "team": "platform",      "depends_on": [] }
+    },
+    "service_clients": {
+      "_comment": "Bridge between frontend feature teams and backend service team",
+      "service-clients-base":            { "team": "services", "depends_on": ["interfaces", "shared-kong-client"] },
+      "service-clients-player-service":  { "team": "services", "depends_on": ["service-clients-base", "interfaces"] },
+      "service-clients-search-service":  { "team": "services", "depends_on": ["service-clients-base", "interfaces"] },
+      "service-clients-utils-service":   { "team": "services", "depends_on": ["service-clients-base", "interfaces"] }
+    },
+    "backend_services": {
+      "_comment": "Server-side shared libraries",
+      "services-platform-database":             { "team": "services", "depends_on": [] },
+      "libs-services-legacy-platform-service":  { "team": "services", "depends_on": ["services-platform-database"] },
+      "shared-kong-client":                     { "team": "devops",   "depends_on": [] },
+      "cqrs-server":                            { "team": "services", "depends_on": [] },
+      "helpers":                                { "team": "services", "depends_on": [] }
+    }
+  },
+  "team_summary": {
+    "platform":       "Shell app, routing, state, core infrastructure (3-4 devs)",
+    "player-team":    "Player search, profiles, feature-players + feature-search-and-tables (2-3 devs)",
+    "dashboard-team": "Dashboard widgets, KPIs, feature-dashboard (2 devs)",
+    "design-system":  "UI components, icons, layouts -- shared across all features (2-3 devs)",
+    "services":       "Backend Node.js services + service-client libraries (3-5 devs)",
+    "devops":         "Docker, Kong API gateway, CI/CD pipeline (2-3 devs)",
+    "qa":             "E2E tests with Cypress (1-2 devs)"
+  }
+}

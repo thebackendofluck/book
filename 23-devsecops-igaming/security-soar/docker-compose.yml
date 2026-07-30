@@ -1,0 +1,575 @@
+# Companion code for "The Backend of Luck" - Chapter 23, DevSecOps for iGaming.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# =============================================================================
+# AcmeToCasino SOAR Stack – Docker Compose
+# =============================================================================
+# Orchestrates the complete SOAR infrastructure:
+#   - n8n              : workflow automation and webhook orchestrator
+#   - Redis            : detector sliding-window state and decision cache
+#   - PostgreSQL       : incident database and n8n persistence
+#   - CrowdSec         : collaborative threat intelligence agent
+#   - Grafana          : operational dashboards
+#   - ELK Stack        : Elasticsearch + Logstash + Kibana (optional profile)
+#
+# Usage:
+#   # Core SOAR stack:
+#   docker compose up -d
+#
+#   # With ELK stack:
+#   docker compose --profile elk up -d
+#
+#   # View logs:
+#   docker compose logs -f n8n
+#
+# Required environment variables – copy .env.example to .env and fill values:
+#   POSTGRES_PASSWORD, N8N_ENCRYPTION_KEY, N8N_API_KEY (optional),
+#   CROWDSEC_API_KEY, SLACK_BOT_TOKEN, REDIS_PASSWORD (optional)
+#
+# =============================================================================
+
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "50m"
+    max-file: "5"
+
+x-healthcheck-defaults: &healthcheck-defaults
+  interval: 30s
+  timeout: 10s
+  retries: 5
+  start_period: 30s
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # PostgreSQL – persistent store for n8n workflows and SOAR incident database
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: soar-postgres
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      POSTGRES_DB: "${POSTGRES_DB:-soar}"
+      POSTGRES_USER: "${POSTGRES_USER:-soar}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}"
+      # Separate database for n8n (keeps SOAR incident data isolated)
+      POSTGRES_N8N_DB: "${POSTGRES_N8N_DB:-n8n}"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Init script creates the n8n database on first start
+      - ./init-scripts/postgres-init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    networks:
+      - soar-internal
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-soar} -d ${POSTGRES_DB:-soar}"]
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "0.5"
+
+  # ---------------------------------------------------------------------------
+  # Redis – sliding-window state, decision cache, event streams
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: soar-redis
+    restart: unless-stopped
+    logging: *default-logging
+    command: >
+      redis-server
+      --requirepass "${REDIS_PASSWORD:-}"
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --save 60 1
+      --save 300 100
+      --appendonly yes
+      --appendfsync everysec
+    volumes:
+      - redis_data:/data
+    networks:
+      - soar-internal
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: >
+        ["CMD-SHELL",
+         "redis-cli ${REDIS_PASSWORD:+-a $REDIS_PASSWORD} ping | grep -q PONG"]
+    deploy:
+      resources:
+        limits:
+          memory: 640m
+          cpus: "0.5"
+
+  # ---------------------------------------------------------------------------
+  # n8n – workflow orchestration and webhook receiver
+  # ---------------------------------------------------------------------------
+  n8n:
+    image: n8nio/n8n:1.44.1
+    container_name: soar-n8n
+    restart: unless-stopped
+    logging: *default-logging
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      # Database
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_PORT: "5432"
+      DB_POSTGRESDB_DATABASE: "${POSTGRES_N8N_DB:-n8n}"
+      DB_POSTGRESDB_USER: "${POSTGRES_USER:-soar}"
+      DB_POSTGRESDB_PASSWORD: "${POSTGRES_PASSWORD:?}"
+
+      # Encryption key – MUST be a strong random value; changing it invalidates saved credentials
+      N8N_ENCRYPTION_KEY: "${N8N_ENCRYPTION_KEY:?N8N_ENCRYPTION_KEY must be set}"
+
+      # Webhook base URL – must be publicly reachable for Slack action callbacks
+      WEBHOOK_URL: "${N8N_WEBHOOK_URL:-http://n8n:5678/}"
+      N8N_EDITOR_BASE_URL: "${N8N_EDITOR_BASE_URL:-http://localhost:5678}"
+
+      # Authentication
+      N8N_BASIC_AUTH_ACTIVE: "${N8N_BASIC_AUTH_ACTIVE:-true}"
+      N8N_BASIC_AUTH_USER: "${N8N_BASIC_AUTH_USER:?N8N_BASIC_AUTH_USER must be set}"
+      N8N_BASIC_AUTH_PASSWORD: "${N8N_BASIC_AUTH_PASSWORD:?N8N_BASIC_AUTH_PASSWORD must be set}"
+
+      # Performance
+      EXECUTIONS_PROCESS: main
+      EXECUTIONS_DATA_MAX_AGE: "336"          # 14 days
+      EXECUTIONS_DATA_PRUNE: "true"
+      N8N_DEFAULT_BINARY_DATA_MODE: filesystem
+
+      # Timezone
+      GENERIC_TIMEZONE: "UTC"
+      TZ: "UTC"
+
+      # Log level
+      N8N_LOG_LEVEL: "${N8N_LOG_LEVEL:-info}"
+
+      # Redis queue (optional – enable for multi-worker n8n)
+      # QUEUE_BULL_REDIS_HOST: redis
+      # QUEUE_BULL_REDIS_PORT: "6379"
+      # QUEUE_BULL_REDIS_PASSWORD: "${REDIS_PASSWORD:-}"
+
+    volumes:
+      - n8n_data:/home/node/.n8n
+      # Pre-load SOAR workflow definitions on first start
+      - ./n8n-workflows:/home/node/.n8n/workflows:ro
+    ports:
+      - "127.0.0.1:${N8N_PORT:-5678}:5678"
+    networks:
+      - soar-internal
+      - soar-external
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5678/healthz || exit 1"]
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+          cpus: "1.0"
+
+  # ---------------------------------------------------------------------------
+  # CrowdSec – collaborative threat intelligence agent
+  # ---------------------------------------------------------------------------
+  crowdsec:
+    image: crowdsecurity/crowdsec:v1.6.3
+    container_name: soar-crowdsec
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      COLLECTIONS: >
+        crowdsecurity/nginx
+        crowdsecurity/http-cve
+        crowdsecurity/sshd
+        crowdsecurity/linux
+      # Expose LAPI for SOAR scripts and the bouncer sidecar
+      DISABLE_ONLINE_API: "${CROWDSEC_DISABLE_ONLINE_API:-false}"
+      # Enroll key for the CrowdSec Hub (optional)
+      CROWDSEC_ENROLL_KEY: "${CROWDSEC_ENROLL_KEY:-}"
+      TZ: "UTC"
+    volumes:
+      - crowdsec_data:/var/lib/crowdsec/data
+      - crowdsec_config:/etc/crowdsec
+      # Mount application log directories for CrowdSec to tail
+      - /var/log/nginx:/var/log/nginx:ro
+      - /var/log/app:/var/log/app:ro
+      # Custom acquisition config
+      - ./crowdsec/acquis.yaml:/etc/crowdsec/acquis.yaml:ro
+    ports:
+      - "127.0.0.1:${CROWDSEC_LAPI_PORT:-8080}:8080"
+    networks:
+      - soar-internal
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD-SHELL", "cscli version || exit 1"]
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "0.5"
+
+  # ---------------------------------------------------------------------------
+  # Grafana – dashboards for SOAR metrics and incident visibility
+  # ---------------------------------------------------------------------------
+  grafana:
+    image: grafana/grafana:10.4.2
+    container_name: soar-grafana
+    restart: unless-stopped
+    logging: *default-logging
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      GF_SECURITY_ADMIN_USER: "${GRAFANA_ADMIN_USER:?GRAFANA_ADMIN_USER must be set}"
+      GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD must be set}"
+      GF_SECURITY_DISABLE_INITIAL_ORG_CREATION: "false"
+
+      # Disable analytics and update checks (privacy)
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+
+      # PostgreSQL datasource (pre-provisioned)
+      GF_DATABASE_TYPE: postgres
+      GF_DATABASE_HOST: "postgres:5432"
+      GF_DATABASE_NAME: "${POSTGRES_DB:-soar}"
+      GF_DATABASE_USER: "${POSTGRES_USER:-soar}"
+      GF_DATABASE_PASSWORD: "${POSTGRES_PASSWORD:?}"
+      GF_DATABASE_SSL_MODE: disable
+
+      GF_INSTALL_PLUGINS: "grafana-clock-panel,grafana-worldmap-panel"
+      TZ: "UTC"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      # Pre-provision dashboards and datasources
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
+    networks:
+      - soar-internal
+      - soar-external
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health | grep -q ok"]
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "0.5"
+
+  # ---------------------------------------------------------------------------
+  # Log Collector – SOAR log ingestion daemon
+  # ---------------------------------------------------------------------------
+  log-collector:
+    build:
+      context: ./log-analyzer
+      dockerfile: Dockerfile
+    image: soar-log-collector:1.0.0
+    container_name: soar-log-collector
+    restart: unless-stopped
+    logging: *default-logging
+    depends_on:
+      redis:
+        condition: service_healthy
+      n8n:
+        condition: service_healthy
+    environment:
+      SOAR_ENV: "${SOAR_ENV:-production}"
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: "${REDIS_PASSWORD:-}"
+      N8N_BASE_URL: "http://n8n:5678"
+      N8N_API_KEY: "${N8N_API_KEY:-}"
+      AWS_REGION: "${AWS_REGION:-eu-west-1}"
+      AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID:-}"
+      AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY:-}"
+      WAF_LOG_BUCKET: "${WAF_LOG_BUCKET:-}"
+      KAFKA_BROKERS: "${KAFKA_BROKERS:-}"
+      KAFKA_COLLECTOR_ENABLED: "${KAFKA_COLLECTOR_ENABLED:-false}"
+      AWS_WAF_COLLECTOR_ENABLED: "${AWS_WAF_COLLECTOR_ENABLED:-false}"
+    volumes:
+      - ./log-analyzer/config.yml:/etc/soar/config.yml:ro
+      - soar_data:/var/lib/soar
+      - /var/log/nginx:/var/log/nginx:ro
+      - /var/log/app:/var/log/app:ro
+      - /etc/soar:/etc/soar:ro
+    networks:
+      - soar-internal
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "0.5"
+
+  # ---------------------------------------------------------------------------
+  # Threat Detector – standalone detection engine
+  # ---------------------------------------------------------------------------
+  threat-detector:
+    build:
+      context: ./log-analyzer
+      dockerfile: Dockerfile
+    image: soar-log-collector:1.0.0      # reuses the same image
+    container_name: soar-threat-detector
+    restart: unless-stopped
+    logging: *default-logging
+    command: ["python", "threat_detector.py", "--config", "/etc/soar/config.yml"]
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      SOAR_ENV: "${SOAR_ENV:-production}"
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: "${REDIS_PASSWORD:-}"
+    volumes:
+      - ./log-analyzer/config.yml:/etc/soar/config.yml:ro
+      - soar_data:/var/lib/soar
+    networks:
+      - soar-internal
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "1.0"
+
+  # ---------------------------------------------------------------------------
+  # GeoIP Enricher – Redis stream enrichment pipeline
+  # ---------------------------------------------------------------------------
+  geoip-enricher:
+    build:
+      context: ./log-analyzer
+      dockerfile: Dockerfile
+    image: soar-log-collector:1.0.0
+    container_name: soar-geoip-enricher
+    restart: unless-stopped
+    logging: *default-logging
+    command: ["python", "geoip_enricher.py", "--config", "/etc/soar/config.yml", "redis-stream"]
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      SOAR_ENV: "${SOAR_ENV:-production}"
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: "${REDIS_PASSWORD:-}"
+      GEOIP_DB_CITY: "/usr/share/GeoIP/GeoLite2-City.mmdb"
+      GEOIP_DB_ASN: "/usr/share/GeoIP/GeoLite2-ASN.mmdb"
+      GEOIP_DB_ANON: "/usr/share/GeoIP/GeoLite2-Anonymous-IP.mmdb"
+    volumes:
+      - ./log-analyzer/config.yml:/etc/soar/config.yml:ro
+      - geoip_data:/usr/share/GeoIP:ro
+      - /etc/soar:/etc/soar:ro
+    networks:
+      - soar-internal
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+          cpus: "0.25"
+
+  # ---------------------------------------------------------------------------
+  # CrowdSec Sync Daemon
+  # ---------------------------------------------------------------------------
+  crowdsec-syncer:
+    build:
+      context: ./integrations
+      dockerfile: Dockerfile
+    image: soar-integrations:latest
+    container_name: soar-crowdsec-syncer
+    restart: unless-stopped
+    logging: *default-logging
+    command: ["python", "crowdsec_integration.py", "--config", "/etc/soar/config.yml", "daemon"]
+    depends_on:
+      redis:
+        condition: service_healthy
+      crowdsec:
+        condition: service_healthy
+    environment:
+      SOAR_ENV: "${SOAR_ENV:-production}"
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: "${REDIS_PASSWORD:-}"
+      CROWDSEC_ENABLED: "true"
+      CROWDSEC_LAPI_URL: "http://crowdsec:8080"
+      CROWDSEC_API_KEY: "${CROWDSEC_API_KEY:?CROWDSEC_API_KEY must be set when CrowdSec is enabled}"
+      LOCAL_FIREWALL_ENABLED: "${LOCAL_FIREWALL_ENABLED:-false}"
+    volumes:
+      - ./log-analyzer/config.yml:/etc/soar/config.yml:ro
+      - soar_data:/var/lib/soar
+    networks:
+      - soar-internal
+    cap_add:
+      # Required for iptables commands when LOCAL_FIREWALL_ENABLED=true
+      - NET_ADMIN
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+          cpus: "0.25"
+
+  # ===========================================================================
+  # OPTIONAL: ELK Stack (enable with: --profile elk)
+  # ===========================================================================
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.0
+    container_name: soar-elasticsearch
+    profiles: ["elk"]
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      xpack.security.http.ssl.enabled: "false"
+      ES_JAVA_OPTS: "-Xms1g -Xmx1g"
+      TZ: "UTC"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+      - soar-internal
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+    deploy:
+      resources:
+        limits:
+          memory: 1.5g
+          cpus: "1.0"
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.13.0
+    container_name: soar-logstash
+    profiles: ["elk"]
+    restart: unless-stopped
+    logging: *default-logging
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    environment:
+      LS_JAVA_OPTS: "-Xms512m -Xmx512m"
+      TZ: "UTC"
+    volumes:
+      - ./elk/logstash/pipeline:/usr/share/logstash/pipeline:ro
+      - ./elk/logstash/config/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
+    networks:
+      - soar-internal
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD-SHELL", "curl -sf http://localhost:9600 || exit 1"]
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 768m
+          cpus: "0.5"
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.13.0
+    container_name: soar-kibana
+    profiles: ["elk"]
+    restart: unless-stopped
+    logging: *default-logging
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    environment:
+      ELASTICSEARCH_HOSTS: "http://elasticsearch:9200"
+      SERVER_BASEPATH: ""
+      XPACK_SECURITY_ENABLED: "false"
+      TZ: "UTC"
+    volumes:
+      - kibana_data:/usr/share/kibana/data
+    ports:
+      - "127.0.0.1:${KIBANA_PORT:-5601}:5601"
+    networks:
+      - soar-internal
+      - soar-external
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD-SHELL", "curl -sf http://localhost:5601/api/status | grep -q available"]
+      start_period: 120s
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+          cpus: "0.5"
+
+# =============================================================================
+# Networks
+# =============================================================================
+
+networks:
+  # Internal network – only SOAR containers, no external exposure
+  soar-internal:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: "172.20.0.0/24"
+
+  # External network – containers that need to receive inbound connections
+  # (n8n webhooks from Slack, Grafana browser access)
+  soar-external:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: "172.20.1.0/24"
+
+# =============================================================================
+# Volumes – all data is persisted to named volumes
+# =============================================================================
+
+volumes:
+  # PostgreSQL data (n8n workflows + SOAR incidents)
+  postgres_data:
+    driver: local
+
+  # Redis AOF + RDB snapshots
+  redis_data:
+    driver: local
+
+  # n8n user data, credentials, custom nodes
+  n8n_data:
+    driver: local
+
+  # CrowdSec agent state and hub data
+  crowdsec_data:
+    driver: local
+
+  # CrowdSec configuration (profiles, parsers, scenarios)
+  crowdsec_config:
+    driver: local
+
+  # Grafana dashboards, users, plugins
+  grafana_data:
+    driver: local
+
+  # SOAR fallback queues, checkpoints, overflow files
+  soar_data:
+    driver: local
+
+  # MaxMind GeoIP databases (populate with geoipupdate or manual download)
+  geoip_data:
+    driver: local
+
+  # Elasticsearch indexes and cluster state (ELK profile)
+  elasticsearch_data:
+    driver: local
+
+  # Kibana saved objects (ELK profile)
+  kibana_data:
+    driver: local

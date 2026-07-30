@@ -1,0 +1,383 @@
+# Python Project Configuration for DevSecOps Standard
+# Comprehensive tool configuration for security scanning and code quality
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "devsecops-universal-standard"
+version = "1.0.0"
+description = "Universal DevSecOps Security Standard with comprehensive security scanning"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "Apache-2.0"}
+authors = [
+    {name = "Security Team", email = "security@company.com"},
+]
+keywords = ["security", "devsecops", "compliance", "scanning", "automation"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: System :: Systems Administration",
+]
+
+[project.urls]
+Homepage = "https://github.com/company/devsecops-standard"
+Documentation = "https://docs.company.com/devsecops"
+Repository = "https://github.com/company/devsecops-standard"
+"Bug Tracker" = "https://github.com/company/devsecops-standard/issues"
+
+# Security and Code Quality Tools Configuration
+
+[tool.bandit]
+# Bandit Security Linter Configuration
+exclude_dirs = [
+    "tests",
+    "test",
+    "venv",
+    ".venv",
+    "__pycache__",
+    "build",
+    "dist",
+    "docs",
+    "examples",
+]
+skips = [
+    "B101",  # assert_used (may be needed for testing)
+    "B601",  # shell_injection (handled by other tools)
+]
+severity_level = 2  # Medium and above
+confidence_level = 2  # Medium and above
+output_format = "json"
+output_file = "bandit-report.json"
+
+[tool.black]
+# Black Code Formatter Configuration
+line-length = 88
+target-version = ['py311', 'py312']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+  | migrations
+)/
+'''
+
+[tool.isort]
+# isort Import Sorter Configuration
+profile = "black"
+multi_line_output = 3
+line_length = 88
+known_first_party = ["devsecops"]
+known_third_party = ["pytest", "requests", "boto3"]
+skip_glob = ["**/migrations/**", "**/venv/**", "**/.venv/**"]
+
+[tool.flake8]
+# Flake8 Linting Configuration
+max-line-length = 88
+extend-ignore = [
+    "E203",  # whitespace before ':'
+    "W503",  # line break before binary operator
+    "B950",  # line too long (error from bugbear)
+]
+exclude = [
+    ".git",
+    "__pycache__",
+    "docs/source/conf.py",
+    "old",
+    "build",
+    "dist",
+    "migrations",
+    "venv",
+    ".venv",
+]
+per-file-ignores = [
+    "__init__.py:F401",  # imported but unused
+    "tests/*:S101",      # assert allowed in tests
+]
+
+[tool.mypy]
+# MyPy Type Checking Configuration
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+
+[[tool.mypy.overrides]]
+module = [
+    "tests.*",
+    "test.*",
+]
+disallow_untyped_defs = false
+
+[tool.pytest.ini_options]
+# PyTest Configuration
+minversion = "7.0"
+addopts = [
+    "-ra",
+    "-q",
+    "--strict-markers",
+    "--strict-config",
+    "--cov=devsecops",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+    "--cov-report=xml",
+    "--cov-fail-under=80",
+]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+markers = [
+    "security: marks tests as security-related",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+    "slow: marks tests as slow running",
+]
+
+[tool.coverage.run]
+# Coverage.py Configuration
+source = ["devsecops"]
+omit = [
+    "*/migrations/*",
+    "*/tests/*",
+    "*/test/*",
+    "*/venv/*",
+    "*/.venv/*",
+    "*/__pycache__/*",
+    "*/setup.py",
+    "*/manage.py",
+    "*/wsgi.py",
+    "*/asgi.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]
+
+[tool.safety]
+# Safety Dependency Vulnerability Scanner Configuration
+output = "json"
+file = "safety-report.json"
+full-report = true
+json = true
+cache = true
+cache-time = 3600
+ignore-vulnerabilities = [
+    # Add specific vulnerability IDs to ignore if needed
+    # "12345",  # Example vulnerability ID
+]
+
+[tool.vulture]
+# Vulture Dead Code Detection Configuration
+min-confidence = 80
+exclude = [
+    "tests/",
+    "test/",
+    "venv/",
+    ".venv/",
+    "__pycache__/",
+    "migrations/",
+]
+ignore_names = [
+    "__init__",
+    "test_*",
+    "*_test",
+]
+make_whitelist = true
+
+[tool.pylint]
+# PyLint Configuration
+max-line-length = 88
+disable = [
+    "C0103",  # invalid-name
+    "C0114",  # missing-module-docstring
+    "C0115",  # missing-class-docstring
+    "C0116",  # missing-function-docstring
+    "R0903",  # too-few-public-methods
+    "R0913",  # too-many-arguments
+    "R0914",  # too-many-locals
+    "R0915",  # too-many-statements
+    "W0511",  # fixme
+]
+enable = [
+    "W1203",  # logging-fstring-interpolation
+]
+[tool.pylint.messages_control]
+confidence = ["HIGH", "CONTROL_FLOW", "INFERENCE"]
+
+[tool.pylint.reports]
+output-format = "json"
+reports = "no"
+score = "no"
+
+[tool.pylint.format]
+max-line-length = 88
+
+[tool.pylint.design]
+max-args = 10
+max-attributes = 10
+max-bool-expr = 5
+max-branches = 15
+max-locals = 20
+max-parents = 7
+max-public-methods = 20
+max-returns = 6
+max-statements = 50
+min-public-methods = 2
+
+[tool.pylint.exceptions]
+overgeneral-exceptions = ["builtins.Exception"]
+
+[tool.pylint.logging]
+logging-format-style = "new"
+logging-modules = ["logging"]
+
+[tool.pylint.miscellaneous]
+notes = ["FIXME", "XXX", "TODO"]
+
+[tool.pylint.similarities]
+min-similarity-lines = 4
+ignore-comments = true
+ignore-docstrings = true
+ignore-imports = true
+
+[tool.pylint.spelling]
+max-spelling-suggestions = 4
+spelling-dict = ""
+
+[tool.pylint.string]
+check-str-concat-over-line-jumps = false
+
+[tool.pylint.typecheck]
+contextmanager-decorators = ["contextlib.contextmanager"]
+generated-members = ["requests.*", "urllib3.*"]
+ignored-classes = ["optparse.Values", "thread._local", "_thread._local"]
+ignored-modules = []
+missing-member-hint = true
+missing-member-hint-distance = 1
+missing-member-max-choices = 1
+
+[tool.pylint.variables]
+additional-builtins = []
+callbacks = ["cb_", "_cb"]
+dummy-variables-rgx = "^_|dummy"
+ignored-argument-names = "_.*|^ignored_|^unused_"
+init-import = false
+redefining-builtins-modules = ["six.moves", "past.builtins", "future.builtins", "builtins", "io"]
+
+[tool.pylint.clASSES]
+defining-attr-methods = ["__init__", "__new__", "setUp", "__post_init__"]
+exclude-protected = ["_asdict", "_fields", "_replace", "_source", "_make"]
+valid-classmethod-first-arg = ["cls"]
+valid-metaclass-classmethod-first-arg = ["cls"]
+
+[tool.pylint.imports]
+allow-wildcard-with-all = false
+analyse-fallback-blocks = false
+deprecated-modules = []
+ext-import-graph = ""
+ext-pkg-whitelist = []
+import-graph = ""
+include-trailing-comma = false
+int-import-graph = ""
+known-standard-library = []
+known-third-party = ["enchant"]
+
+[tool.pylint.refactoring]
+max-nested-blocks = 5
+never-returning-functions = ["sys.exit"]
+
+# Security Tool Integration
+[tool.detect-secrets]
+# Detect Secrets Configuration
+baseline = ".secrets.baseline"
+exclude-files = [
+    "*.lock",
+    "*.tfstate.*",
+    "package-lock.json",
+    "yarn.lock",
+    "poetry.lock",
+]
+exclude-lines = [
+    "# pragma: allowlist secret",
+    "# nosec",
+]
+
+[tool.commitizen]
+# Commitizen Configuration
+version = "1.0.0"
+version_files = [
+    "pyproject.toml:version",
+    "__init__.py:__version__",
+]
+style = [
+    ["qmark", "fg:#ff9d00 bold"],
+    ["question", "bold"],
+    ["answer", "fg:#ff9d00 bold"],
+    ["pointer", "fg:#ff9d00 bold"],
+    ["highlighted", "fg:#ff9d00 bold"],
+    ["selected", "fg:#cc5454"],
+    ["separator", "fg:#cc5454"],
+    ["instruction", ""],
+    ["text", ""],
+    ["disabled", "fg:#858585 italic"],
+]
+
+[tool.semantic_release]
+# Semantic Release Configuration
+version_variable = [
+    "devsecops/__init__.py:__version__",
+    "pyproject.toml:version",
+]
+version_source = "commit"
+commit_message = "chore(release): {version} [skip ci]"
+commit_parser = "semantic_release.history.emoji_parser"
+patch_without_tag = true
+major_on_zero = false
+tag_commit = true
+upload_to_repository = false
+upload_to_release = false
+
+# Development Dependencies
+[tool.setuptools]
+packages = ["devsecops"]
+
+[tool.setuptools.package-data]
+"*" = ["*.yml", "*.yaml", "*.json", "*.md", "*.txt"]

@@ -1,0 +1,492 @@
+# Companion code for "The Backend of Luck" - Chapter 23b, DevSecOps Pipeline Implementation.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# alert-config.yaml — On-Call Alert Bot Configuration
+# Casino Platform: new.acmetocasino.com
+# Edit this file to tune thresholds, channels, and schedules.
+# All secrets must be provided via environment variables (never hardcode here).
+
+# ---------------------------------------------------------------------------
+# Polling intervals (seconds)
+# ---------------------------------------------------------------------------
+polling:
+  prometheus: 60
+  gitlab_ci: 120
+  defectdojo: 300
+  falco: 30
+  ssl: 3600       # once per hour
+  wazuh: 30
+
+# ---------------------------------------------------------------------------
+# Source endpoints
+# ---------------------------------------------------------------------------
+sources:
+  prometheus:
+    url: "${PROMETHEUS_URL}"           # e.g. http://prometheus.monitoring.svc:9090
+    alertmanager_url: "${ALERTMANAGER_URL}"
+
+  gitlab:
+    url: "${GITLAB_URL}"               # e.g. https://gitlab.acmetocasino.com
+    token: "${GITLAB_TOKEN}"
+    project_id: "${GITLAB_PROJECT_ID}"
+    watched_branches:
+      - main
+      - staging
+    pipeline_blocked_threshold_minutes: 120
+
+  defectdojo:
+    url: "${DEFECTDOJO_URL}"           # e.g. http://defectdojo.security.svc
+    token: "${DEFECTDOJO_TOKEN}"
+    product_name: "acmetocasino"
+    min_severity_p0: "Critical"
+    min_severity_p1: "Critical"
+    min_severity_p2: "High"
+    high_vuln_count_threshold: 5       # >5 HIGH findings → P2
+
+  falco:
+    webhook_path: "/webhook/falco"     # Bot listens on this path
+    # Falco must be configured to POST to http://alert-bot:8080/webhook/falco
+
+  wazuh:
+    url: "${WAZUH_URL}"                # e.g. https://wazuh001.lan:55000
+    username: "${WAZUH_USER}"
+    password: "${WAZUH_PASSWORD}"
+    rule_level_p0: 12                  # Wazuh rule level >= 12 → P0
+    rule_level_p1: 10                  # rule level 10–11 → P1
+    rule_level_p2: 7                   # rule level 7–9 → P2
+
+  ssl:
+    domains:
+      - new.acmetocasino.com
+      - api.acmetocasino.com
+      - your-dashboard.example.com
+    expiry_p0_days: 0                  # already expired → P0
+    expiry_p1_days: 7                  # expires in <= 7 days → P1
+    expiry_p2_days: 14                 # expires in <= 14 days → P2
+
+# ---------------------------------------------------------------------------
+# Classification rules
+# Rules are evaluated top-to-bottom; first match wins.
+# ---------------------------------------------------------------------------
+classification_rules:
+
+  # --- P0 rules ---
+  - id: p0_platform_down
+    severity: P0
+    source: prometheus
+    condition:
+      metric: "up"
+      labels:
+        job: "casino-platform"
+      value: 0
+      duration_minutes: 2
+    description: "Casino platform (new.acmetocasino.com) is unreachable"
+
+  - id: p0_db_corruption
+    severity: P0
+    source: prometheus
+    condition:
+      alert_name: "PatroniDivergence"
+    description: "Patroni reports timeline divergence — possible data corruption"
+
+  - id: p0_security_breach_falco
+    severity: P0
+    source: falco
+    condition:
+      priority: "CRITICAL"
+      rule_contains_any:
+        - "Unauthorized Process"
+        - "Data Exfiltration"
+        - "Privilege Escalation"
+        - "Shell Spawned"
+    description: "Falco runtime security: critical breach detected"
+
+  - id: p0_pix_gateway_down
+    severity: P0
+    source: prometheus
+    condition:
+      metric: "pix_gateway_health"
+      value: 0
+      duration_minutes: 2
+    description: "PIX payment gateway is down — transactions failing"
+
+  - id: p0_ddos_active
+    severity: P0
+    source: prometheus
+    condition:
+      alert_name: "DDoSAttackActive"
+    description: "Active DDoS attack detected — Cloudflare under-attack mode"
+
+  - id: p0_ssl_expired
+    severity: P0
+    source: ssl
+    condition:
+      days_until_expiry: 0
+    description: "Production TLS certificate has expired"
+
+  - id: p0_wallet_discrepancy
+    severity: P0
+    source: prometheus
+    condition:
+      alert_name: "WalletBalanceDiscrepancy"
+    description: "Player wallet reconciliation failure — funds at risk"
+
+  - id: p0_wazuh_critical
+    severity: P0
+    source: wazuh
+    condition:
+      rule_level_gte: 12
+    description: "Wazuh SIEM: critical intrusion detection rule fired"
+
+  - id: p0_compliance_violation
+    severity: P0
+    source: prometheus
+    condition:
+      alert_name_contains_any:
+        - "AMLBypass"
+        - "KYCFailure"
+        - "ComplianceViolation"
+    description: "Gambling licence compliance violation detected"
+
+  # --- P1 rules ---
+  - id: p1_high_error_rate
+    severity: P1
+    source: prometheus
+    condition:
+      metric: "http_request_error_rate"
+      labels:
+        service: "casino-api"
+      threshold_gt: 0.10
+      duration_minutes: 5
+    description: "API error rate >10% sustained for 5 minutes"
+
+  - id: p1_betting_latency
+    severity: P1
+    source: prometheus
+    condition:
+      metric: "betting_engine_p95_latency_seconds"
+      threshold_gt: 5.0
+      duration_minutes: 3
+    description: "Betting engine p95 latency >5s for 3 minutes"
+
+  - id: p1_market_watch_stale
+    severity: P1
+    source: prometheus
+    condition:
+      alert_name: "MarketWatchStale"
+    description: "Market watch odds feed stale (last update >60s)"
+
+  - id: p1_bot_manager_crashloop
+    severity: P1
+    source: prometheus
+    condition:
+      alert_name: "BotManagerCrashLoop"
+    description: "bot-manager pod in CrashLoopBackOff"
+
+  - id: p1_critical_cve_prod
+    severity: P1
+    source: defectdojo
+    condition:
+      severity: "Critical"
+      environment: "production"
+    description: "Critical CVE found in production image by DefectDojo"
+
+  - id: p1_patroni_lag
+    severity: P1
+    source: prometheus
+    condition:
+      metric: "patroni_replication_lag_seconds"
+      threshold_gt: 30
+      duration_minutes: 2
+    description: "Patroni standby replication lag >30s"
+
+  - id: p1_node_not_ready
+    severity: P1
+    source: prometheus
+    condition:
+      alert_name: "KubernetesNodeNotReady"
+      duration_minutes: 5
+    description: "K3s node NotReady for >5 minutes"
+
+  - id: p1_pipeline_blocked
+    severity: P1
+    source: gitlab
+    condition:
+      branch: "main"
+      status: "failed"
+      duration_minutes: 120
+    description: "main branch CI/CD pipeline blocked for >2 hours"
+
+  - id: p1_ssl_expiry_7d
+    severity: P1
+    source: ssl
+    condition:
+      days_until_expiry_lte: 7
+      days_until_expiry_gt: 0
+    description: "Production TLS certificate expires in <= 7 days"
+
+  - id: p1_wazuh_high
+    severity: P1
+    source: wazuh
+    condition:
+      rule_level_gte: 10
+      rule_level_lt: 12
+    description: "Wazuh SIEM: high-severity rule fired"
+
+  - id: p1_falco_suspicious
+    severity: P1
+    source: falco
+    condition:
+      priority: "WARNING"
+      rule_contains_any:
+        - "Anomalous Network Egress"
+        - "Unexpected Outbound Connection"
+    description: "Falco: suspicious network activity from casino pods"
+
+  # --- P2 rules ---
+  - id: p2_high_error_rate_minor
+    severity: P2
+    source: prometheus
+    condition:
+      metric: "http_request_error_rate"
+      labels:
+        service: "casino-api"
+      threshold_gt: 0.02
+      threshold_lte: 0.10
+      duration_minutes: 10
+    description: "API error rate 2–10% sustained for 10 minutes"
+
+  - id: p2_high_vulns_defectdojo
+    severity: P2
+    source: defectdojo
+    condition:
+      severity: "High"
+      count_gt: 5
+    description: ">5 HIGH severity vulnerabilities found in production"
+
+  - id: p2_staging_broken
+    severity: P2
+    source: gitlab
+    condition:
+      branch: "staging"
+      status: "failed"
+      duration_minutes: 30
+    description: "Staging environment pipeline broken for >30 minutes"
+
+  - id: p2_ssl_expiry_14d
+    severity: P2
+    source: ssl
+    condition:
+      days_until_expiry_lte: 14
+      days_until_expiry_gt: 7
+    description: "TLS certificate expires in <= 14 days"
+
+  - id: p2_disk_usage_high
+    severity: P2
+    source: prometheus
+    condition:
+      alert_name: "NodeDiskUsageHigh"
+      threshold_gt: 80
+    description: "Disk usage >80% on a K3s node or PVC"
+
+  - id: p2_memory_sustained
+    severity: P2
+    source: prometheus
+    condition:
+      metric: "container_memory_usage_ratio"
+      threshold_gt: 0.85
+      duration_minutes: 15
+    description: "Pod memory usage >85% sustained for 15 minutes"
+
+  - id: p2_failed_deployment
+    severity: P2
+    source: gitlab
+    condition:
+      status: "deployment_failed"
+      rollback_status: "succeeded"
+    description: "Deployment failed; auto-rollback succeeded"
+
+  - id: p2_wazuh_medium
+    severity: P2
+    source: wazuh
+    condition:
+      rule_level_gte: 7
+      rule_level_lt: 10
+    description: "Wazuh SIEM: medium-severity rule fired"
+
+  # --- P3 rules ---
+  - id: p3_medium_code_quality
+    severity: P3
+    source: defectdojo
+    condition:
+      severity: "Medium"
+    description: "MEDIUM severity code quality finding"
+
+  - id: p3_low_test_coverage
+    severity: P3
+    source: gitlab
+    condition:
+      metric: "test_coverage_pct"
+      threshold_lt: 80
+    description: "Test coverage below 80% threshold"
+
+  - id: p3_log_noise
+    severity: P3
+    source: prometheus
+    condition:
+      metric: "log_warning_rate_per_minute"
+      threshold_gt: 100
+    description: "Non-actionable WARNING log noise >100/min"
+
+# ---------------------------------------------------------------------------
+# Notification channels
+# ---------------------------------------------------------------------------
+notifications:
+  dashboard:
+    url: "${DASHBOARD_WEBHOOK_URL}"    # e.g. https://your-dashboard.example.com/api/alerts
+    token: "${DASHBOARD_TOKEN}"
+    enabled: true
+
+  slack:
+    webhook_url: "${SLACK_WEBHOOK_URL}"
+    channels:
+      P0: "#incidents-p0"
+      P1: "#incidents-p1"
+      P2: "#incidents-p2"
+      P3: "#incidents-p3"
+    mention:
+      P0: "@oncall-primary @oncall-secondary"
+      P1: "@oncall-primary"
+      P2: "@platform-team"
+      P3: ""
+    enabled: true
+
+  email:
+    smtp_host: "${SMTP_HOST}"
+    smtp_port: 587
+    smtp_user: "${SMTP_USER}"
+    smtp_password: "${SMTP_PASSWORD}"
+    from_address: "alerts@acmetocasino.com"
+    recipients:
+      P0:
+        - "${ONCALL_PRIMARY_EMAIL}"
+        - "${ONCALL_SECONDARY_EMAIL}"
+        - "${ENG_MANAGER_EMAIL}"
+      P1:
+        - "${ONCALL_PRIMARY_EMAIL}"
+      P2:
+        - "${PLATFORM_TEAM_EMAIL}"
+      P3: []
+    enabled: true
+
+  phone:
+    # Uses a voice/SMS provider (e.g. Twilio) — configure via env vars
+    provider: "twilio"
+    account_sid: "${TWILIO_ACCOUNT_SID}"
+    auth_token: "${TWILIO_AUTH_TOKEN}"
+    from_number: "${TWILIO_FROM_NUMBER}"
+    call_recipients:
+      P0:
+        - "${ONCALL_PRIMARY_PHONE}"
+        - "${ONCALL_SECONDARY_PHONE}"
+    sms_recipients:
+      P0:
+        - "${ONCALL_PRIMARY_PHONE}"
+        - "${ONCALL_SECONDARY_PHONE}"
+      P1:
+        - "${ONCALL_PRIMARY_PHONE}"
+    enabled: true
+
+# ---------------------------------------------------------------------------
+# Escalation policies
+# ---------------------------------------------------------------------------
+escalation:
+  P0:
+    ack_timeout_minutes: 15
+    escalation_steps:
+      - delay_minutes: 15
+        notify:
+          - secondary_oncall
+          - slack_p0
+      - delay_minutes: 30
+        notify:
+          - eng_manager_phone
+          - slack_p0
+
+  P1:
+    ack_timeout_minutes: 60
+    escalation_steps:
+      - delay_minutes: 60
+        action: upgrade_to_P0
+        notify:
+          - secondary_oncall
+          - slack_p1
+
+  P2:
+    ack_timeout_hours: 8
+    unresolved_sla_days: 7
+    escalation_steps:
+      - delay_days: 7
+        action: upgrade_to_P1
+        notify:
+          - platform_team_slack
+
+  P3:
+    unresolved_sla_days: 30
+    escalation_steps:
+      - delay_days: 30
+        notify:
+          - platform_team_slack
+          - dashboard_digest
+
+# ---------------------------------------------------------------------------
+# On-call schedule (loaded dynamically; bot uses this to determine recipients)
+# ---------------------------------------------------------------------------
+oncall_schedule:
+  timezone: "America/Sao_Paulo"
+  rotation:
+    - week_start: "2026-04-13"
+      primary: { name: "Engineer A", phone: "${ENGINEER_A_PHONE}", email: "${ENGINEER_A_EMAIL}", slack: "@engineer-a" }
+      secondary: { name: "Engineer B", phone: "${ENGINEER_B_PHONE}", email: "${ENGINEER_B_EMAIL}", slack: "@engineer-b" }
+    - week_start: "2026-04-20"
+      primary: { name: "Engineer B", phone: "${ENGINEER_B_PHONE}", email: "${ENGINEER_B_EMAIL}", slack: "@engineer-b" }
+      secondary: { name: "Engineer C", phone: "${ENGINEER_C_PHONE}", email: "${ENGINEER_C_EMAIL}", slack: "@engineer-c" }
+    - week_start: "2026-04-27"
+      primary: { name: "Engineer C", phone: "${ENGINEER_C_PHONE}", email: "${ENGINEER_C_EMAIL}", slack: "@engineer-c" }
+      secondary: { name: "Engineer A", phone: "${ENGINEER_A_PHONE}", email: "${ENGINEER_A_EMAIL}", slack: "@engineer-a" }
+  manager:
+    name: "Engineering Manager"
+    phone: "${ENG_MANAGER_PHONE}"
+    email: "${ENG_MANAGER_EMAIL}"
+    slack: "@eng-manager"
+
+# ---------------------------------------------------------------------------
+# Alert deduplication
+# ---------------------------------------------------------------------------
+deduplication:
+  window_minutes: 30           # alerts with same fingerprint within window are grouped
+  flapping_threshold: 3        # if alert fires+resolves >3 times in window → upgrade to P1 min
+  resolution_clear_minutes: 5  # alert must be clear for 5 min before sending resolved notification
+
+# ---------------------------------------------------------------------------
+# Bot server settings
+# ---------------------------------------------------------------------------
+server:
+  host: "0.0.0.0"
+  port: 8080
+  log_level: "INFO"
+
+redis:
+  host: "${REDIS_HOST}"
+  port: 6379
+  db: 0
+  password: "${REDIS_PASSWORD}"
+  key_prefix: "alert_bot:"
+  alert_ttl_days: 30

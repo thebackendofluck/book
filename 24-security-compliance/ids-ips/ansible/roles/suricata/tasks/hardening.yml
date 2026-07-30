@@ -1,0 +1,240 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 24, Security and Compliance.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# roles/suricata/tasks/hardening.yml
+# Security hardening: run as non-root, restrict filesystem permissions,
+# configure AppArmor/SELinux, and enforce fail-open for IPS mode.
+
+# =============================================================================
+# FILESYSTEM PERMISSIONS
+# =============================================================================
+
+- name: "Restrict /etc/suricata ownership and permissions"
+  ansible.builtin.file:
+    path: "{{ suricata_config_dir }}"
+    owner: "{{ suricata_user }}"
+    group: "{{ suricata_group }}"
+    mode: "0750"
+    recurse: true
+  tags: [hardening, permissions]
+
+- name: "Restrict /var/log/suricata ownership and permissions"
+  ansible.builtin.file:
+    path: "{{ suricata_log_dir }}"
+    owner: "{{ suricata_user }}"
+    group: "{{ suricata_group }}"
+    mode: "0750"
+    recurse: true
+  tags: [hardening, permissions]
+
+- name: "Restrict /var/lib/suricata ownership and permissions"
+  ansible.builtin.file:
+    path: "{{ suricata_lib_dir }}"
+    owner: "{{ suricata_user }}"
+    group: "{{ suricata_group }}"
+    mode: "0750"
+    recurse: true
+  tags: [hardening, permissions]
+
+- name: "Ensure Suricata config files have correct permissions"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    owner: "{{ suricata_user }}"
+    group: "{{ suricata_group }}"
+    mode: "0640"
+  loop:
+    - "{{ suricata_config_dir }}/suricata.yaml"
+    - "{{ suricata_config_dir }}/threshold.conf"
+    - "{{ suricata_config_dir }}/update.yaml"
+  failed_when: false
+  tags: [hardening, permissions]
+
+# =============================================================================
+# APPARMOR (Debian/Ubuntu)
+# =============================================================================
+
+- name: "Check if AppArmor is available"
+  ansible.builtin.command: apparmor_status
+  register: apparmor_status
+  changed_when: false
+  failed_when: false
+  tags: [hardening, apparmor]
+
+- name: "Install apparmor-utils if AppArmor is active"
+  ansible.builtin.apt:
+    name: apparmor-utils
+    state: present
+  when:
+    - ansible_os_family == "Debian"
+    - apparmor_status.rc == 0
+  tags: [hardening, apparmor]
+
+- name: "Check if Suricata AppArmor profile exists"
+  ansible.builtin.stat:
+    path: /etc/apparmor.d/usr.bin.suricata
+  register: apparmor_profile
+  tags: [hardening, apparmor]
+
+- name: "Enforce Suricata AppArmor profile"
+  ansible.builtin.command: aa-enforce /etc/apparmor.d/usr.bin.suricata
+  when:
+    - ansible_os_family == "Debian"
+    - apparmor_status.rc == 0
+    - apparmor_profile.stat.exists
+  changed_when: true
+  tags: [hardening, apparmor]
+
+# =============================================================================
+# SELINUX (RHEL / CentOS / Rocky)
+# =============================================================================
+
+- name: "Check SELinux status"
+  ansible.builtin.command: getenforce
+  register: selinux_status
+  changed_when: false
+  failed_when: false
+  when: ansible_os_family == "RedHat"
+  tags: [hardening, selinux]
+
+- name: "Set correct SELinux context on Suricata binary"
+  community.general.sefcontext:
+    target: "/usr/bin/suricata"
+    setype: suricata_exec_t
+    state: present
+  when:
+    - ansible_os_family == "RedHat"
+    - selinux_status.stdout in ['Enforcing', 'Permissive']
+  failed_when: false
+  tags: [hardening, selinux]
+
+- name: "Restore SELinux file contexts on Suricata directories"
+  ansible.builtin.command: >
+    restorecon -Rv {{ item }}
+  loop:
+    - "{{ suricata_config_dir }}"
+    - "{{ suricata_log_dir }}"
+    - "{{ suricata_lib_dir }}"
+    - /usr/bin/suricata
+  when:
+    - ansible_os_family == "RedHat"
+    - selinux_status.stdout in ['Enforcing', 'Permissive']
+  changed_when: true
+  failed_when: false
+  tags: [hardening, selinux]
+
+# =============================================================================
+# FAIL-OPEN FOR IPS MODE
+# =============================================================================
+# When Suricata runs as IPS (NFQ mode), a crash would block all traffic.
+# Using iptables NFQUEUE with --queue-bypass ensures packets pass through
+# if the queue is not being processed (i.e., Suricata is down).
+
+- name: "Configure iptables NFQUEUE fail-open for IPS mode (Debian)"
+  ansible.builtin.iptables:
+    chain: FORWARD
+    jump: NFQUEUE
+    table: filter
+    match: conntrack
+    ctstate: NEW
+    comment: "Suricata IPS inline — fail-open via NFQUEUE"
+  when:
+    - suricata_mode == "ips"
+    - suricata_failopen | bool
+    - ansible_os_family == "Debian"
+  failed_when: false
+  tags: [hardening, ips, failopen]
+
+- name: "Save iptables rules (Debian)"
+  ansible.builtin.command: iptables-save
+  register: iptables_save_out
+  when:
+    - suricata_mode == "ips"
+    - ansible_os_family == "Debian"
+  changed_when: true
+  failed_when: false
+  tags: [hardening, ips, failopen]
+
+- name: "Write iptables rules to persistent file"
+  ansible.builtin.copy:
+    content: "{{ iptables_save_out.stdout }}\n"
+    dest: /etc/iptables/rules.v4
+    mode: "0640"
+  when:
+    - suricata_mode == "ips"
+    - ansible_os_family == "Debian"
+    - iptables_save_out.changed
+  tags: [hardening, ips, failopen]
+
+# =============================================================================
+# DISABLE UNNECESSARY SURICATA FEATURES
+# =============================================================================
+# Features like file extraction and output modules that are not required
+# increase attack surface and resource consumption.
+
+- name: "Verify file extraction is disabled (unless explicitly enabled)"
+  ansible.builtin.command: >
+    grep -c 'file-store' {{ suricata_config_dir }}/suricata.yaml
+  register: file_store_check
+  changed_when: false
+  failed_when: false
+  tags: [hardening, features]
+
+- name: "Warn if file extraction is enabled in a non-lab environment"
+  ansible.builtin.debug:
+    msg: >
+      WARNING: file-store appears to be configured in suricata.yaml.
+      File extraction generates large amounts of data and increases
+      the attack surface. Disable unless specifically required.
+  when:
+    - file_store_check.stdout | int > 0
+    - suricata_eve_files is not defined or not suricata_eve_files
+  tags: [hardening, features]
+
+# =============================================================================
+# SSH BANNER AND MOTD (operator awareness)
+# =============================================================================
+
+- name: "Set MOTD to indicate this host is an IDS/IPS sensor"
+  ansible.builtin.copy:
+    dest: /etc/motd
+    content: |
+      ============================================================
+       {{ organization_name }} — Suricata IDS/IPS Sensor
+       Zone    : {{ sensor_zone | default('unset') }}
+       Mode    : {{ suricata_mode | upper }}
+       Managed : Ansible — do not make manual changes
+      ============================================================
+       AUTHORISED ACCESS ONLY. All activity is monitored and logged.
+      ============================================================
+    mode: "0644"
+  tags: [hardening, motd]
+
+# =============================================================================
+# AUDIT LOGGING
+# =============================================================================
+
+- name: "Add auditd rules for Suricata config file changes"
+  ansible.builtin.copy:
+    dest: /etc/audit/rules.d/suricata.rules
+    content: |
+      # Suricata audit rules — managed by Ansible
+      -w {{ suricata_config_dir }}/suricata.yaml -p wa -k suricata_config
+      -w {{ suricata_rules_dir }} -p wa -k suricata_rules
+      -w /usr/bin/suricata -p x -k suricata_exec
+    mode: "0640"
+  failed_when: false
+  tags: [hardening, audit]
+
+- name: "Reload auditd rules if auditd is running"
+  ansible.builtin.command: augenrules --load
+  failed_when: false
+  changed_when: true
+  tags: [hardening, audit]

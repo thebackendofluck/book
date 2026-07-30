@@ -1,0 +1,154 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 27c, Migrating a Single-Jurisdiction Casino Platform to Hub & Spo.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# DEMO CAVEAT: this Secret's value is committed to the chapter repo in
+# plaintext so a reader can `kubectl apply -f k8s/` without a secrets
+# backend. That is acceptable for a throwaway kind/minikube reference
+# cluster and nowhere else. In production, generate this Secret out-of-band
+# (External Secrets Operator, the Vault Agent injector, or sealed-secrets)
+# so the password never lands in git; the Deployments below only need the
+# Secret's *name* and key, not its content.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: hub-postgres-credentials
+  namespace: hub
+type: Opaque
+stringData:
+  password: hubpass
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hub-postgres-init
+  namespace: hub
+data:
+  01-schema.sql: |
+    CREATE TABLE IF NOT EXISTS global_players (
+      global_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      created_at timestamptz NOT NULL DEFAULT now(),
+      exclusion_status text NOT NULL DEFAULT 'active'
+        CHECK (exclusion_status IN ('active','local_excluded','globally_excluded'))
+    );
+    CREATE TABLE IF NOT EXISTS jurisdiction_accounts (
+      jurisdiction text NOT NULL,
+      local_player_id uuid NOT NULL,
+      global_id uuid NOT NULL REFERENCES global_players(global_id),
+      created_at timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY (jurisdiction, local_player_id)
+    );
+    CREATE TABLE IF NOT EXISTS exclusion_records (
+      id bigserial PRIMARY KEY,
+      global_id uuid NOT NULL REFERENCES global_players(global_id),
+      scope text NOT NULL CHECK (scope IN ('local','global')),
+      jurisdiction text,
+      reason text,
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS mailer_opt_in (
+      global_id uuid NOT NULL REFERENCES global_players(global_id),
+      jurisdiction text NOT NULL,
+      category text NOT NULL CHECK (category IN ('transactional','newsletter','marketing')),
+      granted boolean NOT NULL,
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY (global_id, jurisdiction, category)
+    );
+    CREATE TABLE IF NOT EXISTS mailer_sent (
+      id bigserial PRIMARY KEY,
+      global_id uuid NOT NULL,
+      jurisdiction text NOT NULL,
+      template text NOT NULL,
+      rendered_body text,
+      sent_at timestamptz NOT NULL DEFAULT now()
+    );
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hub-postgres-data
+  namespace: hub
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hub-postgres
+  namespace: hub
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app: hub-postgres}
+  template:
+    metadata:
+      labels: {app: hub-postgres}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: postgres
+          image: postgres:18-alpine
+          env:
+            - {name: POSTGRES_DB, value: hub}
+            - {name: POSTGRES_USER, value: hub}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: hub-postgres-credentials, key: password}
+            - {name: PGDATA, value: /var/lib/postgresql/data/pgdata}
+          ports:
+            - {containerPort: 5432, name: postgres}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          resources:
+            requests: {memory: 128Mi, cpu: 50m}
+            limits: {memory: 512Mi, cpu: 500m}
+          volumeMounts:
+            - {name: data, mountPath: /var/lib/postgresql/data}
+            - {name: init, mountPath: /docker-entrypoint-initdb.d}
+            - {name: run, mountPath: /var/run/postgresql}
+            - {name: tmp, mountPath: /tmp}
+          readinessProbe:
+            exec: {command: [pg_isready, -U, hub, -d, hub]}
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: data
+          persistentVolumeClaim: {claimName: hub-postgres-data}
+        - name: init
+          configMap: {name: hub-postgres-init}
+        - name: run
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hub-postgres
+  namespace: hub
+spec:
+  type: ClusterIP
+  selector: {app: hub-postgres}
+  ports:
+    - {port: 5432, targetPort: 5432, name: postgres}

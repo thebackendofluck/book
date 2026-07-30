@@ -1,0 +1,89 @@
+{
+  "Comment": "DR failover: promote DR region to primary after confirming primary region failure",
+  "Changes": [
+    {
+      "Action": "UPSERT",
+      "ResourceRecordSet": {
+        "Name": "api.acmetocasino.com",
+        "Type": "A",
+        "SetIdentifier": "primary-failover",
+        "Failover": "PRIMARY",
+        "TTL": 30,
+        "ResourceRecords": [
+          { "Value": "10.0.1.100" }
+        ],
+        "HealthCheckId": "health-check-primary-api"
+      }
+    },
+    {
+      "Action": "UPSERT",
+      "ResourceRecordSet": {
+        "Name": "api.acmetocasino.com",
+        "Type": "A",
+        "SetIdentifier": "dr-failover",
+        "Failover": "SECONDARY",
+        "TTL": 30,
+        "ResourceRecords": [
+          { "Value": "10.1.1.100" }
+        ],
+        "HealthCheckId": "health-check-dr-api"
+      }
+    },
+    {
+      "Action": "UPSERT",
+      "ResourceRecordSet": {
+        "Name": "wallet.acmetocasino.com",
+        "Type": "A",
+        "SetIdentifier": "primary-failover",
+        "Failover": "PRIMARY",
+        "TTL": 30,
+        "ResourceRecords": [
+          { "Value": "10.0.1.101" }
+        ],
+        "HealthCheckId": "health-check-primary-wallet"
+      }
+    },
+    {
+      "Action": "UPSERT",
+      "ResourceRecordSet": {
+        "Name": "wallet.acmetocasino.com",
+        "Type": "A",
+        "SetIdentifier": "dr-failover",
+        "Failover": "SECONDARY",
+        "TTL": 30,
+        "ResourceRecords": [
+          { "Value": "10.1.1.101" }
+        ],
+        "HealthCheckId": "health-check-dr-wallet"
+      }
+    },
+    {
+      "Action": "UPSERT",
+      "ResourceRecordSet": {
+        "Name": "games.acmetocasino.com",
+        "Type": "A",
+        "SetIdentifier": "primary-failover",
+        "Failover": "PRIMARY",
+        "TTL": 30,
+        "ResourceRecords": [
+          { "Value": "10.0.1.102" }
+        ],
+        "HealthCheckId": "health-check-primary-games"
+      }
+    },
+    {
+      "Action": "UPSERT",
+      "ResourceRecordSet": {
+        "Name": "games.acmetocasino.com",
+        "Type": "A",
+        "SetIdentifier": "dr-failover",
+        "Failover": "SECONDARY",
+        "TTL": 30,
+        "ResourceRecords": [
+          { "Value": "10.1.1.102" }
+        ],
+        "HealthCheckId": "health-check-dr-games"
+      }
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+# Core web framework
+fastapi==0.136.1
+uvicorn[standard]==0.29.0
+pydantic==2.13.4
+
+# Async HTTP client (Cloudflare API, PagerDuty, ipinfo.io)
+aiohttp>=3.13.5
+
+# Redis async client
+redis[hiredis]==5.0.4
+
+# AWS SDK
+boto3==1.34.100
+botocore==1.43.8
+
+# SSH for on-premises automation
+asyncssh==2.23.0
+
+# Metrics / observability
+prometheus-client==0.25.0
+
+# Kubernetes (optional — used by autoscaler K8sAdapter via kubectl subprocess;
+# install the Python client if you prefer in-cluster API access)
+# kubernetes==29.0.0
+
+# Utilities
+python-dotenv==1.2.2
+
+# Development / testing
+pytest==9.0.3
+pytest-asyncio==1.3.0

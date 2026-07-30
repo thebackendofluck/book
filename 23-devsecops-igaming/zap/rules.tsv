@@ -1,0 +1,125 @@
+# OWASP ZAP Security Rules Configuration
+# Custom rules for gambling/financial application security testing
+
+# Rule ID	Rule Name	Status	Strength	Alert Threshold	Description
+
+# Authentication & Session Management
+40012	Session Management	IGNORE	MEDIUM	MEDIUM	Skip session management tests for stateless APIs
+40013	Session Fixation	IGNORE	MEDIUM	MEDIUM	Not applicable for JWT-based authentication
+40014	Persistent Session	IGNORE	MEDIUM	MEDIUM	Stateless architecture doesn't use persistent sessions
+
+# Input Validation - Enhanced for Financial Applications
+10001	Database Error	PASS	HIGH	HIGH	Critical for financial data protection
+10002	Private IP Disclosure	PASS	HIGH	HIGH	Prevent internal network exposure
+10003	Session ID in URL	PASS	HIGH	HIGH	Prevent session hijacking in gambling apps
+10010	Cookie No HttpOnly	PASS	HIGH	HIGH	Essential for session security
+10011	Cookie Without Secure Flag	PASS	HIGH	HIGH	Required for HTTPS-only applications
+10012	Password Autocomplete	PASS	MEDIUM	MEDIUM	Balance security with user experience
+10015	Incomplete or No Cache-control	PASS	MEDIUM	MEDIUM	Important for shared gambling terminals
+10016	Web Browser XSS Protection	PASS	HIGH	HIGH	Critical for preventing XSS in web apps
+10017	Cross Domain JavaScript	PASS	HIGH	HIGH	Prevent data leakage between domains
+10018	SQL Injection	PASS	HIGH	HIGH	Critical for financial databases
+10019	SQL Injection - MySQL	PASS	HIGH	HIGH	Database-specific injection protection
+10020	SQL Injection - Hypersonic SQL	PASS	HIGH	HIGH	Database-specific injection protection
+10021	SQL Injection - Oracle	PASS	HIGH	HIGH	Database-specific injection protection
+10022	SQL Injection - PostgreSQL	PASS	HIGH	HIGH	Database-specific injection protection
+10023	Possible Username Enumeration	PASS	MEDIUM	MEDIUM	Prevent user enumeration attacks
+10024	SQL Injection - SQLite	PASS	HIGH	HIGH	Database-specific injection protection
+10025	SQL Injection - MsSQL	PASS	HIGH	HIGH	Database-specific injection protection
+10026	SQL Injection - MongoDB	PASS	HIGH	HIGH	NoSQL injection protection
+10027	SQL Injection - MariaDB	PASS	HIGH	HIGH	Database-specific injection protection
+10028	SQL Injection - Cassandra	PASS	HIGH	HIGH	NoSQL injection protection
+10029	Trace.axd Information Leak	PASS	HIGH	HIGH	Prevent information disclosure
+10030	Directory Browsing	PASS	HIGH	HIGH	Prevent directory traversal attacks
+10031	User Controllable HTML Element Attribute (Potential XSS)	PASS	HIGH	HIGH	XSS prevention
+10032	Viewstate Without Mac Signature	PASS	HIGH	HIGH	ASP.NET specific security
+10033	Directory Browsing - Apache	PASS	HIGH	HIGH	Apache-specific directory protection
+10034	Directory Browsing - IIS	PASS	HIGH	HIGH	IIS-specific directory protection
+10035	HTTP to HTTPS Insecure Transition	PASS	HIGH	HIGH	Enforce HTTPS for financial data
+10036	Server Leaks Information via "X-Powered-By" HTTP Header	PASS	MEDIUM	MEDIUM	Reduce server fingerprinting
+10037	Server Leaks Version Information via "Server" HTTP Header	PASS	MEDIUM	MEDIUM	Reduce server fingerprinting
+10038	Content Security Policy (CSP) Header Not Set	PASS	HIGH	HIGH	Critical for XSS prevention
+10039	X-Content-Type-Options Header Missing	PASS	HIGH	HIGH	Prevent MIME type sniffing
+10040	Secure Pages Include Mixed Content	PASS	HIGH	HIGH	Enforce HTTPS consistency
+10041	HTTP Only Site	PASS	HIGH	HIGH	HTTPS enforcement for financial apps
+10042	HTTPS Content Available via HTTP	PASS	HIGH	HIGH	Prevent insecure access
+10043	Transport Layer Protection (HTTPS) Not Enabled	PASS	HIGH	HIGH	Mandatory for financial applications
+10044	Big Redirect Detected (Potential Sensitive Information Leak)	PASS	MEDIUM	MEDIUM	Prevent redirect data leakage
+10045	Weak Authentication Method	PASS	HIGH	HIGH	Strong authentication for gambling apps
+10046	Insecure Component	PASS	HIGH	HIGH	Component security validation
+10047	HTTPS to HTTP Insecure Transition in Form Post	PASS	HIGH	HIGH	Secure form submissions
+10048	Remote Code Execution	PASS	HIGH	HIGH	Critical for application security
+10049	Content Cacheable	PASS	MEDIUM	MEDIUM	Proper cache control for sensitive data
+10050	Retrieved from Cache	PASS	MEDIUM	MEDIUM	Cache validation for financial data
+10051	Relative Path Confusion	PASS	HIGH	HIGH	Path traversal protection
+10052	X-ChromeLogger-Data (XCOLD) Header Information Leak	PASS	HIGH	HIGH	Prevent debug information leakage
+10053	Apache Range Header DoS	PASS	HIGH	HIGH	DoS protection for Apache servers
+10054	Cookie Without SameSite Attribute	PASS	HIGH	HIGH	CSRF protection for gambling apps
+10055	CSP Scanner	PASS	HIGH	HIGH	Content Security Policy validation
+10056	X-Debug-Token Information Leak	PASS	HIGH	HIGH	Prevent debug token exposure
+10057	Username Hash Found	PASS	MEDIUM	MEDIUM	Credential protection
+10058	GET for POST	PASS	MEDIUM	MEDIUM	HTTP method validation
+10059	Http Parameter Pollution (Client Side)	PASS	HIGH	HIGH	Parameter pollution protection
+10060	Http Parameter Pollution (Server Side)	PASS	HIGH	HIGH	Server-side parameter protection
+10061	X-AspNet-Version Header Information Leak	PASS	MEDIUM	MEDIUM	Reduce server fingerprinting
+10062	PII Scanner	PASS	HIGH	HIGH	Personally Identifiable Information protection
+10063	Timestamp Disclosure	PASS	MEDIUM	MEDIUM	Prevent timestamp-based attacks
+10064	NoSQL Injection	PASS	HIGH	HIGH	NoSQL database protection
+10070	Retire.js	PASS	HIGH	HIGH	JavaScript library vulnerability scanning
+10094	Base64 Disclosure	PASS	MEDIUM	MEDIUM	Base64 encoded data protection
+10095	Backup File Disclosure	PASS	HIGH	HIGH	Prevent backup file exposure
+10096	.htaccess Information Leak	PASS	HIGH	HIGH	Apache configuration protection
+10097	Hash Disclosure	PASS	MEDIUM	MEDIUM	Hash algorithm disclosure protection
+10098	Cross Origin Resource Sharing (CORS) Arduous Policy	PASS	HIGH	HIGH	CORS policy validation for APIs
+10099	Cross Origin Resource Sharing (CORS) Policy	PASS	HIGH	HIGH	CORS configuration security
+10103	Image Location Scanner	PASS	MEDIUM	MEDIUM	Image source validation
+10104	Image Location Scanner - Passive	PASS	MEDIUM	MEDIUM	Passive image location scanning
+10105	Weak Cryptographic Hash	PASS	HIGH	HIGH	Cryptographic hash strength validation
+10106	Authentication Credentials in URL	PASS	HIGH	HIGH	Prevent credential exposure in URLs
+10107	Modern Web Application	PASS	MEDIUM	MEDIUM	Modern application security validation
+10108	Reverse Tabnabbing	PASS	HIGH	HIGH	Tabnabbing attack prevention
+10109	Apache Log4j2 Remote Code Execution (CVE-2021-44228)	PASS	CRITICAL	CRITICAL	Log4j vulnerability protection
+10110	Dangerous JS Functions	PASS	HIGH	HIGH	Dangerous JavaScript function detection
+10111	CSP Scanner - Wildcard Directive	PASS	HIGH	HIGH	CSP wildcard directive validation
+10112	CSP Scanner - X-Content-Security-Policy	PASS	HIGH	HIGH	Legacy CSP header validation
+10113	CSP Scanner - X-WebKit-CSP	PASS	HIGH	HIGH	WebKit CSP header validation
+10114	CSP Scanner - Content-Security-Policy Report Only	PASS	HIGH	HIGH	CSP report-only mode validation
+
+# API Security - Specific to Financial/Gambling Applications
+90001	Insecure API Authentication	PASS	HIGH	HIGH	API authentication security
+90002	API Rate Limiting Missing	PASS	MEDIUM	MEDIUM	Rate limiting for gambling APIs
+90003	API Version Disclosure	PASS	LOW	LOW	API version information control
+90004	Excessive Data Exposure	PASS	HIGH	HIGH	Prevent data overexposure in APIs
+90005	Mass Assignment	PASS	HIGH	HIGH	Prevent unauthorized data modification
+90006	API Injection	PASS	HIGH	HIGH	API injection attack protection
+90007	Broken Object Level Authorization	PASS	HIGH	HIGH	Object-level authorization validation
+90008	Broken Function Level Authorization	PASS	HIGH	HIGH	Function-level authorization validation
+90009	API Improper Assets Management	PASS	MEDIUM	MEDIUM	API asset management security
+90010	Insufficient Logging & Monitoring	PASS	HIGH	HIGH	Security logging for financial transactions
+90011	Business Logic Vulnerabilities	PASS	HIGH	HIGH	Business logic security validation
+90012	Unsafe API Consumption	PASS	HIGH	HIGH	Third-party API security validation
+
+# Financial Application Specific Rules
+80001	Payment Data Exposure	PASS	CRITICAL	CRITICAL	Payment card data protection
+80002	Banking Information Leak	PASS	CRITICAL	CRITICAL	Banking data protection
+80003	Gambling Transaction Security	PASS	HIGH	HIGH	Gambling transaction validation
+80004	Player Data Protection	PASS	HIGH	HIGH	Player personal information protection
+80005	Regulatory Compliance Check	PASS	HIGH	HIGH	Gambling regulatory requirements
+80006	Anti-Money Laundering (AML)	PASS	HIGH	HIGH	AML compliance validation
+80007	Know Your Customer (KYC)	PASS	HIGH	HIGH	KYC data protection
+80008	Responsible Gaming Controls	PASS	MEDIUM	MEDIUM	Responsible gaming security measures
+80009	Multi-Jurisdiction Compliance	PASS	HIGH	HIGH	Multi-jurisdiction regulatory compliance
+80010	Cryptocurrency Security	PASS	HIGH	HIGH	Cryptocurrency transaction security
+
+# Rules to Ignore for Specific Scenarios
+# These are disabled based on common gambling/financial application patterns
+10115	CSP Scanner - Unsafe Inline	IGNORE	MEDIUM	MEDIUM	May be needed for legacy gambling applications
+10116	CSP Scanner - Unsafe Eval	IGNORE	MEDIUM	MEDIUM	May be needed for dynamic content in gambling apps
+10117	CSP Scanner - Wildcard Source	IGNORE	MEDIUM	MEDIUM	May be needed for CDN integration
+10118	CSP Scanner - Deprecated Directive	IGNORE	LOW	LOW	Legacy directive support for older browsers
+
+# Performance and Operational Considerations
+10200	Large Response Size	IGNORE	LOW	LOW	Large responses may be normal for financial reports
+10201	Slow API Response	IGNORE	LOW	LOW	Complex financial calculations may take time
+10202	High Memory Usage	IGNORE	LOW	LOW	Memory usage varies by application load
+10203	Database Connection Pool	IGNORE	LOW	LOW	Connection pooling is application-specific

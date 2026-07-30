@@ -1,0 +1,100 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 27, Data Residency and Backup/Recovery.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# ============================================================================
+# AcmeToCasino — PostgreSQL 16 with Transparent Data Encryption
+# ============================================================================
+#
+# Deploys PostgreSQL 16 with pgcrypto column-level encryption, SSL
+# connections, and automated key rotation.  Uses HSM-backed keys for
+# the TDE master key and pgcrypto helper functions (encrypt_pii,
+# decrypt_pii) for PCI-DSS 3.4 compliant PAN protection.
+#
+# Usage:
+#   ansible-playbook -i inventory/hosts.yml playbook-postgresql-tde.yml
+#
+#   # Dry-run
+#   ansible-playbook -i inventory/hosts.yml playbook-postgresql-tde.yml --check --diff
+#
+#   # Primary only
+#   ansible-playbook -i inventory/hosts.yml playbook-postgresql-tde.yml --limit pg-tde-01
+# ============================================================================
+
+- name: Deploy PostgreSQL 16 with TDE and pgcrypto
+  hosts: postgresql_tde
+  become: true
+  gather_facts: true
+
+  vars:
+    pg_version: "16"
+    pg_conf_dir: "/etc/postgresql/{{ pg_version }}/main"
+    pg_data_dir: "/var/lib/postgresql/{{ pg_version }}/main"
+    pg_ssl_cert: "{{ ssl_cert_path }}/server.crt"
+    pg_ssl_key: "{{ ssl_key_path }}/server.key"
+    pg_ssl_ca: "{{ ssl_cert_path }}/ca.crt"
+    pg_encryption_schema: crypto
+    pg_casino_db: acmetocasino
+    pg_casino_user: casino_app
+    key_rotation_cron_hour: "3"
+    key_rotation_cron_minute: "0"
+    key_rotation_cron_weekday: "0"
+
+  pre_tasks:
+    - name: Verify SSH connectivity
+      ansible.builtin.ping:
+
+    - name: Verify minimum resources
+      ansible.builtin.assert:
+        that:
+          - ansible_memtotal_mb >= 3500
+          - ansible_processor_vcpus >= 2
+        fail_msg: >
+          PostgreSQL TDE requires at least 4GB RAM and 2 CPU cores.
+          Found {{ ansible_memtotal_mb }}MB RAM and {{ ansible_processor_vcpus }} vCPUs.
+        success_msg: "Resource check passed: {{ ansible_memtotal_mb }}MB RAM, {{ ansible_processor_vcpus }} vCPUs"
+
+    - name: Verify AES-NI support
+      ansible.builtin.shell: grep -c aes /proc/cpuinfo
+      register: aesni_check
+      changed_when: false
+      failed_when: false
+
+    - name: Warn if AES-NI not available
+      ansible.builtin.debug:
+        msg: >
+          WARNING: AES-NI not detected.  TDE performance will degrade 10-20%.
+          All Intel CPUs since 2010 and AMD CPUs since 2011 support AES-NI.
+      when: aesni_check.stdout | int == 0
+
+    - name: Record deployment start time
+      ansible.builtin.set_fact:
+        deploy_start: "{{ ansible_date_time.iso8601 }}"
+
+  roles:
+    - role: postgresql-tde
+      tags: [postgresql, tde, encryption]
+
+  post_tasks:
+    - name: Display deployment summary
+      ansible.builtin.debug:
+        msg: |
+          PostgreSQL TDE deployment complete
+          Host: {{ inventory_hostname }} ({{ ansible_host }})
+          Role: {{ server_role }}
+          PostgreSQL: {{ pg_version }}
+          Data dir: {{ pg_data_dir }}
+          SSL: enabled ({{ pg_ssl_mode }})
+          pgcrypto: enabled
+          Key rotation: weekly (Sunday {{ key_rotation_cron_hour }}:{{ key_rotation_cron_minute }})
+          HSM connector: {{ hsm_connector_url }}
+          TDE key ID: {{ tde_key_id }}
+          Started: {{ deploy_start }}
+          Finished: {{ ansible_date_time.iso8601 }}

@@ -1,0 +1,120 @@
+# =============================================================================
+# Sanitized Access Log Samples — iGaming Platform Incident Investigation
+# =============================================================================
+#
+# These log snippets are derived from real production incidents at an online
+# gambling platform. All identifying information has been sanitized:
+#   - IPs replaced with RFC 5737 documentation ranges
+#   - Domains replaced with example.com
+#   - Server names replaced with generic identifiers
+#   - Customer IDs and tokens replaced with placeholder values
+#   - Timestamps preserved to show real attack timing patterns
+#
+# The logs illustrate three distinct incident types that gambling platforms
+# commonly face: path traversal attacks, ModSecurity WAF events, and
+# suspicious API access patterns.
+# =============================================================================
+
+
+# ---------------------------------------------------------------------------
+# INCIDENT 1: Path Traversal / Shell Injection Attempts
+# ---------------------------------------------------------------------------
+# These entries show an attacker probing for CVE-2021-41773 (Apache path
+# traversal). Note the same source IP hitting multiple vectors within minutes.
+# In a gambling platform, this targets the web tier sitting in front of
+# game provider APIs and payment endpoints.
+
+[12/Oct/2021:06:00:55 +0100] [core:error] [pid 127033] [client 192.0.2.45:59070] AH00126: Invalid URI in request 'bin/sh' 'POST /cgi-bin/.%2e/.%2e/.%2e/.%2e/bin/sh HTTP/1.1'
+[12/Oct/2021:09:39:19 +0100] [:error] [pid 86288] [client 192.0.2.45:60254] script '/var/www/html/index.php' not found or unable to stat
+[12/Oct/2021:09:39:20 +0100] [core:error] [pid 86678] [client 192.0.2.45:52518] AH00126: Invalid URI in request 'bin/sh' 'POST /cgi-bin/.%2e/.%2e/.%2e/.%2e/bin/sh HTTP/1.1'
+[12/Oct/2021:07:04:24 +0100] [:error] [pid 20647] [client 203.0.113.22:40576] script '/var/www/html/login.php' not found or unable to stat
+
+# ANALYSIS: The path traversal pattern (.%2e = URL-encoded "..") attempts to
+# escape the web root and execute /bin/sh. The attacker also probes for PHP
+# files, suggesting automated scanning. The 3.5-hour gap between attempts from
+# the same IP indicates either slow-scan evasion or a rotating botnet.
+
+
+# ---------------------------------------------------------------------------
+# INCIDENT 2: ModSecurity WAF Blocking Suspicious API Calls
+# ---------------------------------------------------------------------------
+# ModSecurity caught partial request body reads on gambling platform API
+# endpoints. These indicate clients sending malformed or intentionally
+# truncated requests to player-facing services.
+
+[12/Oct/2021:04:19:14 +0100] [:error] [pid 87118] [client 198.51.100.33] ModSecurity: Error reading request body: Connection reset by peer [hostname "platform.example.com"] [uri "/platform/usergateway/getbalance"] [unique_id "YWT@sZQsvd097tLS5YnwWwAAAGY"]
+[12/Oct/2021:04:47:49 +0100] [:error] [pid 98347] [client 198.51.100.77] ModSecurity: Error reading request body: Partial results are valid but processing is incomplete [hostname "platform.example.com"] [uri "/platform/usergateway/deposit-advisory-check"] [unique_id "YWUFZaLxvuhk2ogvV2PapAAAAFk"]
+[12/Oct/2021:08:37:13 +0100] [:error] [pid 60691] [client 203.0.113.88] ModSecurity: Error reading request body: Partial results are valid but processing is incomplete [hostname "platform.example.com"] [uri "/platform/usergateway/id-number/format"] [unique_id "YWU7KQ6ybjOClft7mDLKTQAAABs"]
+
+# ANALYSIS: Three different endpoints targeted: balance checks, deposit
+# advisory, and ID number formatting. In a gambling context, these are
+# high-value reconnaissance targets -- an attacker probing player financial
+# APIs to understand the request/response format before attempting fraud.
+# The "Connection reset by peer" suggests the client deliberately dropped
+# the connection after sending a partial payload.
+
+
+# ---------------------------------------------------------------------------
+# INCIDENT 3: Backend Proxy Errors — Cascading AJP Failures
+# ---------------------------------------------------------------------------
+# These show the Apache front-end losing connectivity to backend Tomcat
+# instances via AJP (Apache JServ Protocol). In a gambling platform under
+# load or under attack, this pattern often precedes a service outage.
+
+[12/Oct/2021:06:32:22 +0100] [proxy_ajp:error] [pid 8531] (70014)End of file found: AH01030: ajp_ilink_receive() can't receive header
+[12/Oct/2021:06:32:22 +0100] [proxy_ajp:error] [pid 8531] [client 198.51.100.12:48802] AH00992: ajp_read_header: ajp_ilink_receive failed
+[12/Oct/2021:06:32:22 +0100] [proxy_ajp:error] [pid 8531] (120006)APR does not understand this error code: [client 198.51.100.12:48802] AH00878: read response failed from 127.0.0.1:8009 (localhost)
+[12/Oct/2021:08:51:54 +0100] [proxy_ajp:error] [pid 66270] (70014)End of file found: AH01030: ajp_ilink_receive() can't receive header
+[12/Oct/2021:08:51:54 +0100] [proxy_ajp:error] [pid 66270] [client 203.0.113.55:57638] AH00992: ajp_read_header: ajp_ilink_receive failed
+[12/Oct/2021:08:51:54 +0100] [proxy_ajp:error] [pid 66270] (120006)APR does not understand this error code: [client 203.0.113.55:57638] AH00878: read response failed from 127.0.0.1:8009 (localhost)
+[12/Oct/2021:09:35:02 +0100] [proxy_ajp:error] [pid 85542] (70014)End of file found: AH01030: ajp_ilink_receive() can't receive header
+[12/Oct/2021:09:35:02 +0100] [proxy_ajp:error] [pid 85542] [client 192.0.2.101:47378] AH00992: ajp_read_header: ajp_ilink_receive failed
+[12/Oct/2021:09:35:02 +0100] [proxy_ajp:error] [pid 85542] (120006)APR does not understand this error code: [client 192.0.2.101:47378] AH00878: read response failed from 127.0.0.1:8009 (localhost)
+
+# ANALYSIS: The AJP proxy errors come in triplets (header receive failure,
+# read failure, APR error) — this is the standard Apache error cascade when
+# the backend Tomcat JVM is either crashed, hung on GC, or overwhelmed.
+# In a gambling platform context, this pattern during business hours means
+# players cannot place bets, check balances, or make withdrawals. Each
+# minute of AJP failure translates directly to revenue loss. The multiple
+# source IPs suggest these are legitimate player requests being dropped,
+# not an attack — the Tomcat backend is the root cause.
+
+
+# ---------------------------------------------------------------------------
+# INCIDENT 4: Authorization Bypass Attempt via Referer Injection
+# ---------------------------------------------------------------------------
+# A client was denied access to a player login endpoint because the referer
+# pointed to an external gambling site — potential credential stuffing or
+# cross-site request forgery.
+
+[12/Oct/2021:12:02:07 +0100] [authz_core:error] [pid 19690] [client 203.0.113.201:14385] AH01630: client denied by server configuration: proxy:ajp://localhost:8009/platform/usergateway/userlogin, referer: https://www.example-casino.com/en/account/log-in
+
+# ANALYSIS: The referer header shows an external gambling site's login page
+# as the origin for a request to our player API. This is either a
+# misconfigured integration partner or (more likely) a credential stuffing
+# attack where stolen credentials from one platform are being tested against
+# ours. The server correctly blocked the request based on origin validation.
+
+
+# ---------------------------------------------------------------------------
+# INCIDENT 5: SSL/TLS Access Patterns — Rapid-Fire API Abuse
+# ---------------------------------------------------------------------------
+# SSL access log showing high-frequency POST requests from a single IP,
+# typical of API abuse or automated bonus exploitation bots.
+
+[12/Oct/2021:04:27:17 +0100] 192.0.2.150 TLSv1.2 ECDHE-RSA-AES256-GCM-SHA384 "POST /notify/gameround HTTP/1.1" - 200
+[12/Oct/2021:04:27:17 +0100] 192.0.2.150 TLSv1.2 ECDHE-RSA-AES256-GCM-SHA384 "POST /notify/gameround HTTP/1.1" - 200
+[12/Oct/2021:04:27:18 +0100] 192.0.2.150 TLSv1.2 ECDHE-RSA-AES256-GCM-SHA384 "POST /notify/gameround HTTP/1.1" - 200
+[12/Oct/2021:04:27:18 +0100] 192.0.2.150 TLSv1.2 ECDHE-RSA-AES256-GCM-SHA384 "POST /notify/gameround HTTP/1.1" - 200
+[12/Oct/2021:04:27:19 +0100] 192.0.2.150 TLSv1.2 ECDHE-RSA-AES256-GCM-SHA384 "POST /notify/gameround HTTP/1.1" - 200
+[12/Oct/2021:04:27:19 +0100] 192.0.2.150 TLSv1.2 ECDHE-RSA-AES256-GCM-SHA384 "POST /notify/gameround HTTP/1.1" - 200
+[12/Oct/2021:04:27:20 +0100] 192.0.2.150 TLSv1.2 ECDHE-RSA-AES256-GCM-SHA384 "POST /notify/gameround HTTP/1.1" - 200
+
+# ANALYSIS: 7 requests in 3 seconds to the same game notification endpoint.
+# At 4:27 AM, legitimate player activity is low. This pattern suggests either
+# a game provider integration health check (benign) or an automated tool
+# replaying game rounds to exploit a timing vulnerability in the settlement
+# process. The TLS cipher suite is strong (AES-256-GCM) so this is not a
+# downgrade attack. Investigation should focus on the game session data
+# associated with these requests.

@@ -1,0 +1,86 @@
+{
+  "$schema": "./license-policy-schema.json",
+  "name": "iGaming Allowed Licenses",
+  "description": "Licenses approved for use in iGaming operations",
+  "version": "1.0.0",
+  "last_updated": "2025-01-01",
+  "licenses": [
+    {
+      "spdx_id": "MIT",
+      "name": "MIT License",
+      "reason": "Permissive license with minimal restrictions",
+      "approved_for": ["production", "development", "testing"],
+      "notes": "Ideal for commercial use"
+    },
+    {
+      "spdx_id": "Apache-2.0",
+      "name": "Apache License 2.0",
+      "reason": "Permissive with patent protection",
+      "approved_for": ["production", "development", "testing"],
+      "notes": "Includes explicit patent grant"
+    },
+    {
+      "spdx_id": "BSD-2-Clause",
+      "name": "BSD 2-Clause License",
+      "reason": "Simple permissive license",
+      "approved_for": ["production", "development", "testing"],
+      "notes": "Also known as Simplified BSD"
+    },
+    {
+      "spdx_id": "BSD-3-Clause",
+      "name": "BSD 3-Clause License",
+      "reason": "Permissive with non-endorsement clause",
+      "approved_for": ["production", "development", "testing"],
+      "notes": "Also known as New BSD"
+    },
+    {
+      "spdx_id": "ISC",
+      "name": "ISC License",
+      "reason": "Functionally equivalent to MIT",
+      "approved_for": ["production", "development", "testing"],
+      "notes": "Common in npm packages"
+    },
+    {
+      "spdx_id": "CC0-1.0",
+      "name": "Creative Commons Zero v1.0",
+      "reason": "Public domain dedication",
+      "approved_for": ["production", "development", "testing"],
+      "notes": "No restrictions"
+    },
+    {
+      "spdx_id": "Unlicense",
+      "name": "The Unlicense",
+      "reason": "Public domain equivalent",
+      "approved_for": ["production", "development", "testing"],
+      "notes": "No restrictions"
+    },
+    {
+      "spdx_id": "0BSD",
+      "name": "Zero-Clause BSD",
+      "reason": "Most permissive BSD variant",
+      "approved_for": ["production", "development", "testing"],
+      "notes": "No attribution required"
+    },
+    {
+      "spdx_id": "Python-2.0",
+      "name": "Python License 2.0",
+      "reason": "Permissive license for Python",
+      "approved_for": ["production", "development", "testing"],
+      "notes": "Python standard library"
+    },
+    {
+      "spdx_id": "Zlib",
+      "name": "zlib License",
+      "reason": "Very permissive",
+      "approved_for": ["production", "development", "testing"],
+      "notes": "Common in graphics libraries"
+    },
+    {
+      "spdx_id": "BlueOak-1.0.0",
+      "name": "Blue Oak Model License 1.0.0",
+      "reason": "Modern permissive license",
+      "approved_for": ["production", "development", "testing"],
+      "notes": "Clear and readable terms"
+    }
+  ]
+}

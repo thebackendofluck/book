@@ -1,0 +1,47 @@
+# Companion code for "The Backend of Luck" - Chapter 19, Anti-Fraud System Deep Dive.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fraud-detection-config
+  namespace: fraud-detection
+  labels:
+    app.kubernetes.io/part-of: fraud-detection
+data:
+  ENVIRONMENT: "production"
+  LOG_LEVEL: "INFO"
+
+  # Kafka (Strimzi bootstrap service)
+  KAFKA_BROKERS: "fraud-kafka-kafka-bootstrap.fraud-detection.svc.cluster.local:9092"
+  KAFKA_BOOTSTRAP_SERVERS: "fraud-kafka-kafka-bootstrap.fraud-detection.svc.cluster.local:9092"
+  SCHEMA_REGISTRY_URL: "http://schema-registry.fraud-detection.svc.cluster.local:8081"
+
+  # Redis
+  REDIS_HOST: "redis-master.fraud-detection.svc.cluster.local"
+  REDIS_PORT: "6379"
+  REDIS_URL: "redis://redis-master.fraud-detection.svc.cluster.local:6379"
+
+  # Postgres (TimescaleDB)
+  POSTGRES_HOST: "postgres.fraud-detection.svc.cluster.local"
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: "fraud_detection"
+
+  # Elasticsearch (ECK)
+  ELASTICSEARCH_HOSTS: "http://fraud-es-es-http.fraud-detection.svc.cluster.local:9200"
+
+  # SMTP (MailHog as dev relay; replace for prod)
+  SMTP_SERVER: "mailhog.fraud-detection.svc.cluster.local"
+  SMTP_PORT: "1025"
+
+  # Performance knobs
+  POLARS_MAX_THREADS: "4"
+  MAX_WORKERS: "4"
+  MODEL_PATH: "/app/models"

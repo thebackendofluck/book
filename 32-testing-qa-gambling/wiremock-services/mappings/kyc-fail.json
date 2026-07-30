@@ -1,0 +1,21 @@
+{
+    "uuid": "25d5ca70-96d0-4cf5-9625-d5caf7a8487e",
+    "persistent": true,
+    "request": {
+        "urlPath": "/online/authentication_kyc_url.asp",
+        "method": "POST",
+        "bodyPatterns": [
+            {
+                "matches": ".*address=kyc_fail_\\d{1,4}.*"
+            }
+        ]
+    },
+    "response": {
+        "status": 200,
+        "bodyFileName": "kyc-fail-template.txt",
+        "headers": {
+            "Content-Type": "text/html"
+        }
+    },
+    "priority": 1
+}

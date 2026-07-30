@@ -1,0 +1,678 @@
+{
+  "__inputs": [
+    {
+      "name": "DS_PROMETHEUS",
+      "label": "Prometheus",
+      "description": "RTC service Prometheus data source",
+      "type": "datasource",
+      "pluginId": "prometheus",
+      "pluginName": "Prometheus"
+    }
+  ],
+  "annotations": {
+    "list": [
+      {
+        "datasource": "${DS_PROMETHEUS}",
+        "enable": true,
+        "expr": "ALERTS{alertname=~\"RTC.*\", alertstate=\"firing\"}",
+        "name": "RTC Alerts",
+        "tagKeys": "alertname,severity",
+        "type": "tags"
+      }
+    ]
+  },
+  "description": "Comprehensive monitoring for the RTC Timestamp Service - GLI-11 compliant drift, battery, temperature, and consensus metrics",
+  "editable": true,
+  "gnetId": null,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "title": "GLI-11 Compliance Overview",
+      "type": "row"
+    },
+    {
+      "datasource": "${DS_PROMETHEUS}",
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 25 },
+              { "color": "red", "value": 50 }
+            ]
+          },
+          "unit": "ms",
+          "min": 0,
+          "max": 100
+        }
+      },
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 1 },
+      "id": 1,
+      "options": {
+        "orientation": "auto",
+        "showThresholdLabels": true,
+        "showThresholdMarkers": true,
+        "text": {}
+      },
+      "title": "Current Drift (GLI-11: <50ms)",
+      "description": "Current clock drift between RTC hardware and system clock. GLI-11 Section 5.4 requires drift below 100ms; our operational threshold is 50ms.",
+      "type": "gauge",
+      "targets": [
+        {
+          "expr": "abs(rtc_drift_milliseconds)",
+          "legendFormat": "Drift",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": "${DS_PROMETHEUS}",
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 0.8 },
+              { "color": "green", "value": 0.95 }
+            ]
+          },
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1
+        }
+      },
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 1 },
+      "id": 2,
+      "title": "Consensus Confidence",
+      "description": "BFT consensus confidence score. Values above 95% indicate strong agreement among RTC modules.",
+      "type": "gauge",
+      "targets": [
+        {
+          "expr": "rtc_consensus_confidence",
+          "legendFormat": "Confidence",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": "${DS_PROMETHEUS}",
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 2 },
+              { "color": "green", "value": 3 }
+            ]
+          },
+          "min": 0,
+          "max": 8
+        }
+      },
+      "gridPos": { "h": 6, "w": 4, "x": 12, "y": 1 },
+      "id": 3,
+      "title": "Healthy Modules",
+      "description": "Number of RTC modules participating in consensus. Minimum 3 required for quorum (BFT n>=3f+1).",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "rtc_consensus_nodes_healthy",
+          "legendFormat": "Healthy",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": "${DS_PROMETHEUS}",
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.001 },
+              { "color": "red", "value": 0.01 }
+            ]
+          },
+          "unit": "percentunit"
+        }
+      },
+      "gridPos": { "h": 6, "w": 4, "x": 16, "y": 1 },
+      "id": 4,
+      "title": "Error Rate",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "rate(rtc_errors_total[5m]) / rate(rtc_requests_total[5m])",
+          "legendFormat": "Error Rate",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": "${DS_PROMETHEUS}",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        }
+      },
+      "gridPos": { "h": 6, "w": 4, "x": 20, "y": 1 },
+      "id": 5,
+      "title": "Request Rate",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "rate(rtc_requests_total[5m])",
+          "legendFormat": "Req/s",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 7 },
+      "id": 101,
+      "title": "Drift & Temperature Monitoring",
+      "type": "row"
+    },
+    {
+      "datasource": "${DS_PROMETHEUS}",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "pointSize": 5,
+            "showPoints": "auto",
+            "axisLabel": "Drift (ms)",
+            "thresholdsStyle": {
+              "mode": "line+area"
+            }
+          },
+          "unit": "ms",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "transparent", "value": null },
+              { "color": "red", "value": 50 }
+            ]
+          }
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "id": 10,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": ["mean", "max", "last"]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "title": "Clock Drift Over Time",
+      "description": "Timestamp drift per RTC module. Red threshold line at 50ms (GLI-11 operational limit). Investigate any module consistently approaching the threshold.",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "rtc_drift_milliseconds",
+          "legendFormat": "{{instance}} - {{module_id}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": "${DS_PROMETHEUS}",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "thresholdsStyle": {
+              "mode": "line+area"
+            }
+          },
+          "unit": "celsius",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "transparent", "value": null },
+              { "color": "yellow", "value": 60 },
+              { "color": "red", "value": 70 }
+            ]
+          }
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "id": 11,
+      "title": "RTC Module Temperature",
+      "description": "Temperature readings from DS3231 on-chip sensor. DS3231 accuracy degrades above 40C; 70C is the critical threshold. Temperature-compensated crystal oscillator (TCXO) should maintain +/-2ppm from -40C to +85C.",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "rtc_temperature_celsius",
+          "legendFormat": "{{module_id}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": "${DS_PROMETHEUS}",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 20,
+            "thresholdsStyle": {
+              "mode": "line"
+            }
+          },
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 20 },
+              { "color": "red", "value": 5 }
+            ]
+          },
+          "min": 0,
+          "max": 100
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "id": 12,
+      "title": "Battery Level",
+      "description": "Battery voltage mapped to percentage. DS3231 requires 2.3V minimum for timekeeping; replace at 20%. Battery life expectancy: 5-10 years with CR2032.",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "rtc_battery_level",
+          "legendFormat": "{{module_id}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": "${DS_PROMETHEUS}",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10
+          },
+          "unit": "percentunit"
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "id": 13,
+      "title": "Consensus Confidence Over Time",
+      "description": "BFT consensus confidence score over time. Dips below 80% indicate module failures or Byzantine faults. Persistent low confidence requires immediate investigation.",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "rtc_consensus_confidence",
+          "legendFormat": "Confidence",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 24 },
+      "id": 102,
+      "title": "API Performance",
+      "type": "row"
+    },
+    {
+      "datasource": "${DS_PROMETHEUS}",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10
+          },
+          "unit": "s"
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 25 },
+      "id": 20,
+      "title": "Request Latency (P50, P95, P99)",
+      "description": "API request latency percentiles. GLI-11 timestamp operations should complete under 2ms (P99).",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, rate(rtc_request_duration_seconds_bucket[5m]))",
+          "legendFormat": "P50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, rate(rtc_request_duration_seconds_bucket[5m]))",
+          "legendFormat": "P95",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, rate(rtc_request_duration_seconds_bucket[5m]))",
+          "legendFormat": "P99",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "datasource": "${DS_PROMETHEUS}",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "stacking": { "mode": "normal" }
+          },
+          "unit": "reqps"
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 25 },
+      "id": 21,
+      "title": "Request Rate by Status",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "rate(rtc_requests_total{status=\"200\"}[5m])",
+          "legendFormat": "2xx Success",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(rtc_requests_total{status=~\"4..\"}[5m])",
+          "legendFormat": "4xx Client Error",
+          "refId": "B"
+        },
+        {
+          "expr": "rate(rtc_requests_total{status=~\"5..\"}[5m])",
+          "legendFormat": "5xx Server Error",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 33 },
+      "id": 103,
+      "title": "Cache & Database",
+      "type": "row"
+    },
+    {
+      "datasource": "${DS_PROMETHEUS}",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10
+          },
+          "unit": "percentunit"
+        }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 34 },
+      "id": 30,
+      "title": "Cache Hit Rate",
+      "description": "Redis cache hit rate. Target: >90%. Low hit rates increase load on hardware RTC modules.",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "rtc_cache_hit_rate",
+          "legendFormat": "Hit Rate",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": "${DS_PROMETHEUS}",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10
+          },
+          "unit": "s"
+        }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 34 },
+      "id": 31,
+      "title": "Cache Latency (P99)",
+      "description": "Redis cache operation latency. Target: <1ms for sub-millisecond timestamp resolution.",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, rate(rtc_cache_operation_duration_seconds_bucket[5m]))",
+          "legendFormat": "P99 Cache Latency",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": "${DS_PROMETHEUS}",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 34 },
+      "id": 32,
+      "title": "Database Connection Pool",
+      "description": "PostgreSQL connection pool utilization. Alert if available connections drop below 5.",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "rtc_db_pool_available_connections",
+          "legendFormat": "Available",
+          "refId": "A"
+        },
+        {
+          "expr": "rtc_db_pool_active_connections",
+          "legendFormat": "Active",
+          "refId": "B"
+        },
+        {
+          "expr": "rtc_db_pool_idle_connections",
+          "legendFormat": "Idle",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 42 },
+      "id": 104,
+      "title": "Security & Compliance",
+      "type": "row"
+    },
+    {
+      "datasource": "${DS_PROMETHEUS}",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 80
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 43 },
+      "id": 40,
+      "title": "Signature Verification Failures",
+      "description": "Rate of HMAC-SHA256 signature verification failures. Any non-zero rate warrants immediate security investigation.",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "rate(rtc_signature_verification_failures_total[5m]) * 60",
+          "legendFormat": "Failures/min",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": "${DS_PROMETHEUS}",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 5184000 },
+              { "color": "red", "value": 7776000 }
+            ]
+          }
+        }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 43 },
+      "id": 41,
+      "title": "Time Since Key Rotation",
+      "description": "Time since last signing key rotation. PCI-DSS requires rotation every 90 days (7,776,000 seconds). Warning at 60 days.",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "time() - rtc_signing_key_last_rotation_timestamp",
+          "legendFormat": "Age",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": "${DS_PROMETHEUS}",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 80
+          }
+        }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 43 },
+      "id": 42,
+      "title": "Byzantine Fault Detections (24h)",
+      "description": "Count of Byzantine fault detections in the last 24 hours. Each event means an RTC module deviated beyond the threshold and was excluded from consensus.",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "increase(rtc_byzantine_detections_total[1h])",
+          "legendFormat": "Byzantine Events",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 51 },
+      "id": 105,
+      "title": "Failover & Time Sources",
+      "type": "row"
+    },
+    {
+      "datasource": "${DS_PROMETHEUS}",
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "options": { "1": { "text": "RTC Consensus", "color": "green" } }, "type": "value" },
+            { "options": { "2": { "text": "GPS", "color": "blue" } }, "type": "value" },
+            { "options": { "3": { "text": "NTP Validated", "color": "yellow" } }, "type": "value" },
+            { "options": { "4": { "text": "Degraded RTC", "color": "red" } }, "type": "value" }
+          ]
+        }
+      },
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 52 },
+      "id": 50,
+      "title": "Active Time Source",
+      "description": "Current active time source in the failover cascade. 1=RTC Consensus (normal), 2=GPS, 3=NTP, 4=Degraded RTC (emergency).",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "rtc_active_time_source",
+          "legendFormat": "Source",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": "${DS_PROMETHEUS}",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        }
+      },
+      "gridPos": { "h": 8, "w": 16, "x": 8, "y": 52 },
+      "id": 51,
+      "title": "Failover Events Over Time",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "increase(rtc_failover_events_total[1h])",
+          "legendFormat": "{{previous_source}} -> {{new_source}}",
+          "refId": "A"
+        }
+      ]
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": ["rtc", "gli-11", "casino", "compliance"],
+  "templating": {
+    "list": [
+      {
+        "allValue": null,
+        "datasource": "${DS_PROMETHEUS}",
+        "definition": "label_values(rtc_drift_milliseconds, instance)",
+        "name": "instance",
+        "query": "label_values(rtc_drift_milliseconds, instance)",
+        "refresh": 2,
+        "type": "query",
+        "includeAll": true,
+        "multi": true
+      },
+      {
+        "datasource": "${DS_PROMETHEUS}",
+        "definition": "label_values(rtc_drift_milliseconds, module_id)",
+        "name": "module",
+        "query": "label_values(rtc_drift_milliseconds, module_id)",
+        "refresh": 2,
+        "type": "query",
+        "includeAll": true,
+        "multi": true
+      }
+    ]
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": ["5s", "10s", "30s", "1m", "5m"]
+  },
+  "timezone": "utc",
+  "title": "RTC Timestamp Service - GLI-11 Compliance Dashboard",
+  "uid": "rtc-gli11-dashboard",
+  "version": 1
+}

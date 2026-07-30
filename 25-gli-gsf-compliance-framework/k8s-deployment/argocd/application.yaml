@@ -1,0 +1,59 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 25, GLI-GSF Compliance Framework.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# ArgoCD repository registration — uses the same root token credential as
+# casino-gitops-repo. Project root/gli-compliance was created in GitLab via
+# API and seeded with the k8s/ manifests directory.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: gli-compliance-repo
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+type: Opaque
+stringData:
+  type: git
+  url: http://git.internal.example:8929/gli/gli-compliance.git
+  # username + password are populated at apply time from a secret-fetch step
+  # against `argocd:casino-gitops-repo` (same GitLab root token).
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: gli-compliance
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: http://git.internal.example:8929/gli/gli-compliance.git
+    targetRevision: main
+    path: k8s
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: gli-compliance
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false   # we keep namespace ownership manual; ns already exists
+      - PruneLast=true
+      - ApplyOutOfSyncOnly=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m
+  revisionHistoryLimit: 10

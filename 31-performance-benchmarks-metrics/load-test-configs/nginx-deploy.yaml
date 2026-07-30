@@ -1,0 +1,128 @@
+# Companion code for "The Backend of Luck" - Chapter 31, Performance Benchmarks and Metrics.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: nginx-tls
+    team: platform
+    version: 1.31.0
+  name: nginx-tls
+  namespace: casino-prod
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 12
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: nginx-tls
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: nginx-tls
+        team: platform
+        version: 1.31.0
+    spec:
+      containers:
+      - image: nginxinc/nginx-unprivileged:1.31-alpine
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /health
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+        name: nginx
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        - containerPort: 8443
+          name: https
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /health
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          successThreshold: 1
+          timeoutSeconds: 1
+        resources:
+          limits:
+            cpu: "2"
+            memory: 2Gi
+          requests:
+            cpu: 500m
+            memory: 1Gi
+        securityContext:
+          allowPrivilegeEscalation: false
+          privileged: false
+          capabilities:
+            drop: ["ALL"]
+          readOnlyRootFilesystem: true
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /etc/nginx/nginx.conf
+          name: nginx-config
+          subPath: nginx.conf
+        - mountPath: /etc/nginx/ssl
+          name: ssl-certs
+          readOnly: true
+        - mountPath: /var/cache/nginx
+          name: nginx-cache
+        - mountPath: /tmp
+          name: nginx-tmp
+        - mountPath: /var/run
+          name: nginx-run
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        fsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - configMap:
+          defaultMode: 420
+          name: nginx-config
+        name: nginx-config
+      - name: ssl-certs
+        secret:
+          defaultMode: 420
+          items:
+          - key: tls.crt
+            path: server.crt
+          - key: tls.key
+            path: server.key
+          secretName: casino-tls
+      - name: nginx-cache
+        emptyDir: {}
+      - name: nginx-tmp
+        emptyDir: {}
+      - name: nginx-run
+        emptyDir: {}

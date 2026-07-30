@@ -1,0 +1,19 @@
+name = "egambling-exclusion"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+routes = [
+  { pattern = "exclusion.cloud-acmetocasino.com/*", zone_name = "cloud-acmetocasino.com" }
+]
+
+[vars]
+ENVIRONMENT = "production"
+
+[[kv_namespaces]]
+binding = "EXCLUSION_CACHE"
+id = "f87a395b4315470ba373a7c6bbc15113"
+
+[observability]
+enabled = true
+head_sampling_rate = 1

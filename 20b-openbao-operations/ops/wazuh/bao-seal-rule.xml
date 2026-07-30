@@ -1,0 +1,58 @@
+<!--
+  bao-seal-rule.xml
+  Wazuh local rules for the OpenBao seal-status probe.
+
+  Drop into /var/ossec/etc/rules/ on the Wazuh manager and restart wazuh-manager.
+  Decoder: built-in syslog decoder picks up the `bao-seal-monitor` tag
+  emitted by monitor-seal-status.sh via logger(1).
+
+  Rule IDs use the 100600-100699 reserved range for OpenBao monitoring;
+  adjust to your local convention if 100600 is already taken.
+-->
+<group name="openbao,seal,custom,">
+
+  <!-- Anchor rule - matches anything from the bao-seal-monitor tag.
+       Severity 0 by itself; child rules raise it. -->
+  <rule id="100600" level="0">
+    <decoded_as>syslog</decoded_as>
+    <match>bao-seal-monitor</match>
+    <description>OpenBao seal-status probe message</description>
+  </rule>
+
+  <!-- P1: cluster is sealed. This is an outage-equivalent event. Page on-call. -->
+  <rule id="100601" level="14">
+    <if_sid>100600</if_sid>
+    <match>SEALED</match>
+    <description>OpenBao cluster is SEALED -- outage-equivalent, page on-call</description>
+    <group>pci_dss_10.6.1,gdpr_IV_35.7.d,hipaa_164.312.b,nist_800_53_AU.6,</group>
+    <options>alert_by_email</options>
+  </rule>
+
+  <!-- P2: probe could not reach the cluster (network/TLS/parse failure).
+       Less severe than confirmed sealed, but still actionable. -->
+  <rule id="100602" level="10">
+    <if_sid>100600</if_sid>
+    <match>UNREACHABLE</match>
+    <description>OpenBao seal-status probe could not reach the cluster</description>
+    <group>pci_dss_10.6.1,nist_800_53_AU.6,</group>
+  </rule>
+
+  <!-- Healthy heartbeat - level 0 keeps it out of alerts but lets the
+       Wazuh dashboard show probe liveness. -->
+  <rule id="100603" level="0">
+    <if_sid>100600</if_sid>
+    <match>HEALTHY</match>
+    <description>OpenBao seal-status probe healthy heartbeat</description>
+  </rule>
+
+  <!-- Suppress flapping: only alert if SEALED or UNREACHABLE persists for
+       2 events in 90 seconds (i.e. two consecutive 30s probes). This kills
+       single-shot transient hiccups without delaying real outages. -->
+  <rule id="100604" level="14" frequency="2" timeframe="90">
+    <if_matched_sid>100601</if_matched_sid>
+    <description>OpenBao SEALED for 2+ consecutive probes -- confirmed outage</description>
+    <group>pci_dss_10.6.1,</group>
+    <options>alert_by_email</options>
+  </rule>
+
+</group>

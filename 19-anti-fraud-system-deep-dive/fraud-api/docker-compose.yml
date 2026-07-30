@@ -1,0 +1,320 @@
+# Companion code for "The Backend of Luck" - Chapter 19, Anti-Fraud System Deep Dive.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+version: "3.9"
+
+# AcmeToCasino Fraud Detection API — Local Development Stack
+#
+# Brings up the full infrastructure stack described in Chapter 19:
+#   - Elasticsearch 8.x    — fraud event indexing + alert storage
+#   - Kibana               — fraud dashboards and alert review UI
+#   - Redis                — real-time scoring cache (player history)
+#   - Kafka + Zookeeper    — event bus (wallet → fraud pipeline)
+#   - Kafka UI             — topic inspection and consumer group monitoring
+#   - Fraud API            — FastAPI fraud detection service (this repo)
+#
+# Usage:
+#   docker compose up -d                   # start all services
+#   docker compose logs -f fraud-api       # tail the fraud service
+#   docker compose down -v                 # stop and remove volumes
+#
+# Kibana fraud dashboard: http://localhost:5601
+# Fraud API docs:         http://localhost:8080/docs
+# Kafka UI:               http://localhost:8085
+#
+# Security note: this configuration uses no TLS and default/simple passwords.
+# It is intended for local development only.  Production deployments must use
+# TLS everywhere and secrets management (Vault / AWS Secrets Manager).
+#
+# PCI DSS Req. 6.3: Development environments must not use production data.
+# Never connect this stack to production Kafka or Elasticsearch clusters.
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # Zookeeper — required by Kafka broker
+  # ---------------------------------------------------------------------------
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.7.1
+    container_name: fraud-zookeeper
+    ports:
+      - "127.0.0.1:2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      ZOOKEEPER_LOG4J_ROOT_LOGLEVEL: WARN
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_logs:/var/lib/zookeeper/log
+    healthcheck:
+      test: ["CMD-SHELL", "echo ruok | nc -w 2 localhost 2181 | grep imok"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+
+  # ---------------------------------------------------------------------------
+  # Kafka — primary event bus
+  # Topics created automatically: wallet.events, game.events,
+  #   user.lifecycle, fraud.alerts, fraud.account.actions
+  # ---------------------------------------------------------------------------
+  kafka:
+    image: confluentinc/cp-kafka:7.7.1
+    container_name: fraud-kafka
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:9092:9092"    # external (host) access
+      - "127.0.0.1:29092:29092"  # internal (container-to-container) access
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_LOG_RETENTION_HOURS: 168        # 7 days — audit trail requirement
+      KAFKA_LOG4J_ROOT_LOGLEVEL: WARN
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions.sh --bootstrap-server localhost:9092 2>/dev/null | grep -q '9092'"]
+      interval: 30s
+      timeout: 15s
+      retries: 5
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+          cpus: "1.0"
+
+  # ---------------------------------------------------------------------------
+  # Kafka topic initialisation — creates required topics on first startup
+  # ---------------------------------------------------------------------------
+  kafka-init:
+    image: confluentinc/cp-kafka:7.7.1
+    container_name: fraud-kafka-init
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command: |
+      "
+      kafka-topics.sh --bootstrap-server kafka:29092 --create --if-not-exists --topic wallet.events       --replication-factor 1 --partitions 6
+      kafka-topics.sh --bootstrap-server kafka:29092 --create --if-not-exists --topic game.events         --replication-factor 1 --partitions 6
+      kafka-topics.sh --bootstrap-server kafka:29092 --create --if-not-exists --topic user.lifecycle      --replication-factor 1 --partitions 3
+      kafka-topics.sh --bootstrap-server kafka:29092 --create --if-not-exists --topic fraud.alerts        --replication-factor 1 --partitions 3
+      kafka-topics.sh --bootstrap-server kafka:29092 --create --if-not-exists --topic fraud.account.actions --replication-factor 1 --partitions 3
+      echo 'Topics created.'
+      "
+    restart: "no"
+
+  # ---------------------------------------------------------------------------
+  # Kafka UI — topic browser and consumer group monitor (dev only)
+  # Access: http://localhost:8085
+  # ---------------------------------------------------------------------------
+  kafka-ui:
+    image: provectuslabs/kafka-ui:v0.7.2
+    container_name: fraud-kafka-ui
+    depends_on:
+      - kafka
+    ports:
+      - "127.0.0.1:8085:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: fraud-local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+
+  # ---------------------------------------------------------------------------
+  # Redis — real-time scoring cache
+  # Stores player velocity counters, device maps, and historical aggregates
+  # used by the rules engine (see app/kafka_consumer.py: PlayerHistoryLoader)
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7.4.1-alpine
+    container_name: fraud-redis
+    ports:
+      - "127.0.0.1:6379:6379"
+    command: >
+      redis-server
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --save 60 1
+      --appendonly yes
+      --loglevel warning
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 640M
+          cpus: "0.5"
+
+  # ---------------------------------------------------------------------------
+  # Elasticsearch 8.x — fraud event and alert index
+  # Single-node configuration for local development.
+  # Production: 3-node cluster with cross-cluster replication to DR site.
+  #
+  # PCI DSS Req. 10.5: Protect audit logs — data is written to a named
+  # Docker volume, not bind-mounted, to prevent accidental host modification.
+  # ---------------------------------------------------------------------------
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.0
+    container_name: fraud-elasticsearch
+    ports:
+      - "127.0.0.1:9200:9200"
+      - "127.0.0.1:9300:9300"
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false       # disabled for local dev only
+      - xpack.security.http.ssl.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - bootstrap.memory_lock=true
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -qv '\"status\":\"red\"'"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "1.0"
+
+  # ---------------------------------------------------------------------------
+  # Kibana — fraud dashboard and alert review UI
+  # Access: http://localhost:5601
+  #
+  # Pre-built index patterns:
+  #   fraud-events-*   — event timeline and risk heatmap
+  #   fraud-alerts-*   — analyst alert queue (open alerts sorted by risk_score)
+  # ---------------------------------------------------------------------------
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.17.0
+    container_name: fraud-kibana
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:5601:5601"
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+      XPACK_SECURITY_ENABLED: "false"
+      XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY: "fraud_api_dev_32_char_key_here!!"
+      SERVER_NAME: fraud-kibana
+      LOGGING_LEVEL: warn
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:5601/api/status | grep -q '\"level\":\"available\"'"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 90s
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "1.0"
+
+  # ---------------------------------------------------------------------------
+  # Fraud Detection API — FastAPI service (this repo)
+  # Access: http://localhost:8080
+  # API docs: http://localhost:8080/docs
+  # ---------------------------------------------------------------------------
+  fraud-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fraud-api
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+      REDIS_URL: redis://redis:6379/0
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      API_VERSION: "1.0.0"
+      CORS_ORIGINS: "http://localhost:5601,http://localhost:3000"
+      LOG_LEVEL: INFO
+    volumes:
+      - ./app:/app/app:ro    # mount source for live reload in dev
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/fraud/status | grep -q 'status'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+
+volumes:
+  zookeeper_data:
+  zookeeper_logs:
+  kafka_data:
+  redis_data:
+  elasticsearch_data:
+
+networks:
+  default:
+    name: fraud-network
+    driver: bridge

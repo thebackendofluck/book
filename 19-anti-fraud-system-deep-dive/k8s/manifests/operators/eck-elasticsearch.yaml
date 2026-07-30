@@ -1,0 +1,89 @@
+# Companion code for "The Backend of Luck" - Chapter 19, Anti-Fraud System Deep Dive.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# -----------------------------------------------------------------------------
+# ELASTICSEARCH + KIBANA via ECK (Elastic Cloud on Kubernetes)
+# -----------------------------------------------------------------------------
+# Requires: ECK operator installed cluster-wide (apply-all.sh does this).
+# Single-node, security disabled to match current docker-compose behaviour.
+# -----------------------------------------------------------------------------
+apiVersion: elasticsearch.k8s.elastic.co/v1
+kind: Elasticsearch
+metadata:
+  name: fraud-es
+  namespace: fraud-detection
+spec:
+  version: 8.11.0
+  nodeSets:
+    - name: default
+      count: 1
+      config:
+        node.store.allow_mmap: false
+        # Security disabled — matches docker-compose and simplifies SR/Kibana.
+        # For prod-grade hardening, remove this and use ECK's auto-generated TLS.
+        xpack.security.enabled: false
+        xpack.security.http.ssl.enabled: false
+        xpack.security.transport.ssl.enabled: false
+      podTemplate:
+        spec:
+          containers:
+            - name: elasticsearch
+              env:
+                - name: ES_JAVA_OPTS
+                  value: "-Xms1g -Xmx1g"
+              resources:
+                requests:
+                  cpu: "500m"
+                  memory: "2Gi"
+                limits:
+                  cpu: "2"
+                  memory: "4Gi"
+      volumeClaimTemplates:
+        - metadata:
+            name: elasticsearch-data
+          spec:
+            accessModes: ["ReadWriteOnce"]
+            storageClassName: local-path
+            resources:
+              requests:
+                storage: 30Gi
+  http:
+    tls:
+      selfSignedCertificate:
+        disabled: true
+---
+apiVersion: kibana.k8s.elastic.co/v1
+kind: Kibana
+metadata:
+  name: fraud-kibana
+  namespace: fraud-detection
+spec:
+  version: 8.11.0
+  count: 1
+  # Drop elasticsearchRef so ECK does not inject serviceAccountToken — security is off on ES
+  config:
+    elasticsearch.hosts:
+      - "http://fraud-es-es-http.fraud-detection.svc.cluster.local:9200"
+    elasticsearch.ssl.verificationMode: none
+  podTemplate:
+    spec:
+      containers:
+        - name: kibana
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "512Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+  http:
+    tls:
+      selfSignedCertificate:
+        disabled: true

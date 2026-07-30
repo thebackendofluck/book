@@ -1,0 +1,67 @@
+# Companion code for "The Backend of Luck" - Chapter 23b, DevSecOps Pipeline Implementation.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# ---------------------------------------------------------------------------
+# Kong Request Size Limiting Plugin
+#
+# Prevents large-payload attacks (slow-loris variants, oversized JSON bombs,
+# file-upload abuse, and memory exhaustion via the upstream service).
+#
+# Apply via: konghq.com/plugins: request-size-limit-default
+# ---------------------------------------------------------------------------
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: request-size-limit-default
+  namespace: acmetocasino-prod
+  labels:
+    app.kubernetes.io/part-of: casino-security
+spec:
+  plugin: request-size-limiting
+  config:
+    # Default ceiling for all API endpoints: 1 MB
+    # Prevents JSON-bomb attacks and oversized payloads from reaching the app.
+    allowed_payload_size: 1       # unit: megabytes
+    size_unit: megabytes          # explicit (default, but stated for clarity)
+    require_content_length: false # still accept chunked transfers
+
+---
+# Tighter limit for authentication endpoints (login, register, password reset).
+# Credentials should never be large; 16 KB is generous.
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: request-size-limit-auth
+  namespace: acmetocasino-prod
+  labels:
+    app.kubernetes.io/part-of: casino-security
+spec:
+  plugin: request-size-limiting
+  config:
+    allowed_payload_size: 0.016   # ~16 KB
+    size_unit: megabytes
+    require_content_length: false
+
+---
+# Larger limit for file-upload endpoints (e.g., KYC document upload).
+# Max 10 MB; adjust to match the application's documented upload limit.
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: request-size-limit-upload
+  namespace: acmetocasino-prod
+  labels:
+    app.kubernetes.io/part-of: casino-security
+spec:
+  plugin: request-size-limiting
+  config:
+    allowed_payload_size: 10
+    size_unit: megabytes
+    require_content_length: false

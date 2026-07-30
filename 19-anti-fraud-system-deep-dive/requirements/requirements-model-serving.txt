@@ -1,0 +1,31 @@
+# Model Serving Service Requirements
+
+# Core dependencies
+fastapi==0.136.1
+uvicorn[standard]==0.48.0
+pydantic==2.13.4
+
+# Data processing and ML
+numpy==2.4.6
+pandas==3.0.3
+scikit-learn==1.8.0
+xgboost==3.2.0
+
+# MLflow for model management
+mlflow>=3.12.0
+
+# Monitoring and observability
+prometheus-client==0.25.0
+structlog==25.5.0
+
+# Configuration and utilities
+python-dotenv==1.2.2
+pyyaml==6.0.3
+
+# Development and testing
+pytest==9.0.3
+pytest-asyncio==1.3.0
+black>=26.5.1
+isort==8.0.1
+flake8==7.3.0
+mypy==1.20.2

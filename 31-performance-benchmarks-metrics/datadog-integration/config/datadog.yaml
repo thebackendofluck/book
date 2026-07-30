@@ -1,0 +1,121 @@
+# Companion code for "The Backend of Luck" - Chapter 31, Performance Benchmarks and Metrics.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# Datadog Agent Configuration for iGaming Platform
+# This configuration is optimized for high-performance iGaming workloads
+
+# API Key (use environment variable in production)
+api_key: ${DD_API_KEY}
+
+# Datadog site (US: datadoghq.com, EU: datadoghq.eu)
+site: datadoghq.com
+
+# Hostname configuration
+hostname: ${HOSTNAME}
+
+# Global tags applied to all metrics, logs, and traces
+tags:
+  - env:production
+  - service:igaming-platform
+  - team:platform-engineering
+  - region:${AWS_REGION}
+
+# Enable log collection
+logs_enabled: true
+
+# APM Configuration
+apm_config:
+  enabled: true
+  apm_non_local_traffic: true
+  # High sample rate for production gaming traffic
+  max_traces_per_second: 2000
+  env: production
+  # Enable profiling for performance analysis
+  profiling_enabled: true
+  # Error tracking
+  error_tracking_enabled: true
+
+# Process Agent Configuration
+process_config:
+  enabled: "true"
+  container_collection:
+    enabled: true
+  process_collection:
+    enabled: true
+
+# Network Performance Monitoring
+network_config:
+  enabled: true
+  # Enable DNS monitoring
+  enable_dns_stats: true
+  enable_dns_by_querytype: true
+
+# Runtime Security
+runtime_security_config:
+  enabled: true
+  fim_enabled: true
+
+# DogStatsD Configuration (for custom metrics)
+dogstatsd_config:
+  # Enable non-local traffic for container environments
+  dogstatsd_non_local_traffic: true
+  # High buffer size for gaming traffic spikes
+  dogstatsd_queue_size: 8192
+  # Enable origin detection
+  dogstatsd_origin_detection: true
+
+# Log Collection Configuration
+logs_config:
+  # Container log collection
+  container_collect_all: true
+  # Auto-multiline detection
+  auto_multi_line_detection: true
+  # Processing rules
+  processing_rules:
+    - type: exclude_at_match
+      pattern: "health_check"
+    - type: mask_sequences
+      pattern: "password=\\S+"
+      replace_placeholder: "password=[REDACTED]"
+
+# JMX Configuration (for Java services)
+jmx_config:
+  collection_timeout: 60
+  reconnection_timeout: 10
+  reconnection_thread_pool_size: 5
+
+# Container Configuration
+container_config:
+  # Exclude containers
+  container_exclude:
+    - "name:datadog-agent"
+    - "image:gcr.io/datadoghq/agent"
+
+# Proxy Configuration (if needed)
+# proxy:
+#   https: http://proxy.internal:3128
+
+# Cluster Configuration (for Kubernetes)
+cluster_agent:
+  enabled: true
+  cluster_checks:
+    enabled: true
+
+# Security Configuration
+security_config:
+  # Disable command arguments collection for security
+  scrub_args: true
+  # Custom sensitive patterns
+  custom_sensitive_words:
+    - "api_key"
+    - "password"
+    - "secret"
+    - "token"
+    - "credential"

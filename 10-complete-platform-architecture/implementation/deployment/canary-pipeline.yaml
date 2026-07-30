@@ -1,0 +1,558 @@
+# Companion code for "The Backend of Luck" - Chapter 10, Complete Platform Architecture.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# ===========================================================================
+# ArgoCD Canary Deployment Pipeline with Automated Rollback
+# ===========================================================================
+#
+# Chapter 42 - Complete Platform Architecture
+# Progressive traffic shifting: 5% -> 25% -> 50% -> 100%
+#
+# GLI-11 Compliance:
+# - All deployments must be auditable with rollback capability
+# - Game-critical services require additional validation gates
+# - RNG service deployments require post-deploy statistical verification
+# - Payment services require zero-downtime deployment
+#
+# Prerequisites:
+#   - ArgoCD installed in the cluster
+#   - Argo Rollouts controller installed
+#   - Istio service mesh (for traffic splitting)
+#   - Prometheus for canary metrics analysis
+#
+# Usage:
+#   kubectl apply -f canary-pipeline.yaml
+#   kubectl argo rollouts get rollout game-engine -n acme-casino --watch
+#   kubectl argo rollouts promote game-engine -n acme-casino   # Manual promote
+#   kubectl argo rollouts abort game-engine -n acme-casino     # Manual abort
+#
+# ===========================================================================
+
+---
+# ─────────────────────────────────────────────────────────────
+# Namespace
+# ─────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: acme-casino
+  labels:
+    istio-injection: enabled
+    environment: production
+    compliance: gli-11
+
+---
+# ─────────────────────────────────────────────────────────────
+# Game Engine - Canary Rollout (Tier 1: Critical)
+# ─────────────────────────────────────────────────────────────
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: game-engine
+  namespace: acme-casino
+  labels:
+    app: game-engine
+    tier: critical
+    compliance: gli-11
+  annotations:
+    notifications.argoproj.io/subscribe.on-rollout-completed.slack: casino-deployments
+    notifications.argoproj.io/subscribe.on-rollout-aborted.slack: casino-alerts
+    notifications.argoproj.io/subscribe.on-analysis-run-failed.slack: casino-alerts
+spec:
+  replicas: 6
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: game-engine
+  template:
+    metadata:
+      labels:
+        app: game-engine
+        tier: critical
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: game-engine
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: game-engine
+          image: acme-casino/game-engine:1.0.0
+          ports:
+            - containerPort: 8080
+              name: http
+              protocol: TCP
+            - containerPort: 9090
+              name: metrics
+              protocol: TCP
+          env:
+            - name: SERVICE_NAME
+              value: game-engine
+            - name: ENVIRONMENT
+              value: production
+            - name: RNG_SERVICE_URL
+              value: "http://rng-service.acme-casino.svc:8443"
+            - name: KAFKA_BROKERS
+              value: "kafka-0.kafka.acme-casino.svc:9092,kafka-1.kafka.acme-casino.svc:9092,kafka-2.kafka.acme-casino.svc:9092"
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "2000m"
+              memory: "2Gi"
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 5
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 10"]  # Drain connections
+  strategy:
+    canary:
+      # ── Traffic Shifting Steps ──
+      # Progressive rollout with automated analysis at each step
+      steps:
+        # Step 1: 5% traffic - Initial smoke test
+        - setWeight: 5
+        - pause: { duration: 5m }
+        - analysis:
+            templates:
+              - templateName: canary-success-rate
+              - templateName: canary-latency
+              - templateName: game-engine-rng-health
+            args:
+              - name: service-name
+                value: game-engine
+
+        # Step 2: 25% traffic - Extended validation
+        - setWeight: 25
+        - pause: { duration: 10m }
+        - analysis:
+            templates:
+              - templateName: canary-success-rate
+              - templateName: canary-latency
+              - templateName: canary-error-rate
+              - templateName: game-engine-rng-health
+
+        # Step 3: 50% traffic - Half traffic validation
+        - setWeight: 50
+        - pause: { duration: 15m }
+        - analysis:
+            templates:
+              - templateName: canary-success-rate
+              - templateName: canary-latency
+              - templateName: canary-error-rate
+              - templateName: payment-settlement-check
+
+        # Step 4: Manual gate before full rollout (GLI-11 compliance)
+        - pause: {}  # Manual approval required for critical services
+
+        # Step 5: 100% traffic
+        - setWeight: 100
+
+      # ── Traffic Routing (Istio) ──
+      trafficRouting:
+        istio:
+          virtualServices:
+            - name: game-engine-vsvc
+              routes:
+                - primary
+          destinationRule:
+            name: game-engine-destrule
+            canarySubsetName: canary
+            stableSubsetName: stable
+
+      # ── Anti-Affinity ──
+      # Ensure canary and stable pods run on different nodes
+      antiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          weight: 100
+
+      # ── Rollback Configuration ──
+      # Automatic rollback on analysis failure
+      abortScaleDownDelaySeconds: 30
+      dynamicStableScale: true
+      scaleDownDelaySeconds: 30
+
+---
+# ─────────────────────────────────────────────────────────────
+# Payment Service - Canary Rollout (Tier 1: Financial Critical)
+# ─────────────────────────────────────────────────────────────
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: payment-service
+  namespace: acme-casino
+  labels:
+    app: payment-service
+    tier: financial-critical
+spec:
+  replicas: 4
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: payment-service
+  template:
+    metadata:
+      labels:
+        app: payment-service
+        tier: financial-critical
+    spec:
+      containers:
+        - name: payment-service
+          image: acme-casino/payment-service:1.0.0
+          ports:
+            - containerPort: 8080
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "2000m"
+              memory: "2Gi"
+  strategy:
+    canary:
+      steps:
+        # Payment services: more conservative canary
+        - setWeight: 5
+        - pause: { duration: 10m }
+        - analysis:
+            templates:
+              - templateName: canary-success-rate
+              - templateName: payment-settlement-check
+              - templateName: canary-latency
+
+        - setWeight: 25
+        - pause: { duration: 20m }
+        - analysis:
+            templates:
+              - templateName: canary-success-rate
+              - templateName: payment-settlement-check
+              - templateName: canary-error-rate
+              - templateName: payment-reconciliation-check
+
+        - setWeight: 50
+        - pause: { duration: 30m }
+        - analysis:
+            templates:
+              - templateName: canary-success-rate
+              - templateName: payment-settlement-check
+
+        # Mandatory manual approval for payment services
+        - pause: {}
+
+        - setWeight: 100
+      trafficRouting:
+        istio:
+          virtualServices:
+            - name: payment-service-vsvc
+              routes:
+                - primary
+
+---
+# ─────────────────────────────────────────────────────────────
+# Backoffice Service - Canary Rollout (Tier 3: Non-Critical)
+# ─────────────────────────────────────────────────────────────
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: backoffice
+  namespace: acme-casino
+  labels:
+    app: backoffice
+    tier: non-critical
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: backoffice
+  template:
+    metadata:
+      labels:
+        app: backoffice
+    spec:
+      containers:
+        - name: backoffice
+          image: acme-casino/backoffice:1.0.0
+          ports:
+            - containerPort: 3000
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+  strategy:
+    canary:
+      # Backoffice: faster rollout, less conservative
+      steps:
+        - setWeight: 25
+        - pause: { duration: 5m }
+        - analysis:
+            templates:
+              - templateName: canary-success-rate
+
+        - setWeight: 75
+        - pause: { duration: 5m }
+        - analysis:
+            templates:
+              - templateName: canary-success-rate
+
+        - setWeight: 100
+
+---
+# ─────────────────────────────────────────────────────────────
+# Analysis Templates (Canary Health Checks)
+# ─────────────────────────────────────────────────────────────
+
+# Success Rate Analysis
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: canary-success-rate
+  namespace: acme-casino
+spec:
+  args:
+    - name: service-name
+  metrics:
+    - name: success-rate
+      interval: 60s
+      count: 5
+      failureLimit: 1
+      successCondition: result[0] >= 0.99
+      provider:
+        prometheus:
+          address: http://prometheus.monitoring.svc:9090
+          query: |
+            sum(rate(http_requests_total{
+              app="{{args.service-name}}",
+              rollouts_pod_template_hash="{{args.canary-hash}}",
+              status=~"2.."
+            }[5m])) /
+            sum(rate(http_requests_total{
+              app="{{args.service-name}}",
+              rollouts_pod_template_hash="{{args.canary-hash}}"
+            }[5m]))
+
+---
+# Latency Analysis (P99 < 500ms)
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: canary-latency
+  namespace: acme-casino
+spec:
+  args:
+    - name: service-name
+  metrics:
+    - name: p99-latency
+      interval: 60s
+      count: 5
+      failureLimit: 1
+      successCondition: result[0] <= 0.5
+      provider:
+        prometheus:
+          address: http://prometheus.monitoring.svc:9090
+          query: |
+            histogram_quantile(0.99,
+              sum(rate(http_request_duration_seconds_bucket{
+                app="{{args.service-name}}",
+                rollouts_pod_template_hash="{{args.canary-hash}}"
+              }[5m])) by (le)
+            )
+
+---
+# Error Rate Analysis (< 1%)
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: canary-error-rate
+  namespace: acme-casino
+spec:
+  args:
+    - name: service-name
+  metrics:
+    - name: error-rate
+      interval: 60s
+      count: 5
+      failureLimit: 0
+      successCondition: result[0] <= 0.01
+      provider:
+        prometheus:
+          address: http://prometheus.monitoring.svc:9090
+          query: |
+            sum(rate(http_requests_total{
+              app="{{args.service-name}}",
+              rollouts_pod_template_hash="{{args.canary-hash}}",
+              status=~"5.."
+            }[5m])) /
+            sum(rate(http_requests_total{
+              app="{{args.service-name}}",
+              rollouts_pod_template_hash="{{args.canary-hash}}"
+            }[5m]))
+
+---
+# RNG Health Check (GLI-11 specific)
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: game-engine-rng-health
+  namespace: acme-casino
+spec:
+  metrics:
+    - name: rng-healthy
+      interval: 120s
+      count: 3
+      failureLimit: 0
+      successCondition: result[0] == 1
+      provider:
+        prometheus:
+          address: http://prometheus.monitoring.svc:9090
+          query: |
+            rng_service_healthy{namespace="acme-casino"}
+
+---
+# Payment Settlement Verification
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: payment-settlement-check
+  namespace: acme-casino
+spec:
+  metrics:
+    - name: settlement-success
+      interval: 120s
+      count: 3
+      failureLimit: 0
+      successCondition: result[0] >= 0.995
+      provider:
+        prometheus:
+          address: http://prometheus.monitoring.svc:9090
+          query: |
+            sum(rate(payment_settlements_successful_total{
+              namespace="acme-casino"
+            }[10m])) /
+            sum(rate(payment_settlements_total{
+              namespace="acme-casino"
+            }[10m]))
+
+---
+# Payment Reconciliation Check
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: payment-reconciliation-check
+  namespace: acme-casino
+spec:
+  metrics:
+    - name: reconciliation-drift
+      interval: 300s
+      count: 2
+      failureLimit: 0
+      successCondition: result[0] == 0
+      provider:
+        prometheus:
+          address: http://prometheus.monitoring.svc:9090
+          query: |
+            payment_reconciliation_unmatched_transactions{
+              namespace="acme-casino"
+            }
+
+---
+# ─────────────────────────────────────────────────────────────
+# Istio Virtual Service for Traffic Splitting
+# ─────────────────────────────────────────────────────────────
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: game-engine-vsvc
+  namespace: acme-casino
+spec:
+  hosts:
+    - game-engine.acme-casino.svc.cluster.local
+  http:
+    - name: primary
+      route:
+        - destination:
+            host: game-engine
+            subset: stable
+          weight: 100
+        - destination:
+            host: game-engine
+            subset: canary
+          weight: 0
+
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: game-engine-destrule
+  namespace: acme-casino
+spec:
+  host: game-engine
+  subsets:
+    - name: stable
+      labels:
+        app: game-engine
+    - name: canary
+      labels:
+        app: game-engine
+
+---
+# ─────────────────────────────────────────────────────────────
+# ArgoCD Application (GitOps)
+# ─────────────────────────────────────────────────────────────
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: acme-casino-platform
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/manifest-generate-paths: .
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: acme-casino
+  source:
+    repoURL: https://github.com/acme-casino/platform-manifests.git
+    targetRevision: main
+    path: overlays/production
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: acme-casino
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m

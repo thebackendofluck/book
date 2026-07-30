@@ -1,0 +1,29 @@
+# Companion code for "The Backend of Luck" - Chapter 24, Security and Compliance.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+version: "3.8"
+
+services:
+  encryption-monitor:
+    build: .
+    container_name: encryption-monitor
+    network_mode: host          # Required for raw packet capture
+    privileged: true            # Required for libpcap access
+    environment:
+      - MIKROTIK_HOST=${MIKROTIK_HOST:-}
+      - MIKROTIK_USER=${MIKROTIK_USER:-}
+      - MIKROTIK_PASS=${MIKROTIK_PASS:-}
+      - MERAKI_API_KEY=${MERAKI_API_KEY:-}
+      - MERAKI_NETWORK_ID=${MERAKI_NETWORK_ID:-}
+    command: >
+      python monitor.py --interface eth0
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped

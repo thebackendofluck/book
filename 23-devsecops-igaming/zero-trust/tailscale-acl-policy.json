@@ -1,0 +1,166 @@
+{
+  "groups": {
+    "group:engineering":  ["alice@acmetocasino.com", "bob@acmetocasino.com"],
+    "group:operations":   ["carol@acmetocasino.com", "dave@acmetocasino.com"],
+    "group:dba":          ["eve@acmetocasino.com"],
+    "group:support":      ["frank@acmetocasino.com", "grace@acmetocasino.com"],
+    "group:compliance":   ["helen@acmetocasino.com"],
+    "group:executives":   ["ivan@acmetocasino.com", "jane@acmetocasino.com"]
+  },
+
+  "tagOwners": {
+    "tag:api":           ["group:operations"],
+    "tag:database":      ["group:operations", "group:dba"],
+    "tag:monitoring":    ["group:operations"],
+    "tag:backoffice":    ["group:operations"],
+    "tag:production":    ["group:operations"],
+    "tag:staging":       ["group:engineering", "group:operations"],
+    "tag:ci-runner":     ["group:operations"]
+  },
+
+  "acls": [
+    {
+      "action": "accept",
+      "src":    ["group:engineering"],
+      "dst": [
+        "tag:staging:*",
+        "tag:monitoring:80,443,3000,9090",
+        "tag:api:80,443,8000"
+      ]
+    },
+
+    {
+      "action": "accept",
+      "src":    ["group:operations"],
+      "dst": [
+        "tag:api:*",
+        "tag:database:*",
+        "tag:monitoring:*",
+        "tag:backoffice:*",
+        "tag:production:*",
+        "tag:staging:*",
+        "tag:ci-runner:*"
+      ]
+    },
+
+    {
+      "action": "accept",
+      "src":    ["group:dba"],
+      "dst": [
+        "tag:database:5432,22",
+        "tag:monitoring:3000,9090"
+      ]
+    },
+
+    {
+      "action": "accept",
+      "src":    ["group:support"],
+      "dst": [
+        "tag:backoffice:80,443"
+      ]
+    },
+
+    {
+      "action": "accept",
+      "src":    ["group:compliance"],
+      "dst": [
+        "tag:backoffice:80,443",
+        "tag:monitoring:3000,9090,80,443"
+      ]
+    },
+
+    {
+      "action": "accept",
+      "src":    ["group:executives"],
+      "dst": [
+        "tag:backoffice:80,443"
+      ]
+    },
+
+    {
+      "action": "accept",
+      "src":    ["tag:ci-runner"],
+      "dst": [
+        "tag:api:80,443,8000,22",
+        "tag:staging:*"
+      ]
+    },
+
+    {
+      "action": "accept",
+      "src":    ["tag:production"],
+      "dst":    ["tag:production:*"]
+    }
+  ],
+
+  "ssh": [
+    {
+      "action": "accept",
+      "src":    ["group:operations"],
+      "dst":    ["tag:api", "tag:monitoring", "tag:backoffice", "tag:staging"],
+      "users":  ["root", "deploy"]
+    },
+    {
+      "action": "check",
+      "src":    ["group:operations"],
+      "dst":    ["tag:database"],
+      "users":  ["root", "postgres"]
+    },
+
+    {
+      "action": "accept",
+      "src":    ["group:engineering"],
+      "dst":    ["tag:staging"],
+      "users":  ["deploy", "ubuntu"]
+    },
+
+    {
+      "action": "check",
+      "src":    ["group:dba"],
+      "dst":    ["tag:database"],
+      "users":  ["postgres"]
+    }
+  ],
+
+  "autoApprovers": {
+    "routes": {
+      "10.0.2.0/24": ["tag:database"],
+      "10.0.3.0/24": ["tag:monitoring"]
+    }
+  },
+
+  "nodeExpiry": 7776000,
+
+  "tests": [
+    {
+      "src":    "alice@acmetocasino.com",
+      "accept": ["tag:staging:443", "tag:monitoring:3000"],
+      "deny":   ["tag:database:5432"]
+    },
+    {
+      "src":    "eve@acmetocasino.com",
+      "accept": ["tag:database:5432"],
+      "deny":   ["tag:api:80", "tag:backoffice:443"]
+    },
+    {
+      "src":    "frank@acmetocasino.com",
+      "accept": ["tag:backoffice:443"],
+      "deny":   ["tag:database:5432", "tag:api:22", "tag:monitoring:9090"]
+    },
+    {
+      "src":    "helen@acmetocasino.com",
+      "accept": ["tag:backoffice:443", "tag:monitoring:3000"],
+      "deny":   ["tag:database:5432", "tag:api:22"]
+    },
+    {
+      "src":    "ivan@acmetocasino.com",
+      "accept": ["tag:backoffice:443"],
+      "deny":   ["tag:database:5432", "tag:api:22"]
+    },
+    {
+      "src":    "tag:ci-runner",
+      "accept": ["tag:api:22", "tag:staging:443"],
+      "deny":   ["tag:database:5432"]
+    }
+  ]
+}

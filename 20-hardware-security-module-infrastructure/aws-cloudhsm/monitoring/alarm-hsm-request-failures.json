@@ -1,0 +1,26 @@
+{
+  "AlarmName": "cloudhsm-request-failures-high",
+  "AlarmDescription": "CloudHSM PKCS#11 request failures exceeded 10 in a 1-minute window. Possible connectivity issue between OpenBao and the HSM cluster. Check OpenBao logs: journalctl -u openbao",
+  "Namespace": "AWS/CloudHSM",
+  "MetricName": "FailedRequestCount",
+  "Dimensions": [
+    {
+      "Name": "ClusterId",
+      "Value": "${CLUSTER_ID}"
+    }
+  ],
+  "Statistic": "Sum",
+  "Period": 60,
+  "EvaluationPeriods": 3,
+  "DatapointsToAlarm": 2,
+  "Threshold": 10.0,
+  "ComparisonOperator": "GreaterThanThreshold",
+  "TreatMissingData": "notBreaching",
+  "AlarmActions": ["${SNS_TOPIC_ARN}"],
+  "OKActions": ["${SNS_TOPIC_ARN}"],
+  "Tags": [
+    {"Key": "Environment", "Value": "${ENV}"},
+    {"Key": "Compliance", "Value": "pci-dss-4.0.1"},
+    {"Key": "Severity", "Value": "high"}
+  ]
+}

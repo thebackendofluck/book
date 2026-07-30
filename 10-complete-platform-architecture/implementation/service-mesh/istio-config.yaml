@@ -1,0 +1,490 @@
+# Companion code for "The Backend of Luck" - Chapter 10, Complete Platform Architecture.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# Chapter 42 - Complete Platform Architecture
+# Istio Service Mesh Configuration for iGambling Platform
+# Implements: mTLS everywhere, traffic management, fault injection
+#
+# Prerequisites:
+#   istioctl install --set profile=production
+#   kubectl label namespace casino-platform istio-injection=enabled
+#   kubectl label namespace payment-processing istio-injection=enabled
+#   kubectl label namespace player-management istio-injection=enabled
+#   kubectl label namespace game-engine istio-injection=enabled
+#   kubectl label namespace compliance istio-injection=enabled
+#   kubectl label namespace analytics istio-injection=enabled
+#
+# Apply: kubectl apply -f istio-config.yaml
+
+---
+# 1. Strict mTLS across the entire mesh
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: default-mtls
+  namespace: istio-system
+spec:
+  mtls:
+    mode: STRICT
+
+---
+# 2. Per-namespace mTLS - Payment Processing (highest security)
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: payment-mtls
+  namespace: payment-processing
+spec:
+  mtls:
+    mode: STRICT
+  portLevelMtls:
+    8443:
+      mode: STRICT
+
+---
+# 3. Authorization Policy - Only allow known services to call payment API
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: payment-service-authz
+  namespace: payment-processing
+spec:
+  selector:
+    matchLabels:
+      app: payment-gateway
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              - "cluster.local/ns/casino-platform/sa/casino-api"
+              - "cluster.local/ns/player-management/sa/wallet-service"
+              - "cluster.local/ns/game-engine/sa/game-settlement"
+      to:
+        - operation:
+            methods: ["POST", "GET"]
+            paths:
+              - "/api/v1/payments/*"
+              - "/api/v1/withdrawals/*"
+              - "/api/v1/deposits/*"
+
+---
+# 4. Authorization Policy - Game Engine access control
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: game-engine-authz
+  namespace: game-engine
+spec:
+  selector:
+    matchLabels:
+      app: game-engine
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              - "cluster.local/ns/casino-platform/sa/casino-api"
+              - "cluster.local/ns/player-management/sa/session-manager"
+      to:
+        - operation:
+            methods: ["POST", "GET"]
+            paths:
+              - "/api/v1/games/*"
+              - "/api/v1/rounds/*"
+              - "/api/v1/rng/*"
+
+---
+# 5. Authorization Policy - Compliance (read-only from most services)
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: compliance-authz
+  namespace: compliance
+spec:
+  selector:
+    matchLabels:
+      app: compliance-engine
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            namespaces:
+              - "casino-platform"
+              - "payment-processing"
+              - "player-management"
+              - "game-engine"
+      to:
+        - operation:
+            methods: ["POST"]
+            paths:
+              - "/api/v1/events/*"
+              - "/api/v1/reports/*"
+    - from:
+        - source:
+            principals:
+              - "cluster.local/ns/compliance/sa/compliance-admin"
+      to:
+        - operation:
+            methods: ["GET", "POST", "PUT", "DELETE"]
+
+---
+# 6. Deny-all default for payment namespace
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: deny-all-default
+  namespace: payment-processing
+spec:
+  {}
+
+---
+# 7. DestinationRule - Payment Gateway with circuit breaking and TLS
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: payment-gateway-dr
+  namespace: payment-processing
+spec:
+  host: payment-gateway.payment-processing.svc.cluster.local
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 100
+        connectTimeout: 5s
+      http:
+        h2UpgradePolicy: DEFAULT
+        http1MaxPendingRequests: 50
+        http2MaxRequests: 100
+        maxRequestsPerConnection: 10
+        maxRetries: 3
+    outlierDetection:
+      consecutive5xxErrors: 3
+      interval: 10s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
+      minHealthPercent: 70
+    tls:
+      mode: ISTIO_MUTUAL
+  subsets:
+    - name: stable
+      labels:
+        version: stable
+    - name: canary
+      labels:
+        version: canary
+
+---
+# 8. DestinationRule - Game Engine with connection pooling
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: game-engine-dr
+  namespace: game-engine
+spec:
+  host: game-engine.game-engine.svc.cluster.local
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 500
+        connectTimeout: 3s
+      http:
+        http1MaxPendingRequests: 200
+        http2MaxRequests: 500
+        maxRequestsPerConnection: 50
+        maxRetries: 2
+    outlierDetection:
+      consecutive5xxErrors: 5
+      interval: 5s
+      baseEjectionTime: 15s
+      maxEjectionPercent: 30
+    loadBalancer:
+      simple: LEAST_REQUEST
+
+---
+# 9. DestinationRule - Player Management with locality load balancing
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: player-management-dr
+  namespace: player-management
+spec:
+  host: player-service.player-management.svc.cluster.local
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 200
+      http:
+        http1MaxPendingRequests: 100
+        http2MaxRequests: 200
+    outlierDetection:
+      consecutive5xxErrors: 5
+      interval: 10s
+      baseEjectionTime: 30s
+    loadBalancer:
+      localityLbSetting:
+        enabled: true
+        failover:
+          - from: eu-west-1
+            to: eu-central-1
+          - from: eu-central-1
+            to: eu-west-1
+
+---
+# 10. VirtualService - Payment Gateway with retries and timeout
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: payment-gateway-vs
+  namespace: payment-processing
+spec:
+  hosts:
+    - payment-gateway.payment-processing.svc.cluster.local
+  http:
+    - name: "deposit-route"
+      match:
+        - uri:
+            prefix: "/api/v1/deposits"
+      route:
+        - destination:
+            host: payment-gateway.payment-processing.svc.cluster.local
+            subset: stable
+            port:
+              number: 8443
+          weight: 100
+      timeout: 30s
+      retries:
+        attempts: 3
+        perTryTimeout: 10s
+        retryOn: "5xx,reset,connect-failure,retriable-4xx"
+    - name: "withdrawal-route"
+      match:
+        - uri:
+            prefix: "/api/v1/withdrawals"
+      route:
+        - destination:
+            host: payment-gateway.payment-processing.svc.cluster.local
+            subset: stable
+            port:
+              number: 8443
+          weight: 100
+      timeout: 60s
+      retries:
+        attempts: 2
+        perTryTimeout: 25s
+        retryOn: "5xx,reset,connect-failure"
+    - name: "default"
+      route:
+        - destination:
+            host: payment-gateway.payment-processing.svc.cluster.local
+            subset: stable
+          weight: 95
+        - destination:
+            host: payment-gateway.payment-processing.svc.cluster.local
+            subset: canary
+          weight: 5
+
+---
+# 11. VirtualService - Game Engine with traffic splitting for canary
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: game-engine-vs
+  namespace: game-engine
+spec:
+  hosts:
+    - game-engine.game-engine.svc.cluster.local
+  http:
+    - name: "rng-route"
+      match:
+        - uri:
+            prefix: "/api/v1/rng"
+      route:
+        - destination:
+            host: game-engine.game-engine.svc.cluster.local
+            subset: stable
+          weight: 100
+      timeout: 5s
+      retries:
+        attempts: 1
+        perTryTimeout: 3s
+    - name: "game-round-route"
+      match:
+        - uri:
+            prefix: "/api/v1/rounds"
+      route:
+        - destination:
+            host: game-engine.game-engine.svc.cluster.local
+            subset: stable
+          weight: 100
+      timeout: 10s
+    - name: "default"
+      route:
+        - destination:
+            host: game-engine.game-engine.svc.cluster.local
+            subset: stable
+          weight: 90
+        - destination:
+            host: game-engine.game-engine.svc.cluster.local
+            subset: canary
+          weight: 10
+
+---
+# 12. VirtualService - Compliance with fault injection for testing
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: compliance-engine-vs
+  namespace: compliance
+spec:
+  hosts:
+    - compliance-engine.compliance.svc.cluster.local
+  http:
+    - name: "event-ingestion"
+      match:
+        - uri:
+            prefix: "/api/v1/events"
+      route:
+        - destination:
+            host: compliance-engine.compliance.svc.cluster.local
+      timeout: 15s
+      retries:
+        attempts: 3
+        perTryTimeout: 5s
+        retryOn: "5xx,reset,connect-failure"
+
+---
+# 13. ServiceEntry - External PSP (Stripe)
+apiVersion: networking.istio.io/v1beta1
+kind: ServiceEntry
+metadata:
+  name: stripe-api
+  namespace: payment-processing
+spec:
+  hosts:
+    - api.stripe.com
+  ports:
+    - number: 443
+      name: https
+      protocol: TLS
+  location: MESH_EXTERNAL
+  resolution: DNS
+
+---
+# 14. ServiceEntry - External PSP (Adyen)
+apiVersion: networking.istio.io/v1beta1
+kind: ServiceEntry
+metadata:
+  name: adyen-api
+  namespace: payment-processing
+spec:
+  hosts:
+    - checkout-live.adyen.com
+    - pal-live.adyen.com
+  ports:
+    - number: 443
+      name: https
+      protocol: TLS
+  location: MESH_EXTERNAL
+  resolution: DNS
+
+---
+# 15. ServiceEntry - Game Provider APIs
+apiVersion: networking.istio.io/v1beta1
+kind: ServiceEntry
+metadata:
+  name: game-providers
+  namespace: game-engine
+spec:
+  hosts:
+    - api.evolution.com
+    - api.pragmaticplay.com
+    - api.netent.com
+  ports:
+    - number: 443
+      name: https
+      protocol: TLS
+  location: MESH_EXTERNAL
+  resolution: DNS
+
+---
+# 16. RequestAuthentication - JWT validation at mesh level
+apiVersion: security.istio.io/v1beta1
+kind: RequestAuthentication
+metadata:
+  name: jwt-auth
+  namespace: casino-platform
+spec:
+  selector:
+    matchLabels:
+      app: casino-api
+  jwtRules:
+    - issuer: "https://auth.acme-casino.com"
+      jwksUri: "https://auth.acme-casino.com/.well-known/jwks.json"
+      audiences:
+        - "casino-api"
+      forwardOriginalToken: true
+      outputPayloadToHeader: "x-jwt-payload"
+
+---
+# 17. Telemetry - Enable access logging and tracing
+apiVersion: telemetry.istio.io/v1alpha1
+kind: Telemetry
+metadata:
+  name: mesh-telemetry
+  namespace: istio-system
+spec:
+  accessLogging:
+    - providers:
+        - name: envoy
+      filter:
+        expression: "response.code >= 400 || connection.mtls == false"
+  tracing:
+    - providers:
+        - name: opentelemetry
+      randomSamplingPercentage: 10.0
+      customTags:
+        casino.namespace:
+          environment:
+            name: NAMESPACE
+        casino.service:
+          literal:
+            value: "platform"
+
+---
+# 18. EnvoyFilter - Add gambling-specific headers
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: casino-headers
+  namespace: istio-system
+spec:
+  configPatches:
+    - applyTo: HTTP_FILTER
+      match:
+        context: SIDECAR_INBOUND
+        listener:
+          filterChain:
+            filter:
+              name: "envoy.filters.network.http_connection_manager"
+      patch:
+        operation: INSERT_BEFORE
+        value:
+          name: envoy.filters.http.lua
+          typed_config:
+            "@type": "type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua"
+            inline_code: |
+              function envoy_on_request(request_handle)
+                request_handle:headers():add("x-casino-trace-id", request_handle:headers():get("x-request-id") or "")
+                request_handle:headers():add("x-casino-timestamp", os.date("!%Y-%m-%dT%H:%M:%SZ"))
+              end
+              function envoy_on_response(response_handle)
+                response_handle:headers():add("x-casino-region", os.getenv("CASINO_REGION") or "eu-west-1")
+              end

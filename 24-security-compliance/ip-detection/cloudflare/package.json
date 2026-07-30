@@ -1,0 +1,30 @@
+{
+  "name": "ip-detection-pipeline",
+  "version": "1.0.0",
+  "description": "Chapter 24 - Cloudflare Workers 8-gate IP detection pipeline for iGaming",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "deploy:staging": "wrangler deploy --env staging",
+    "deploy:production": "wrangler deploy --env production",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/**/*.ts test/**/*.ts",
+    "db:migrate:staging": "wrangler d1 execute casino-player-db-staging --file=./terraform/migrations/001_create_player_kyc.sql --env staging",
+    "db:migrate:production": "wrangler d1 execute casino-player-db-production --file=./terraform/migrations/001_create_player_kyc.sql --env production"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.5.0",
+    "@cloudflare/workers-types": "^4.20240909.0",
+    "typescript": "^5.5.4",
+    "vitest": "^3.2.6",
+    "wrangler": ">=4.59.1"
+  },
+  "overrides": {
+    "wrangler": ">=4.59.1"
+  }
+}

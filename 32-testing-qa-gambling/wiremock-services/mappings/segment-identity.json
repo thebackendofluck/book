@@ -1,0 +1,15 @@
+{
+  "uuid": "a1b2c3d4-96d0-4cf5-9625-d5caf7a84001",
+  "persistent": true,
+  "request": {
+    "urlPath": "/v1/identify",
+    "method": "POST"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "text/html"
+    }
+  },
+  "priority": 1
+}

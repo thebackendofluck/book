@@ -1,0 +1,70 @@
+# =============================================================================
+# Network Monitor Dockerfile - Encryption Monitoring
+# =============================================================================
+# Production container for network traffic analysis
+# CIS Docker Benchmark compliant
+# =============================================================================
+
+# Stage 1: Builder
+FROM python:3.14-slim as builder
+
+WORKDIR /build
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    libpcap-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create virtual environment
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Install Python dependencies
+COPY requirements-monitor.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements-monitor.txt
+
+# Stage 2: Production
+FROM python:3.14-slim
+
+# Install runtime dependencies for packet capture
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpcap0.8 \
+    curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# CIS 4.1 - Create non-root user
+RUN groupadd -r appgroup && \
+    useradd -r -g appgroup -d /app -s /sbin/nologin appuser
+
+WORKDIR /app
+
+# Copy virtual environment from builder
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# CIS 4.9 - Use COPY
+COPY --chown=appuser:appgroup security-compliance/*.py ./
+COPY --chown=appuser:appgroup config/ ./config/
+
+# Create directories
+RUN mkdir -p /app/data /var/log/monitor && \
+    chown -R appuser:appgroup /app /var/log/monitor
+
+# CIS 4.1 - Run as non-root
+USER appuser
+
+# CIS 4.6 - HEALTHCHECK
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+    CMD curl -f http://localhost:5000/health || exit 1
+
+EXPOSE 5000 9090
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    FLASK_ENV=production
+
+ENTRYPOINT ["python", "-m", "network_monitor"]
+CMD ["--host", "0.0.0.0", "--port", "5000"]

@@ -1,0 +1,151 @@
+# =============================================================================
+# terraform.tfvars.example
+# Chapter 24: IP Detection & DDoS Protection
+#
+# Copy this file to terraform.tfvars and fill in the values for your
+# environment. Never commit terraform.tfvars — add it to .gitignore.
+#
+# Recommended workflow:
+#   1. cp terraform.tfvars.example terraform.tfvars
+#   2. Edit terraform.tfvars with your values
+#   3. Store sensitive values in AWS SSM or a vault; reference them here
+#      only if they are non-secret or already in state.
+#   4. terraform workspace select production
+#   5. terraform init && terraform plan && terraform apply
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Environment
+# ---------------------------------------------------------------------------
+
+environment = "production"
+
+# ---------------------------------------------------------------------------
+# AWS
+# ---------------------------------------------------------------------------
+
+aws_region     = "us-east-1"
+aws_account_id = "123456789012"
+
+lambda_memory_mb       = 512
+lambda_timeout_seconds = 10
+
+fraud_score_block_threshold  = 75
+fraud_score_review_threshold = 50
+
+# Set to true to provision ElastiCache Redis for velocity tracking.
+# Requires a default VPC with subnets in your target region.
+elasticache_enabled   = false
+elasticache_node_type = "cache.t4g.micro"
+
+# Leave empty to use AWS-managed encryption keys.
+# Set to an ARN like "arn:aws:kms:us-east-1:123456789012:key/mrk-..."
+# to use your own Customer Managed Key.
+kms_key_arn = ""
+
+attack_evidence_retention_days = 365
+
+# Requests per 5-minute window before WAF rate-based rule blocks the IP.
+waf_block_threshold = 2000
+
+# MaxMind and IP reputation keys are written to SSM Parameter Store.
+# You can set them here for the initial apply; they are excluded from
+# subsequent state refreshes via lifecycle { ignore_changes = [value] }.
+# Alternatively, set them directly in SSM after the first apply:
+#   aws ssm put-parameter --name "/igaming/ip-detection/maxmind-license-key" \
+#     --type SecureString --value "YOUR_KEY" --overwrite
+maxmind_license_key    = ""
+ip_reputation_api_key  = ""
+
+# ---------------------------------------------------------------------------
+# Cloudflare
+# ---------------------------------------------------------------------------
+
+cloudflare_account_id = "abcdef1234567890abcdef1234567890"
+cloudflare_zone_id    = "1234567890abcdef1234567890abcdef"
+cloudflare_domain     = "acmetocasino.com"
+
+cloudflare_worker_route_pattern     = "acmetocasino.com/*"
+cloudflare_classifier_route_pattern = "acmetocasino.com/api/*"
+
+cloudflare_worker_script_path     = "../cloudflare/dist/ip-detection-worker.js"
+cloudflare_classifier_script_path = "../cloudflare/dist/edge-classifier.js"
+
+# "off" | "essentially_off" | "low" | "medium" | "high" | "under_attack"
+cloudflare_security_level = "high"
+
+# Set to true if your zone has the Enterprise plan with Bot Management.
+cloudflare_bot_management_enabled = false
+
+cloudflare_waf_managed_ruleset_enabled = true
+cloudflare_owasp_ruleset_enabled       = true
+
+# ---------------------------------------------------------------------------
+# On-premises
+# ---------------------------------------------------------------------------
+
+onpremise_host        = "192.168.1.100"
+onpremise_user        = "deploy"
+onpremise_ssh_key_path = "~/.ssh/id_ed25519"
+onpremise_ssh_port    = 22
+
+onpremise_app_dir            = "/opt/ip-detection"
+onpremise_redis_url          = "redis://localhost:6379/0"
+onpremise_maxmind_db_path    = "/var/lib/GeoIP/GeoLite2-ASN.mmdb"
+onpremise_maxmind_city_db_path = "/var/lib/GeoIP/GeoLite2-City.mmdb"
+onpremise_kyc_service_url    = "http://kyc-service:8080"
+
+onpremise_source_dir           = "../onpremise"
+onpremise_threat_list_source_dir = "../threat-lists"
+
+# ---------------------------------------------------------------------------
+# Shared / cross-platform
+# ---------------------------------------------------------------------------
+
+# Standard 5-field cron: minute hour day-of-month month day-of-week
+# Default: midnight, 08:00, and 16:00 UTC daily.
+threat_list_schedule = "0 0,8,16 * * *"
+
+# NOC alert email. Leave empty to disable email subscription.
+alert_email = "noc@acmetocasino.com"
+
+# PagerDuty HTTPS integration URL. Leave empty to disable.
+alert_pagerduty_url = ""
+
+# Rate limit thresholds per IP address per time window.
+rate_limit_thresholds = {
+  requests_per_minute = 60
+  requests_per_5min   = 200
+  requests_per_hour   = 1000
+}
+
+# Named scaling profiles for the campaign autoscaler.
+scale_profiles = {
+  normal = {
+    min_capacity     = 2
+    max_capacity     = 10
+    cooldown_seconds = 300
+  }
+  campaign_small = {
+    min_capacity     = 5
+    max_capacity     = 30
+    cooldown_seconds = 120
+  }
+  campaign_large = {
+    min_capacity     = 20
+    max_capacity     = 100
+    cooldown_seconds = 60
+  }
+  black_friday = {
+    min_capacity     = 50
+    max_capacity     = 200
+    cooldown_seconds = 30
+  }
+}
+
+# Additional AWS resource tags.
+tags = {
+  Team        = "platform-security"
+  CostCenter  = "infosec-001"
+  Compliance  = "GDPR,PCI-DSS"
+}

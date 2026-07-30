@@ -1,0 +1,6 @@
+# Local tool config
+node_modules/
+.wrangler/
+.dev.vars
+*.log
+.DS_Store

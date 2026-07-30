@@ -1,0 +1,88 @@
+# Companion code for "The Backend of Luck" - Chapter 32, Testing and QA in Gambling.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: locust-master
+  namespace: load-testing
+  labels:
+    app: locust
+    component: master
+    version: v2
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8089
+    targetPort: 8089
+    protocol: TCP
+    name: web-ui
+  - port: 5557
+    targetPort: 5557
+    protocol: TCP
+    name: master-comm
+  - port: 5558
+    targetPort: 5558
+    protocol: TCP
+    name: master-comm-plus
+  - port: 9622
+    targetPort: 9622
+    protocol: TCP
+    name: metrics
+  selector:
+    app: locust
+    component: master
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: locust-worker
+  namespace: load-testing
+  labels:
+    app: locust
+    component: worker
+    version: v2
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8089
+    targetPort: 8089
+    protocol: TCP
+    name: metrics
+  selector:
+    app: locust
+    component: worker
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: locust-ingress
+  namespace: load-testing
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  tls:
+  - hosts:
+    - locust.example.com
+    secretName: locust-tls
+  rules:
+  - host: locust.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: locust-master
+            port:
+              number: 8089

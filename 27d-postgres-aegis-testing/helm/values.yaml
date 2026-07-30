@@ -1,0 +1,130 @@
+# Companion code for "The Backend of Luck" - Chapter 27d, PostgreSQL Aegis.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# postgres-aegis default values
+#
+# Layered encryption posture (see chapter 27d):
+#   layer 1 - LUKS on the host disk (Packer-provisioned ubuntu-jammy-pgdb)
+#   layer 2 - TLS 1.3 between pods (cert-manager Issuer)
+#   layer 3 - pg_aegis column AEAD (falls back to pgcrypto if extension missing)
+#   layer 4 - DEK wrapped by OpenBao; master never enters pod memory wrapped
+
+image:
+  repository: postgres
+  tag: "18.4-alpine"
+  pullPolicy: IfNotPresent
+  # Replace with a registry image that has pg_aegis compiled in.
+  # When empty, the init container installs pgcrypto only (honest fallback).
+  aegisExtensionImage: ""
+
+writers:
+  # Patroni topology: 1 primary + (replicaCount - 1) hot standbys.
+  # True multi-primary needs pgEdge BDR and is out of scope.
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: "2"
+      memory: "4Gi"
+    limits:
+      cpu: "4"
+      memory: "8Gi"
+  persistence:
+    size: 80Gi
+    storageClass: "local-path"   # on K3s lab-server; override to gp3 on EKS
+
+readers:
+  replicaCount: 10
+  resources:
+    requests:
+      cpu: "1"
+      memory: "2Gi"
+    limits:
+      cpu: "2"
+      memory: "4Gi"
+  persistence:
+    size: 40Gi
+    storageClass: "local-path"
+
+patroni:
+  # DCS options: kubernetes (default, no extra services) or etcd.
+  dcs: "kubernetes"
+  scope: "postgres-aegis"
+  postgresqlConfig:
+    max_connections: "500"
+    shared_buffers: "2GB"
+    effective_cache_size: "6GB"
+    wal_level: "replica"
+    max_wal_senders: "20"
+    max_replication_slots: "20"
+    hot_standby: "on"
+    ssl: "on"
+    log_connections: "on"
+    log_disconnections: "on"
+
+pgbouncer:
+  enabled: true
+  replicaCount: 2
+  poolMode: "transaction"
+  maxClientConn: 2000
+  defaultPoolSize: 50
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+aegis:
+  enabled: true
+  # Path in OpenBao that external-secrets watches.
+  # Bootstrap: `bao kv put casino/postgres/aegis/dek value=$(openssl rand -hex 16)`
+  dekSecretPath: "casino/postgres/aegis/dek"
+  # Nonce strategy: random 24 bytes per row (XChaCha-style birthday-safe).
+  nonceBytes: 24
+  # Re-wrap rotation interval (days). Re-encryption of rows NOT required.
+  dekRotationDays: 90
+
+certManager:
+  enabled: true
+  issuerName: "postgres-aegis-ca"
+  issuerKind: "Issuer"       # ClusterIssuer when sharing with other services
+  duration: "8760h"
+  renewBefore: "720h"
+
+externalSecrets:
+  enabled: true
+  refreshInterval: "1h"
+  # OpenBao on lab-server; BAO_ADDR is injected into the external-secrets SecretStore.
+  secretStoreRef:
+    name: "openbao-casino"
+    kind: "SecretStore"
+
+backup:
+  enabled: true
+  schedule: "0 2 * * *"
+  # pgbackrest target: Wasabi-compatible S3; credentials via external-secret.
+  s3Bucket: "casino-pg-backups"
+  s3Endpoint: "https://s3.eu-central-1.wasabisys.com"
+  retention:
+    fullDays: 30
+    diffDays: 7
+
+networkPolicy:
+  enabled: true
+  # Namespaces allowed to reach PgBouncer.
+  allowedClientNamespaces:
+    - "casino-api"
+    - "casino-workers"
+
+monitoring:
+  enabled: true
+  serviceMonitor: true
+  # Requires kube-prometheus-stack already installed.

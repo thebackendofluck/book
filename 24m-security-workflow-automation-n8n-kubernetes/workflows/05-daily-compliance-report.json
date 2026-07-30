@@ -1,0 +1,127 @@
+{
+  "name": "[book-cap24m §10.5] Daily Compliance Report (regulator CSV)",
+  "active": false,
+  "tags": [{"name": "book-cap24m"}, {"name": "compliance"}],
+  "settings": {"executionOrder": "v1"},
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Daily Compliance Report (cap 24m §10.5)\n\n**Trigger:** Daily at 03:30 UTC (after KYC reverify, ledger settled).\n**Steps:**\n1. Query ledger via cnpg-tunnel (127.0.0.1:25432)\n2. Query KYC status counts\n3. Query case management aggregates\n4. Assemble regulator-format CSV\n5. GPG-sign with detached signature\n6. SFTP upload to regulator endpoint\n7. Log SFTP response to audit bucket\n8. Page if upload fails OR response is unexpected\n\n**Per-jurisdiction templates:** UKGC (LCCP), MGA (PPD), DGE (NJAC), SIGAP (Brasil)\nUse SwitchByCountry node downstream to fork per regulator.\n\n**Credentials:**\n- Postgres (cnpg-tunnel)\n- GPG signing key (mounted from OpenBao transit)\n- SFTP credentials (SSH key)",
+        "height": 380,
+        "width": 420,
+        "color": 6
+      },
+      "id": "note-5",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [0, -300]
+    },
+    {
+      "parameters": {
+        "rule": {"interval": [{"field": "cronExpression", "expression": "30 3 * * *"}]}
+      },
+      "id": "cron-1",
+      "name": "Daily 03:30 UTC",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 200]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  date_trunc('day', NOW() - INTERVAL '1 day')::date AS report_date,\n  COUNT(*) FILTER (WHERE type='DEPOSIT') AS deposits_count,\n  COALESCE(SUM(amount) FILTER (WHERE type='DEPOSIT'), 0) AS deposits_total,\n  COUNT(*) FILTER (WHERE type='WITHDRAWAL') AS withdrawals_count,\n  COALESCE(SUM(amount) FILTER (WHERE type='WITHDRAWAL'), 0) AS withdrawals_total,\n  COUNT(*) FILTER (WHERE type='BET') AS bets_count,\n  COALESCE(SUM(amount) FILTER (WHERE type='BET'), 0) AS bets_total,\n  COUNT(*) FILTER (WHERE type='WIN') AS wins_count,\n  COALESCE(SUM(amount) FILTER (WHERE type='WIN'), 0) AS wins_total\nFROM wallet_events\nWHERE created_at >= NOW() - INTERVAL '1 day' AND created_at < NOW()",
+        "options": {}
+      },
+      "id": "pg-ledger",
+      "name": "Ledger 24h",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [480, 80],
+      "credentials": {"postgres": {"id": "PLACEHOLDER", "name": "casino-cnpg-tunnel"}}
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT kyc_status, COUNT(*) AS n FROM players WHERE updated_at >= NOW() - INTERVAL '1 day' GROUP BY kyc_status",
+        "options": {}
+      },
+      "id": "pg-kyc",
+      "name": "KYC counts 24h",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [480, 240],
+      "credentials": {"postgres": {"id": "PLACEHOLDER", "name": "casino-cnpg-tunnel"}}
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT type, status, COUNT(*) AS n FROM cases WHERE created_at >= NOW() - INTERVAL '1 day' GROUP BY type, status",
+        "options": {}
+      },
+      "id": "pg-cases",
+      "name": "Case Mgmt 24h",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [480, 400],
+      "credentials": {"postgres": {"id": "PLACEHOLDER", "name": "casino-cnpg-tunnel"}}
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build CSV per regulator schema (UKGC LCCP example)\nconst ledger = $node['Ledger 24h'].json;\nconst kyc = $node['KYC counts 24h'].json;\nconst cases = $node['Case Mgmt 24h'].json;\nconst date = ledger.report_date;\nconst rows = [\n  ['report_date', 'metric', 'value'],\n  [date, 'deposits_count', ledger.deposits_count],\n  [date, 'deposits_total_eur', ledger.deposits_total],\n  [date, 'withdrawals_count', ledger.withdrawals_count],\n  [date, 'withdrawals_total_eur', ledger.withdrawals_total],\n  [date, 'bets_count', ledger.bets_count],\n  [date, 'bets_total_eur', ledger.bets_total],\n  [date, 'wins_count', ledger.wins_count],\n  [date, 'wins_total_eur', ledger.wins_total],\n  ...kyc.map(k => [date, `kyc_${k.kyc_status}`, k.n]),\n  ...cases.map(c => [date, `case_${c.type}_${c.status}`, c.n]),\n];\nconst csv = rows.map(r => r.map(v => String(v).includes(',') ? `\"${v}\"` : v).join(',')).join('\\n');\nreturn [{ json: { report_date: date, csv, filename: `compliance-${date}.csv` }, binary: { data: { data: Buffer.from(csv).toString('base64'), mimeType: 'text/csv', fileName: `compliance-${date}.csv` } } }];"
+      },
+      "id": "csv-1",
+      "name": "Assemble Regulator CSV",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [720, 240]
+    },
+    {
+      "parameters": {
+        "command": "=cd /tmp && echo '{{ $json.csv }}' > {{ $json.filename }} && gpg --batch --yes --pinentry-mode loopback --passphrase \"$GPG_PASS\" --detach-sign --armor -o {{ $json.filename }}.asc {{ $json.filename }} && cat {{ $json.filename }}.asc"
+      },
+      "id": "gpg-1",
+      "name": "GPG Sign (detached)",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [960, 240]
+    },
+    {
+      "parameters": {
+        "operation": "upload",
+        "path": "=/incoming/{{ $node['Assemble Regulator CSV'].json.filename }}",
+        "binaryData": true,
+        "binaryPropertyName": "data",
+        "options": {}
+      },
+      "id": "sftp-1",
+      "name": "SFTP Upload to Regulator",
+      "type": "n8n-nodes-base.ftp",
+      "typeVersion": 1,
+      "position": [1200, 240],
+      "credentials": {"sftp": {"id": "PLACEHOLDER", "name": "regulator-sftp-ukgc"}}
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO compliance_audit (event_type, report_date, filename, sftp_response, created_at) VALUES ('daily_report_uploaded', $1, $2, $3, NOW())",
+        "options": {"queryReplacement": "={{ $node['Assemble Regulator CSV'].json.report_date }},={{ $node['Assemble Regulator CSV'].json.filename }},={{ JSON.stringify($json) }}"}
+      },
+      "id": "audit-1",
+      "name": "Audit Log Upload",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1440, 240],
+      "credentials": {"postgres": {"id": "PLACEHOLDER", "name": "casino-cnpg-tunnel"}}
+    }
+  ],
+  "connections": {
+    "Daily 03:30 UTC": {"main": [[{"node": "Ledger 24h", "type": "main", "index": 0}, {"node": "KYC counts 24h", "type": "main", "index": 0}, {"node": "Case Mgmt 24h", "type": "main", "index": 0}]]},
+    "Ledger 24h": {"main": [[{"node": "Assemble Regulator CSV", "type": "main", "index": 0}]]},
+    "KYC counts 24h": {"main": [[{"node": "Assemble Regulator CSV", "type": "main", "index": 0}]]},
+    "Case Mgmt 24h": {"main": [[{"node": "Assemble Regulator CSV", "type": "main", "index": 0}]]},
+    "Assemble Regulator CSV": {"main": [[{"node": "GPG Sign (detached)", "type": "main", "index": 0}]]},
+    "GPG Sign (detached)": {"main": [[{"node": "SFTP Upload to Regulator", "type": "main", "index": 0}]]},
+    "SFTP Upload to Regulator": {"main": [[{"node": "Audit Log Upload", "type": "main", "index": 0}]]}
+  }
+}

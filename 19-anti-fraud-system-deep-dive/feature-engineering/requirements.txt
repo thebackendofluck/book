@@ -1,0 +1,24 @@
+# Feature Engineering Pipeline Dependencies
+# Install: pip install -r requirements.txt
+
+# Core data processing
+polars>=1.41.1,<2.0.0          # High-performance DataFrame library (Rust-based)
+pyarrow>=14.0.0                # Parquet read/write and Arrow interop
+
+# Real-time feature store
+redis>=5.0.0                   # Redis client for velocity counters and profiles
+hiredis>=2.3.0                 # C-based Redis parser (10x faster than pure Python)
+
+# Kafka integration
+confluent-kafka>=2.14.0         # Kafka consumer/producer for streaming features
+
+# Database
+psycopg2-binary>=2.9.12         # PostgreSQL driver for batch feature store
+sqlalchemy>=2.0.50              # ORM for feature metadata
+
+# Monitoring
+prometheus-client>=0.25.0     # Expose feature pipeline metrics
+
+# Utilities
+python-dateutil>=2.9.0.post0         # Date parsing utilities
+orjson>=3.11.9                  # Fast JSON serialization (3x faster than stdlib)

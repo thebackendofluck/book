@@ -1,0 +1,185 @@
+{
+  "version": 2,
+  "projects": {
+    "fe-main-app": {
+      "projectType": "application",
+      "root": "apps/fe-main-app",
+      "sourceRoot": "apps/fe-main-app/src",
+      "targets": {
+        "build": {
+          "executor": "@nx-plus/vue:browser",
+          "options": {
+            "dest": "dist/apps/fe-main-app",
+            "index": "apps/fe-main-app/public/index.html",
+            "main": "apps/fe-main-app/src/main.ts",
+            "tsConfig": "apps/fe-main-app/tsconfig.app.json"
+          },
+          "configurations": {
+            "production": {
+              "mode": "production",
+              "filenameHashing": true,
+              "productionSourceMap": true
+            }
+          }
+        },
+        "serve": {
+          "executor": "@nx-plus/vue:dev-server",
+          "options": {
+            "browserTarget": "fe-main-app:build",
+            "port": 8000
+          }
+        },
+        "lint": {
+          "executor": "@nrwl/linter:eslint",
+          "options": {
+            "lintFilePatterns": ["apps/fe-main-app/**/*.{ts,tsx,vue}"]
+          }
+        },
+        "test": {
+          "executor": "@nrwl/jest:jest",
+          "outputs": ["coverage/apps/fe-main-app"],
+          "options": {
+            "jestConfig": "apps/fe-main-app/jest.config.js",
+            "passWithNoTests": true
+          }
+        }
+      },
+      "tags": []
+    },
+    "player-service": "apps/player-service",
+    "search-service": "apps/search-service",
+    "utils-service": "apps/utils-service",
+    "feature-dashboard": {
+      "projectType": "library",
+      "root": "libs/feature-dashboard",
+      "sourceRoot": "libs/feature-dashboard/src",
+      "targets": {
+        "lint": {
+          "executor": "@nrwl/linter:eslint",
+          "options": {
+            "lintFilePatterns": ["libs/feature-dashboard/**/*.{ts,tsx,vue}"]
+          }
+        },
+        "test": {
+          "executor": "@nrwl/jest:jest",
+          "outputs": ["coverage/libs/feature-dashboard"],
+          "options": {
+            "jestConfig": "libs/feature-dashboard/jest.config.js",
+            "passWithNoTests": true
+          }
+        }
+      },
+      "tags": []
+    },
+    "feature-players": {
+      "projectType": "library",
+      "root": "libs/feature-players",
+      "sourceRoot": "libs/feature-players/src",
+      "targets": {
+        "lint": {
+          "executor": "@nrwl/linter:eslint",
+          "options": {
+            "lintFilePatterns": ["libs/feature-players/**/*.{ts,tsx,vue}"]
+          }
+        },
+        "test": {
+          "executor": "@nrwl/jest:jest",
+          "outputs": ["coverage/libs/feature-players"],
+          "options": {
+            "jestConfig": "libs/feature-players/jest.config.js",
+            "passWithNoTests": true
+          }
+        }
+      },
+      "tags": []
+    },
+    "feature-search-and-tables": {
+      "projectType": "library",
+      "root": "libs/feature-search-and-tables",
+      "sourceRoot": "libs/feature-search-and-tables/src",
+      "tags": []
+    },
+    "feature-knowledge-base": {
+      "projectType": "library",
+      "root": "libs/feature-knowledge-base",
+      "sourceRoot": "libs/feature-knowledge-base/src",
+      "tags": []
+    },
+    "composables": {
+      "projectType": "library",
+      "root": "libs/composables",
+      "sourceRoot": "libs/composables/src",
+      "tags": []
+    },
+    "ui-components": {
+      "projectType": "library",
+      "root": "libs/ui/components",
+      "sourceRoot": "libs/ui/components/src",
+      "tags": []
+    },
+    "ui-icons": {
+      "projectType": "library",
+      "root": "libs/ui/icons",
+      "sourceRoot": "libs/ui/icons/src",
+      "tags": []
+    },
+    "ui-layouts": {
+      "projectType": "library",
+      "root": "libs/ui/layouts",
+      "sourceRoot": "libs/ui/layouts/src",
+      "tags": []
+    },
+    "store-main": {
+      "projectType": "library",
+      "root": "libs/store-main",
+      "sourceRoot": "libs/store-main/src",
+      "tags": []
+    },
+    "router-main": {
+      "projectType": "library",
+      "root": "libs/router-main",
+      "sourceRoot": "libs/router-main/src",
+      "tags": []
+    },
+    "interfaces": {
+      "projectType": "library",
+      "root": "libs/interfaces",
+      "sourceRoot": "libs/interfaces/src",
+      "tags": []
+    },
+    "plugins": {
+      "projectType": "library",
+      "root": "libs/plugins",
+      "sourceRoot": "libs/plugins/src",
+      "tags": []
+    },
+    "services-platform-database": {
+      "projectType": "library",
+      "root": "libs/services/platform-database",
+      "sourceRoot": "libs/services/platform-database/src",
+      "tags": []
+    },
+    "libs-services-legacy-platform-service": {
+      "projectType": "library",
+      "root": "libs/services/legacy-platform-service",
+      "sourceRoot": "libs/services/legacy-platform-service/src",
+      "tags": []
+    },
+    "shared-kong-client": {
+      "projectType": "library",
+      "root": "libs/services/kong-client",
+      "sourceRoot": "libs/services/kong-client/src",
+      "tags": []
+    },
+    "service-clients-base": "libs/service-clients/base",
+    "service-clients-player-service": "libs/service-clients/player-service",
+    "service-clients-search-service": "libs/service-clients/search-service",
+    "service-clients-utils-service": "libs/service-clients/utils-service",
+    "util-js": {
+      "projectType": "library",
+      "root": "libs/util-js",
+      "sourceRoot": "libs/util-js/src",
+      "tags": []
+    }
+  }
+}

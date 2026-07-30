@@ -1,0 +1,317 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 24, Security and Compliance.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# tests/test_suricata.yml
+# Ansible playbook for post-deployment validation of Suricata sensors.
+# Can be run standalone or as part of a CI/CD pipeline after deploy_suricata.yml.
+#
+# Tests:
+#   1. Suricata systemd service is active and enabled
+#   2. Suricata process is actually running (not just in activating state)
+#   3. EVE JSON file exists and is being written
+#   4. Configuration passes suricata -T validation
+#   5. Rules are loaded (count > 0)
+#   6. No kernel drops above warn threshold
+#   7. Expected log files exist
+#   8. Prometheus metrics file exists (if exporter enabled)
+#   9. Cron jobs are scheduled
+#  10. Directories have correct permissions
+#
+# Usage:
+#   ansible-playbook -i inventory/production.yml tests/test_suricata.yml
+#   ansible-playbook -i inventory/staging.yml    tests/test_suricata.yml
+#   ansible-playbook -i inventory/production.yml tests/test_suricata.yml \
+#     --limit ids-dmz-01.prod.igaming.internal
+
+- name: Validate Suricata IDS/IPS deployment
+  hosts: suricata_sensors
+  become: true
+  gather_facts: true
+  any_errors_fatal: false
+
+  vars:
+    test_results: []
+    tests_passed: 0
+    tests_failed: 0
+
+  tasks:
+
+    # ===========================================================================
+    # TEST 1: SERVICE STATE
+    # ===========================================================================
+
+    - name: "TEST 1: Check Suricata systemd service is active"
+      ansible.builtin.systemd:
+        name: suricata
+      register: t1_service_state
+      tags: [test, service]
+
+    - name: "TEST 1: Assert service is active and enabled"
+      ansible.builtin.assert:
+        that:
+          - t1_service_state.status.ActiveState == "active"
+          - t1_service_state.status.UnitFileState == "enabled"
+        fail_msg: >
+          FAIL [1]: Suricata service is {{ t1_service_state.status.ActiveState }}
+          (UnitFileState: {{ t1_service_state.status.UnitFileState }}).
+          Run: journalctl -u suricata -n 50 --no-pager
+        success_msg: "PASS [1]: Suricata service is active and enabled"
+      tags: [test, service]
+
+    # ===========================================================================
+    # TEST 2: PROCESS IS RUNNING
+    # ===========================================================================
+
+    - name: "TEST 2: Verify Suricata process exists"
+      ansible.builtin.command: pgrep -x suricata
+      register: t2_process
+      changed_when: false
+      failed_when: false
+      tags: [test, process]
+
+    - name: "TEST 2: Assert Suricata process is running"
+      ansible.builtin.assert:
+        that:
+          - t2_process.rc == 0
+        fail_msg: "FAIL [2]: Suricata process not found in process table"
+        success_msg: "PASS [2]: Suricata process running (PID {{ t2_process.stdout }})"
+      tags: [test, process]
+
+    # ===========================================================================
+    # TEST 3: EVE JSON IS BEING WRITTEN
+    # ===========================================================================
+
+    - name: "TEST 3: Check EVE JSON file exists"
+      ansible.builtin.stat:
+        path: "{{ suricata_log_dir }}/eve.json"
+      register: t3_eve_file
+      tags: [test, eve]
+
+    - name: "TEST 3: Assert EVE JSON file exists"
+      ansible.builtin.assert:
+        that:
+          - t3_eve_file.stat.exists
+        fail_msg: "FAIL [3]: EVE JSON file not found at {{ suricata_log_dir }}/eve.json"
+        success_msg: "PASS [3]: EVE JSON file exists ({{ t3_eve_file.stat.size | filesizeformat }})"
+      tags: [test, eve]
+
+    - name: "TEST 3b: Check EVE JSON was written recently (< 10 min)"
+      ansible.builtin.assert:
+        that:
+          - (ansible_date_time.epoch | int) - t3_eve_file.stat.mtime | int < 600
+        fail_msg: >
+          FAIL [3b]: EVE JSON last modified {{ (ansible_date_time.epoch | int) - t3_eve_file.stat.mtime | int }}s ago.
+          Expected writes within the last 600s.
+        success_msg: >
+          PASS [3b]: EVE JSON was written
+          {{ (ansible_date_time.epoch | int) - t3_eve_file.stat.mtime | int }}s ago
+      when: t3_eve_file.stat.exists
+      tags: [test, eve]
+
+    # ===========================================================================
+    # TEST 4: CONFIGURATION VALIDATION
+    # ===========================================================================
+
+    - name: "TEST 4: Run suricata -T configuration test"
+      ansible.builtin.command: >
+        suricata -T -c {{ suricata_config_dir }}/suricata.yaml -l /tmp
+      register: t4_config_test
+      changed_when: false
+      failed_when: false
+      tags: [test, config]
+
+    - name: "TEST 4: Assert configuration is valid"
+      ansible.builtin.assert:
+        that:
+          - t4_config_test.rc == 0
+        fail_msg: >
+          FAIL [4]: suricata -T returned exit code {{ t4_config_test.rc }}.
+          Output: {{ t4_config_test.stderr_lines | join(' ') }}
+        success_msg: "PASS [4]: Configuration validated successfully"
+      tags: [test, config]
+
+    # ===========================================================================
+    # TEST 5: RULES ARE LOADED
+    # ===========================================================================
+
+    - name: "TEST 5: Count loaded rules"
+      ansible.builtin.shell: >
+        grep -c '^alert\|^drop\|^pass\|^reject'
+        {{ suricata_rules_dir }}/suricata.rules || echo 0
+      register: t5_rule_count
+      changed_when: false
+      tags: [test, rules]
+
+    - name: "TEST 5: Assert rule count > 0"
+      ansible.builtin.assert:
+        that:
+          - t5_rule_count.stdout | int > 0
+        fail_msg: >
+          FAIL [5]: Rule count is {{ t5_rule_count.stdout }}.
+          Run: ansible-playbook playbooks/update_rules.yml
+        success_msg: "PASS [5]: {{ t5_rule_count.stdout }} rules loaded"
+      tags: [test, rules]
+
+    - name: "TEST 5b: Verify custom iGaming rules are present"
+      ansible.builtin.shell: >
+        grep -c 'GAMBLING' {{ suricata_rules_dir }}/igaming-custom.rules 2>/dev/null || echo 0
+      register: t5b_custom_rules
+      changed_when: false
+      tags: [test, rules, custom]
+
+    - name: "TEST 5b: Assert custom iGaming rules present"
+      ansible.builtin.assert:
+        that:
+          - t5b_custom_rules.stdout | int > 0
+        fail_msg: >
+          FAIL [5b]: No custom iGaming rules found.
+          Expected file: {{ suricata_rules_dir }}/igaming-custom.rules
+        success_msg: "PASS [5b]: {{ t5b_custom_rules.stdout }} custom iGaming rules found"
+      tags: [test, rules, custom]
+
+    # ===========================================================================
+    # TEST 6: KERNEL DROP RATE
+    # ===========================================================================
+
+    - name: "TEST 6: Read kernel drop statistics"
+      ansible.builtin.shell: |
+        tail -200 {{ suricata_log_dir }}/stats.log 2>/dev/null | \
+        awk '/kernel_packets/{pkts=$NF} /kernel_drops/{drops=$NF} END {
+          if (pkts > 0)
+            printf "%.4f", (drops / pkts) * 100
+          else
+            print "0.0000"
+        }'
+      register: t6_drop_rate
+      changed_when: false
+      tags: [test, drops]
+
+    - name: "TEST 6: Assert drop rate below warning threshold"
+      ansible.builtin.assert:
+        that:
+          - t6_drop_rate.stdout | float < kernel_drops_warn_pct | float
+        fail_msg: >
+          FAIL [6]: Kernel drop rate {{ t6_drop_rate.stdout }}% exceeds
+          warning threshold {{ kernel_drops_warn_pct }}%.
+          Actions: increase ring buffer, improve CPU affinity, check NIC speed.
+        success_msg: "PASS [6]: Kernel drop rate {{ t6_drop_rate.stdout }}% (threshold: {{ kernel_drops_warn_pct }}%)"
+      tags: [test, drops]
+
+    # ===========================================================================
+    # TEST 7: LOG FILES
+    # ===========================================================================
+
+    - name: "TEST 7: Check all expected log files exist"
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      register: t7_log_files
+      loop:
+        - "{{ suricata_log_dir }}/eve.json"
+        - "{{ suricata_log_dir }}/suricata.log"
+        - "{{ suricata_log_dir }}/stats.log"
+        - "{{ suricata_log_dir }}/fast.log"
+      tags: [test, logs]
+
+    - name: "TEST 7: Assert all log files exist"
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists
+        fail_msg: "FAIL [7]: Expected log file {{ item.item }} not found"
+        success_msg: "PASS [7]: {{ item.item }} exists"
+      loop: "{{ t7_log_files.results }}"
+      tags: [test, logs]
+
+    # ===========================================================================
+    # TEST 8: PROMETHEUS METRICS FILE
+    # ===========================================================================
+
+    - name: "TEST 8: Check Prometheus textfile exists"
+      ansible.builtin.stat:
+        path: /var/lib/node_exporter/textfile_collector/suricata.prom
+      register: t8_prom_file
+      when: prometheus_exporter_enabled | bool
+      tags: [test, prometheus]
+
+    - name: "TEST 8: Assert Prometheus metrics file exists"
+      ansible.builtin.assert:
+        that:
+          - t8_prom_file.stat.exists
+        fail_msg: "FAIL [8]: Prometheus metrics file not found"
+        success_msg: "PASS [8]: Prometheus metrics file exists"
+      when:
+        - prometheus_exporter_enabled | bool
+        - t8_prom_file is defined
+      tags: [test, prometheus]
+
+    # ===========================================================================
+    # TEST 9: CRON JOBS
+    # ===========================================================================
+
+    - name: "TEST 9: Check health check cron job is scheduled"
+      ansible.builtin.shell: crontab -l -u root 2>/dev/null | grep -c suricata-health-check
+      register: t9_health_cron
+      changed_when: false
+      failed_when: false
+      tags: [test, cron]
+
+    - name: "TEST 9: Assert health check cron is configured"
+      ansible.builtin.assert:
+        that:
+          - t9_health_cron.stdout | int > 0
+        fail_msg: "FAIL [9]: Health check cron job not found for root"
+        success_msg: "PASS [9]: Health check cron job is scheduled"
+      tags: [test, cron]
+
+    # ===========================================================================
+    # TEST 10: DIRECTORY PERMISSIONS
+    # ===========================================================================
+
+    - name: "TEST 10: Check critical directory permissions"
+      ansible.builtin.stat:
+        path: "{{ item.path }}"
+      register: t10_dirs
+      loop:
+        - { path: "{{ suricata_config_dir }}", expected_mode: "0750" }
+        - { path: "{{ suricata_rules_dir }}",  expected_mode: "0750" }
+        - { path: "{{ suricata_log_dir }}",    expected_mode: "0750" }
+      tags: [test, permissions]
+
+    - name: "TEST 10: Assert directories have restricted permissions"
+      ansible.builtin.assert:
+        that:
+          - item.stat.pw_name == suricata_user
+          - item.stat.gr_name == suricata_group
+        fail_msg: >
+          FAIL [10]: {{ item.item.path }} owner={{ item.stat.pw_name }}
+          group={{ item.stat.gr_name }} — expected {{ suricata_user }}:{{ suricata_group }}
+        success_msg: "PASS [10]: {{ item.item.path }} ownership correct"
+      loop: "{{ t10_dirs.results }}"
+      tags: [test, permissions]
+
+    # ===========================================================================
+    # SUMMARY REPORT
+    # ===========================================================================
+
+    - name: "Print test summary"
+      ansible.builtin.debug:
+        msg: >
+          ============================================================
+          Suricata Validation Report — {{ inventory_hostname }}
+          Zone   : {{ sensor_zone | default('unset') }}
+          Mode   : {{ suricata_mode | upper }}
+          OS     : {{ ansible_distribution }} {{ ansible_distribution_version }}
+          ============================================================
+          Rules loaded  : {{ t5_rule_count.stdout }}
+          Drop rate     : {{ t6_drop_rate.stdout }}%
+          EVE JSON age  : {{ (ansible_date_time.epoch | int) - t3_eve_file.stat.mtime | int }}s
+          ============================================================
+      when: t5_rule_count is defined and t6_drop_rate is defined
+      tags: [always]

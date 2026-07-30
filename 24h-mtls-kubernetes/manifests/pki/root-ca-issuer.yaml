@@ -1,0 +1,54 @@
+# Companion code for "The Backend of Luck" - Chapter 24h, Mutual TLS Between Kubernetes Services for iGaming Platforms.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# File: manifests/pki/root-ca-issuer.yaml
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned-root
+spec:
+  selfSigned: {}
+
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: casino-root-ca
+  namespace: cert-manager
+spec:
+  isCA: true
+  commonName: casino-internal-root-ca
+  subject:
+    organizations:
+      - CasinoInfrastructure
+    organizationalUnits:
+      - Platform Security
+  # Root CA has a 10-year validity — we sign intermediates from this, not leaf certs directly
+  duration: 87600h  # 10 years
+  renewBefore: 2160h  # Renew 90 days before expiry
+  secretName: casino-root-ca-key-pair
+  privateKey:
+    algorithm: ECDSA
+    size: 384
+  issuerRef:
+    name: selfsigned-root
+    kind: ClusterIssuer
+    group: cert-manager.io
+
+---
+# ClusterIssuer that signs intermediate CAs and service certificates from the root
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: casino-internal-ca
+spec:
+  ca:
+    secretName: casino-root-ca-key-pair

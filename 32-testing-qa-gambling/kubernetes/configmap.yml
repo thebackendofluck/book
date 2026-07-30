@@ -1,0 +1,279 @@
+# Companion code for "The Backend of Luck" - Chapter 32, Testing and QA in Gambling.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: locust-config
+  namespace: load-testing
+  labels:
+    app: locust
+    version: v2
+data:
+  # Locust Configuration
+  LOCUST_HOST: "https://your-app.example.com"
+  LOCUST_RUN_TIME: "3600"
+  LOCUST_USERS: "100"
+  LOCUST_HATCH_RATE: "10"
+  LOCUST_CSV: "locust"
+  ENABLE_UI: "true"
+  LOG_LEVEL: "INFO"
+
+  # Application URLs
+  TARGET_URL: "https://your-app.example.com"
+  KAMBI_OFFERING_URL: "https://offering.example.com"
+  KAMBI_PLAYER_URL: "https://auth.example.com"
+  KAMBI_OFFERING_ID: "your_offering_id"
+  WH_BASE_URL: "https://platform.staging.casino-platform.example.com/api"
+
+  # Test Configuration
+  BET_OFFER_ID: ""
+  USE_PREREG: "false"
+  LOCUST_USER: "RobotSalami"
+
+  # AWS Configuration
+  AWS_REGION: "eu-west-1"
+  RUN_DB_NAME: "locust-shared-run-db"
+
+  # Monitoring
+  PROMETHEUS_METRICS_ENABLED: "true"
+  GRAFANA_DASHBOARD_URL: "http://grafana.load-testing.svc.cluster.local:3000"
+
+  # Slack Integration
+  SLACK_WEBHOOK_URL: ""
+
+  # Redis Configuration (for distributed coordination)
+  REDIS_HOST: "redis.load-testing.svc.cluster.local"
+  REDIS_PORT: "6379"
+  REDIS_DB: "0"
+
+  # Logging
+  LOG_FORMAT: "json"
+  LOG_LEVEL: "INFO"
+  SENTRY_DSN: ""
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: locust-scripts
+  namespace: load-testing
+  labels:
+    app: locust
+    version: v2
+data:
+  locustfile.py: |
+    # Modernized locustfile with async support and better error handling
+    import asyncio
+    import json
+    import logging
+    import os
+    import random
+    import time
+    import uuid
+    from typing import Dict, Any, Optional
+
+    import httpx
+    from locust import events, task, between, FastHttpUser, TaskSet
+    from locust.contrib.fasthttp import RestResponseContextManager
+    from pydantic import BaseModel, Field
+    import structlog
+
+    # Configure structured logging
+    logger = structlog.get_logger()
+
+    # Configuration Models
+    class LocustConfig(BaseModel):
+        host: str = Field(default="https://your-app.example.com")
+        run_time: int = Field(default=3600)
+        num_users: int = Field(default=100)
+        hatch_rate: int = Field(default=10)
+        csv_file: str = Field(default="locust")
+        log_level: str = Field(default="INFO")
+
+    class AppConfig(BaseModel):
+        kambi_offering_url: str = Field(default="https://offering.example.com")
+        kambi_player_url: str = Field(default="https://auth.example.com")
+        kambi_offering_id: str = Field(default="your_offering_id")
+        wh_base_url: str = Field(default="https://platform.staging.casino-platform.example.com/api")
+
+    # Global configuration
+    config = LocustConfig()
+    app_config = AppConfig()
+
+    # Slack notification helper
+    async def send_slack_notification(message: str, color: str = "good"):
+        webhook_url = os.getenv("SLACK_WEBHOOK_URL")
+        if not webhook_url:
+            return
+
+        payload = {
+            "attachments": [{
+                "color": color,
+                "text": message,
+                "footer": "Load Testing Framework v2",
+                "ts": int(time.time())
+            }]
+        }
+
+        async with httpx.AsyncClient() as client:
+            try:
+                await client.post(webhook_url, json=payload)
+            except Exception as e:
+                logger.error("slack_notification_failed", error=str(e))
+
+    # Event handlers
+    @events.test_start.add_listener
+    def on_test_start(environment, **kw):
+        message = f"""
+    🚀 *Load Test Started*
+    • Host: {environment.host}
+    • Users: {environment.parsed_options.num_users}
+    • Hatch Rate: {environment.parsed_options.hatch_rate}
+    • Duration: {environment.parsed_options.run_time}s
+        """.strip()
+        asyncio.create_task(send_slack_notification(message))
+
+    @events.test_stop.add_listener
+    def on_test_stop(environment, **kw):
+        stats = environment.runner.stats
+        total_requests = stats.num_requests
+        total_failures = stats.num_failures
+        avg_response_time = stats.total_avg_response_time
+
+        success_rate = ((total_requests - total_failures) / total_requests * 100) if total_requests > 0 else 0
+        color = "good" if success_rate > 95 else "warning" if success_rate > 90 else "danger"
+
+        message = f"""
+    🏁 *Load Test Completed*
+    • Total Requests: {total_requests:,}
+    • Failures: {total_failures:,}
+    • Success Rate: {success_rate:.1f}%
+    • Avg Response Time: {avg_response_time:.2f}ms
+    • RPS: {stats.total_rps:.2f}
+        """.strip()
+        asyncio.create_task(send_slack_notification(message, color))
+
+    # Modern TaskSet with async support
+    class ModernRoboTasks(TaskSet):
+        wait_time = between(0.1, 2.0)
+
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.user_id = str(uuid.uuid4())
+            self.session_token: Optional[str] = None
+
+        @task(1)
+        def health_check(self):
+            with self.client.get("/health", catch_response=True) as response:
+                if response.status_code != 200:
+                    response.failure(f"Health check failed: {response.status_code}")
+
+        @task(3)
+        def user_registration(self):
+            user_data = {
+                "username": f"user_{self.user_id[:8]}",
+                "email": f"user_{self.user_id[:8]}@test.com",
+                "password": "${LOADTEST_PASSWORD}",
+                "first_name": "Test",
+                "last_name": "User"
+            }
+
+            with self.client.post("/users/register/", json=user_data, catch_response=True) as response:
+                if response.status_code == 201:
+                    self.session_token = response.json().get("token")
+                    logger.info("user_registered", user_id=self.user_id)
+                else:
+                    response.failure(f"Registration failed: {response.text}")
+
+        @task(5)
+        def place_bet(self):
+            if not self.session_token:
+                return
+
+            headers = {"Authorization": f"Token {self.session_token}"}
+            bet_data = {
+                "amount": random.randint(10, 100),
+                "odds": random.uniform(1.5, 3.0),
+                "sport": random.choice(["basketball", "football", "baseball"])
+            }
+
+            with self.client.post("/bets/place/", json=bet_data, headers=headers, catch_response=True) as response:
+                if response.status_code not in [200, 201]:
+                    response.failure(f"Bet placement failed: {response.text}")
+
+    class ModernLocustUser(FastHttpUser):
+        tasks = [ModernRoboTasks]
+
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            # Configure HTTP client with modern settings
+            self.client.headers.update({
+                "User-Agent": "LoadTestingFramework/2.0",
+                "Accept": "application/json",
+                "Content-Type": "application/json"
+            })
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: locust-schemas
+  namespace: load-testing
+  labels:
+    app: locust
+    version: v2
+data:
+  aggressive.yaml: |
+    type: aggressive
+    events:
+      register:
+        profile:
+          average_wait: 15
+        transitions:
+          login: 1.0
+      place_bet:
+        profile:
+          average_wait: 90
+          sports:
+            basketball: 0.7
+            ice_hockey: 0.2
+            ufc_mma: 0.1
+          bet_types:
+            moneyline: 0.6
+            over_under: 0.3
+            spread: 0.1
+        transitions:
+          place_bet: 0.4
+          logout: 0.2
+          get_balance: 0.4
+  casual.yaml: |
+    type: casual
+    events:
+      register:
+        profile:
+          average_wait: 30
+        transitions:
+          login: 1.0
+      place_bet:
+        profile:
+          average_wait: 180
+          sports:
+            basketball: 0.8
+            football: 0.1
+            baseball: 0.1
+          bet_types:
+            moneyline: 0.7
+            over_under: 0.2
+            spread: 0.1
+        transitions:
+          place_bet: 0.2
+          logout: 0.3
+          get_homepage: 0.5

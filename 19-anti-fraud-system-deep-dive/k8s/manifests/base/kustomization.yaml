@@ -1,0 +1,36 @@
+# Companion code for "The Backend of Luck" - Chapter 19, Anti-Fraud System Deep Dive.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: fraud-detection
+
+labels:
+  - includeSelectors: false
+    pairs:
+      app.kubernetes.io/part-of: fraud-detection
+      app.kubernetes.io/managed-by: kustomize
+
+resources:
+  - namespace.yaml
+  - configmap-app.yaml
+  - configmap-prometheus.yaml
+  - secrets-bootstrap.yaml
+  - network-policies.yaml
+  - init-sql.yaml
+  - postgres.yaml
+  - redis.yaml
+  - deployment-data-ingestion.yaml
+  - deployment-feature-engineering.yaml
+  - deployment-model-serving.yaml
+  - deployment-alerting.yaml
+  - hpa.yaml
+  - ingress.yaml

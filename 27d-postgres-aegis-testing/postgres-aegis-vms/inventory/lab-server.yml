@@ -1,0 +1,73 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 27d, PostgreSQL Aegis.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+all:
+  vars:
+    target_host: lab-server
+    libvirt_uri: qemu+ssh://lab-server/system
+    base_image: /raid_nvme01/vms/images/ubuntu-22.04-pgdb.qcow2
+    vm_disk_dir: /raid_nvme01/vms/postgres-aegis
+    network_bridge: vmbr0
+    network_vlan: 42
+    # HSM + BAO reach localhost on lab-server, so from VMs we go via a gateway.
+    hsm_connector_url: http://10.0.0.12:12345   # lab-server LAN IP
+    bao_addr: https://10.0.0.12:8200
+    bao_token: "{{ lookup('env','BAO_TOKEN') }}"
+
+  children:
+    etcd:
+      hosts:
+        pg-etcd-1: {ansible_host: 10.0.42.20, vm_cpu: 2, vm_ram_mb: 2048}
+        pg-etcd-2: {ansible_host: 10.0.42.21, vm_cpu: 2, vm_ram_mb: 2048}
+        pg-etcd-3: {ansible_host: 10.0.42.22, vm_cpu: 2, vm_ram_mb: 2048}
+
+    shard_a_writer:
+      hosts:
+        pg-shard-a-writer-1: {ansible_host: 10.0.42.30, vm_cpu: 4, vm_ram_mb: 8192, patroni_scope: shard-a}
+
+    shard_a_readers:
+      hosts:
+        pg-shard-a-reader-1: {ansible_host: 10.0.42.31, patroni_scope: shard-a}
+        pg-shard-a-reader-2: {ansible_host: 10.0.42.32, patroni_scope: shard-a}
+        pg-shard-a-reader-3: {ansible_host: 10.0.42.33, patroni_scope: shard-a}
+        pg-shard-a-reader-4: {ansible_host: 10.0.42.34, patroni_scope: shard-a}
+        pg-shard-a-reader-5: {ansible_host: 10.0.42.35, patroni_scope: shard-a}
+      vars:
+        vm_cpu: 2
+        vm_ram_mb: 4096
+
+    shard_b_writer:
+      hosts:
+        pg-shard-b-writer-1: {ansible_host: 10.0.42.40, vm_cpu: 4, vm_ram_mb: 8192, patroni_scope: shard-b}
+
+    shard_b_readers:
+      hosts:
+        pg-shard-b-reader-1: {ansible_host: 10.0.42.41, patroni_scope: shard-b}
+        pg-shard-b-reader-2: {ansible_host: 10.0.42.42, patroni_scope: shard-b}
+        pg-shard-b-reader-3: {ansible_host: 10.0.42.43, patroni_scope: shard-b}
+        pg-shard-b-reader-4: {ansible_host: 10.0.42.44, patroni_scope: shard-b}
+        pg-shard-b-reader-5: {ansible_host: 10.0.42.45, patroni_scope: shard-b}
+      vars:
+        vm_cpu: 2
+        vm_ram_mb: 4096
+
+    pgcat:
+      hosts:
+        pg-cat-1: {ansible_host: 10.0.42.50, vm_cpu: 2, vm_ram_mb: 4096}
+        pg-cat-2: {ansible_host: 10.0.42.51, vm_cpu: 2, vm_ram_mb: 4096}
+
+    # Convenience groups for roles
+    writers:
+      children: {shard_a_writer: null, shard_b_writer: null}
+    readers:
+      children: {shard_a_readers: null, shard_b_readers: null}
+    postgres:
+      children: {writers: null, readers: null}

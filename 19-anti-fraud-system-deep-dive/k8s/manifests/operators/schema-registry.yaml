@@ -1,0 +1,137 @@
+# Companion code for "The Backend of Luck" - Chapter 19, Anti-Fraud System Deep Dive.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# -----------------------------------------------------------------------------
+# CONFLUENT SCHEMA REGISTRY (standalone Deployment, backed by Strimzi Kafka)
+# -----------------------------------------------------------------------------
+# Confluent's cp-schema-registry image speaks to any Kafka; we point it at the
+# Strimzi bootstrap service. NOT using the Confluent Operator -- single-replica
+# is enough for the fraud-detection dev/prod stack on this cluster.
+#
+# IMPORTANT: enableServiceLinks must be false. Kubernetes injects a PORT env
+# variable derived from the matching Service ("schema-registry" -> PORT=
+# tcp://<clusterIP>:8081). The cp-schema-registry 7.4 /etc/confluent/docker/
+# configure script treats any non-empty PORT as a fatal legacy-config conflict
+# and exits 1 *before* writing schema-registry.properties, which causes a
+# silent CrashLoopBackOff (only "PORT is deprecated..." is printed).
+# -----------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: schema-registry
+  namespace: fraud-detection
+  labels:
+    app: schema-registry
+    app.kubernetes.io/part-of: fraud-detection
+spec:
+  type: ClusterIP
+  selector:
+    app: schema-registry
+  ports:
+    - name: http
+      port: 8081
+      targetPort: 8081
+---
+# Pre-create the _schemas topic so schema-registry doesn't depend on Kafka
+# auto-create. Compacted, single-partition, single-replica (matches broker count).
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: schemas
+  namespace: fraud-detection
+  labels:
+    strimzi.io/cluster: fraud-kafka
+spec:
+  topicName: _schemas
+  partitions: 1
+  replicas: 1
+  config:
+    cleanup.policy: compact
+    min.insync.replicas: 1
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: schema-registry
+  namespace: fraud-detection
+  labels:
+    app: schema-registry
+    app.kubernetes.io/part-of: fraud-detection
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: schema-registry
+  template:
+    metadata:
+      labels:
+        app: schema-registry
+        app.kubernetes.io/part-of: fraud-detection
+    spec:
+      # Critical: prevents kubelet from injecting PORT=tcp://<svc-ip>:8081,
+      # which makes the cp-schema-registry 7.4 configure script exit 1.
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: schema-registry
+          image: confluentinc/cp-schema-registry:8.3.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8081
+              name: http
+          env:
+            - name: SCHEMA_REGISTRY_HOST_NAME
+              value: "schema-registry"
+            - name: SCHEMA_REGISTRY_LISTENERS
+              value: "http://0.0.0.0:8081"
+            - name: SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS
+              value: "PLAINTEXT://fraud-kafka-kafka-bootstrap.fraud-detection.svc.cluster.local:9092"
+            - name: SCHEMA_REGISTRY_KAFKASTORE_TOPIC
+              value: "_schemas"
+            # KRaft single-broker cluster -- override default (3) to 1.
+            - name: SCHEMA_REGISTRY_KAFKASTORE_TOPIC_REPLICATION_FACTOR
+              value: "1"
+            - name: SCHEMA_REGISTRY_KAFKASTORE_INIT_TIMEOUT_MS
+              value: "60000"
+            - name: SCHEMA_REGISTRY_SCHEMA_REGISTRY_GROUP_ID
+              value: "fraud-schema-registry"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "512Mi"
+            limits:
+              cpu: "500m"
+              memory: "1Gi"
+          readinessProbe:
+            httpGet:
+              path: /subjects
+              port: 8081
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /subjects
+              port: 8081
+            initialDelaySeconds: 60
+            periodSeconds: 20
+      volumes:
+        - name: tmp
+          emptyDir: {}

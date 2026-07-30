@@ -1,0 +1,40 @@
+# Secure Dockerfile template following CIS benchmarks
+FROM alpine:3.24
+
+# CIS 4.1 - Create a non-root user
+RUN addgroup -g 1000 appgroup && \
+    adduser -D -s /bin/sh -u 1000 -G appgroup appuser
+
+# CIS 4.3 - Install only necessary packages
+RUN apk add --no-cache \
+    ca-certificates \
+    curl \
+    && rm -rf /var/cache/apk/*
+
+# CIS 4.8 - Remove setuid/setgid permissions
+RUN find / -perm +6000 -type f -exec chmod a-s {} \; || true
+
+# CIS 4.10 - No secrets in image
+# (Never add secrets here - use environment variables or mounted secrets)
+
+# Switch to non-root user
+USER appuser
+
+# CIS 4.6 - Add health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
+
+# Set working directory with appropriate permissions
+WORKDIR /app
+
+# CIS 4.9 - Use COPY instead of ADD
+COPY --chown=appuser:appgroup . /app/
+
+# Expose only necessary ports
+EXPOSE 8080
+
+# Use exec form for ENTRYPOINT
+ENTRYPOINT ["./app"]
+
+# CIS 4.7 - No update instructions alone
+# (Package updates should be done in the same RUN instruction)

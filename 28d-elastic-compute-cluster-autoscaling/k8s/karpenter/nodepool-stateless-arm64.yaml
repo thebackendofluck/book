@@ -1,0 +1,61 @@
+# Companion code for "The Backend of Luck" - Chapter 28d, Elastic Compute and Cluster Autoscaling on EKS.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# NodePool: stateless-arm64
+# ---------------------------------------------------------------------------
+# The bulk tier: FastAPI services, Next.js dashboards, Kafka consumers, bet
+# spike workers — everything stateless and horizontally scalable.
+#   - arm64 (Graviton) by default for the price/performance win.
+#   - spot-first with on-demand fallback (stateless work tolerates reclaim).
+#   - wide instance diversity + multi-AZ (via discovery subnets) so spot pools
+#     stay deep and interruptions stay rare.
+#   - aggressive consolidation to shrink idle cost, BUT a scheduled freeze
+#     window so Karpenter does not churn nodes during the weekend peak.
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: stateless-arm64
+spec:
+  template:
+    metadata:
+      labels:
+        workload-class: stateless
+    spec:
+      requirements:
+        - key: kubernetes.io/arch
+          operator: In
+          values: ["arm64"]
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: ["spot", "on-demand"] # spot-first; Karpenter falls back to on-demand
+        - key: karpenter.k8s.aws/instance-category
+          operator: In
+          values: ["c", "m", "r"]
+        - key: karpenter.k8s.aws/instance-generation
+          operator: Gt
+          values: ["6"] # Graviton3/4 families (c7g/m7g/r7g, c8g/m8g/r8g)
+      expireAfter: 168h # weekly recycle for patching
+      nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
+        name: casino-default
+  # Sizing — STAGING values shown. Prod: cpu "2000", memory 8000Gi (see README).
+  limits:
+    cpu: "200"
+    memory: 800Gi
+  disruption:
+    consolidationPolicy: WhenEmptyOrUnderutilized
+    consolidateAfter: 1m
+    budgets:
+      - nodes: "10%" # cap routine churn
+      - nodes: "0" # …and freeze entirely into the weekend peak
+        schedule: "0 18 * * 5" # Fri 18:00
+        duration: 72h
+  weight: 10

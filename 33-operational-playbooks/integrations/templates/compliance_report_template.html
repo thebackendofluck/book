@@ -1,0 +1,225 @@
+<!-- Quarterly Compliance Report Template for iGaming Operations -->
+<!-- Placeholders: {{QUARTER}}, {{JURISDICTION}}, {{TOTAL_INCIDENTS}},
+     {{SLA_COMPLIANCE_PCT}}, {{PLAYER_COMPLAINTS}}, {{COMPLAINTS_RESOLVED_IN_SLA}},
+     {{RTP_AUDITS_PASSED}}, {{RTP_AUDITS_TOTAL}} -->
+
+<ac:structured-macro ac:name="note">
+    <ac:rich-text-body>
+        <p><strong>Confidential</strong> — This report contains compliance data
+        for regulatory review. Distribution is restricted to authorized personnel
+        and regulatory bodies.</p>
+    </ac:rich-text-body>
+</ac:structured-macro>
+
+<h2>Quarterly Compliance Report</h2>
+<table>
+    <tbody>
+        <tr><th style="width:200px">Reporting Period</th><td>{{QUARTER}}</td></tr>
+        <tr><th>Jurisdiction</th><td>{{JURISDICTION}}</td></tr>
+        <tr><th>Report Generated</th><td><em>Auto-generated timestamp</em></td></tr>
+        <tr><th>Prepared by</th><td>Compliance Team</td></tr>
+        <tr><th>Review Status</th><td><em>Draft / Under Review / Approved</em></td></tr>
+    </tbody>
+</table>
+
+<h2>Executive Summary</h2>
+<p><em>Brief overview of compliance posture for this quarter. Highlight any
+significant events, regulatory changes, or areas requiring attention.</em></p>
+
+<h2>Incident Metrics</h2>
+<table>
+    <thead>
+        <tr>
+            <th>Metric</th>
+            <th>Value</th>
+            <th>Target</th>
+            <th>Status</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>Total Incidents</td>
+            <td>{{TOTAL_INCIDENTS}}</td>
+            <td>&lt; 20 / quarter</td>
+            <td><em>On Track / At Risk / Breached</em></td>
+        </tr>
+        <tr>
+            <td>SLA Compliance Rate</td>
+            <td>{{SLA_COMPLIANCE_PCT}}%</td>
+            <td>&gt; 99%</td>
+            <td><em>On Track / At Risk / Breached</em></td>
+        </tr>
+        <tr>
+            <td>Mean Time to Detect (MTTD)</td>
+            <td><em>X minutes</em></td>
+            <td>&lt; 5 minutes</td>
+            <td><em>On Track / At Risk / Breached</em></td>
+        </tr>
+        <tr>
+            <td>Mean Time to Resolve (MTTR)</td>
+            <td><em>X minutes</em></td>
+            <td>&lt; 60 minutes (SEV1)</td>
+            <td><em>On Track / At Risk / Breached</em></td>
+        </tr>
+    </tbody>
+</table>
+
+<h3>Incidents by Severity</h3>
+<table>
+    <thead>
+        <tr><th>Severity</th><th>Count</th><th>Avg Resolution Time</th><th>SLA Met</th></tr>
+    </thead>
+    <tbody>
+        <tr><td>SEV1 (Critical)</td><td><em>N</em></td><td><em>X hours</em></td><td><em>Y/N</em></td></tr>
+        <tr><td>SEV2 (Major)</td><td><em>N</em></td><td><em>X hours</em></td><td><em>Y/N</em></td></tr>
+        <tr><td>SEV3 (Minor)</td><td><em>N</em></td><td><em>X hours</em></td><td><em>Y/N</em></td></tr>
+        <tr><td>SEV4 (Low)</td><td><em>N</em></td><td><em>X hours</em></td><td><em>Y/N</em></td></tr>
+    </tbody>
+</table>
+
+<h2>Player Complaints</h2>
+<table>
+    <thead>
+        <tr><th>Metric</th><th>Value</th><th>Target</th></tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>Total Complaints Received</td>
+            <td>{{PLAYER_COMPLAINTS}}</td>
+            <td>-</td>
+        </tr>
+        <tr>
+            <td>Resolved Within SLA (24h)</td>
+            <td>{{COMPLAINTS_RESOLVED_IN_SLA}}</td>
+            <td>100%</td>
+        </tr>
+        <tr>
+            <td>Escalated to Regulator</td>
+            <td><em>N</em></td>
+            <td>0</td>
+        </tr>
+        <tr>
+            <td>Avg Resolution Time</td>
+            <td><em>X hours</em></td>
+            <td>&lt; 24 hours</td>
+        </tr>
+    </tbody>
+</table>
+
+<h3>Complaint Categories</h3>
+<table>
+    <thead>
+        <tr><th>Category</th><th>Count</th><th>% of Total</th></tr>
+    </thead>
+    <tbody>
+        <tr><td>Withdrawal Delays</td><td><em>N</em></td><td><em>X%</em></td></tr>
+        <tr><td>Game Fairness</td><td><em>N</em></td><td><em>X%</em></td></tr>
+        <tr><td>Account Issues</td><td><em>N</em></td><td><em>X%</em></td></tr>
+        <tr><td>Responsible Gaming</td><td><em>N</em></td><td><em>X%</em></td></tr>
+        <tr><td>Bonus/Promotion</td><td><em>N</em></td><td><em>X%</em></td></tr>
+        <tr><td>Other</td><td><em>N</em></td><td><em>X%</em></td></tr>
+    </tbody>
+</table>
+
+<h2>RTP Audit Results</h2>
+<table>
+    <tbody>
+        <tr><th style="width:200px">Total Audits</th><td>{{RTP_AUDITS_TOTAL}}</td></tr>
+        <tr><th>Audits Passed</th><td>{{RTP_AUDITS_PASSED}}</td></tr>
+        <tr><th>Deviations Detected</th><td><em>N</em></td></tr>
+        <tr><th>Deviations Resolved</th><td><em>N</em></td></tr>
+    </tbody>
+</table>
+
+<h3>RTP Compliance by Game Category</h3>
+<table>
+    <thead>
+        <tr><th>Category</th><th>Games Audited</th><th>Target RTP</th><th>Actual RTP (Avg)</th><th>Status</th></tr>
+    </thead>
+    <tbody>
+        <tr><td>Slots</td><td><em>N</em></td><td>95-97%</td><td><em>X%</em></td><td><em>Pass/Fail</em></td></tr>
+        <tr><td>Table Games</td><td><em>N</em></td><td>97-99.5%</td><td><em>X%</em></td><td><em>Pass/Fail</em></td></tr>
+        <tr><td>Live Casino</td><td><em>N</em></td><td>97-99%</td><td><em>X%</em></td><td><em>Pass/Fail</em></td></tr>
+        <tr><td>Crash/Instant</td><td><em>N</em></td><td>95-97%</td><td><em>X%</em></td><td><em>Pass/Fail</em></td></tr>
+    </tbody>
+</table>
+
+<h2>Responsible Gaming Metrics</h2>
+<table>
+    <thead>
+        <tr><th>Metric</th><th>Value</th></tr>
+    </thead>
+    <tbody>
+        <tr><td>Self-Exclusions Processed</td><td><em>N</em></td></tr>
+        <tr><td>Deposit Limit Changes</td><td><em>N</em></td></tr>
+        <tr><td>Reality Check Triggers</td><td><em>N</em></td></tr>
+        <tr><td>Cool-Off Periods Activated</td><td><em>N</em></td></tr>
+        <tr><td>Intervention Referrals</td><td><em>N</em></td></tr>
+    </tbody>
+</table>
+
+<h2>Regulatory Submissions</h2>
+<table>
+    <thead>
+        <tr>
+            <th>Date</th>
+            <th>Submission Type</th>
+            <th>Regulator</th>
+            <th>Status</th>
+            <th>Reference</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td><em>YYYY-MM-DD</em></td>
+            <td><em>Monthly report / Incident notification / etc.</em></td>
+            <td><em>MGA / UKGC / etc.</em></td>
+            <td><em>Submitted / Acknowledged / Under Review</em></td>
+            <td><em>Reference #</em></td>
+        </tr>
+    </tbody>
+</table>
+
+<h2>Change Management</h2>
+<table>
+    <thead>
+        <tr><th>Metric</th><th>Value</th></tr>
+    </thead>
+    <tbody>
+        <tr><td>Total Changes Deployed</td><td><em>N</em></td></tr>
+        <tr><td>Emergency Changes</td><td><em>N</em></td></tr>
+        <tr><td>Failed Changes (Rolled Back)</td><td><em>N</em></td></tr>
+        <tr><td>Change Success Rate</td><td><em>X%</em></td></tr>
+    </tbody>
+</table>
+
+<h2>Notable Events</h2>
+<ul>
+    <li><em>Significant events, regulatory communications, audit findings...</em></li>
+</ul>
+
+<h2>Action Items for Next Quarter</h2>
+<table>
+    <thead>
+        <tr>
+            <th>#</th>
+            <th>Action</th>
+            <th>Owner</th>
+            <th>Priority</th>
+            <th>Due Date</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>1</td>
+            <td><em>Action description...</em></td>
+            <td><em>Team/Person</em></td>
+            <td><em>High/Medium/Low</em></td>
+            <td><em>YYYY-MM-DD</em></td>
+        </tr>
+    </tbody>
+</table>
+
+<hr/>
+<p><em>This report is auto-generated from operational data and should be
+reviewed by the Compliance Officer before distribution to regulators.</em></p>

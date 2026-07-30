@@ -1,0 +1,198 @@
+# ==============================================================================
+# igaming-compliance.rules
+# Data Protection and Compliance Rules for iGaming Platforms
+# SID Range: 9000400 - 9000499
+#
+# Coverage:
+#   - SSN / national ID leakage in HTTP responses (PII)
+#   - Credit card PAN in HTTP responses (PCI DSS violation)
+#   - Plaintext password in POST body (insecure transmission)
+#   - PII email address in URL query string (GDPR/CCPA violation)
+#   - Direct origin access bypassing CDN (DDoS exposure / WAF bypass)
+#   - SQL injection targeting player and transaction tables
+#   - Database exfiltration via oversized internal service response
+#
+# Regulatory context:
+#   - Rules 9000400-9000403: GDPR Article 32 (technical security measures)
+#   - Rules 9000401: PCI DSS Requirement 3 (protect stored cardholder data)
+#                    PCI DSS Requirement 4 (encrypt transmission of cardholder data)
+#   - Rule 9000405: OWASP Top 10 A03:2021 - Injection
+#   - Rule 9000406: GDPR Article 5(1)(f) - integrity and confidentiality
+#
+# Deployment notes:
+#   - PII detection rules (9000400-9000403) must be applied to outbound traffic
+#   - Rules inspecting response bodies require TLS inspection / SSL bump
+#   - SQL injection rule (9000405) should be set to DROP/REJECT in IPS mode
+#   - Tune origin bypass detection (9000404) with your actual CDN CIDR ranges
+#     in the $CDN_NETS variable
+#   - Internal service rules (9000406) should apply to east-west traffic
+# ==============================================================================
+
+
+# ------------------------------------------------------------------------------
+# Section 1: PII Leakage - SSN in HTTP Response
+# ------------------------------------------------------------------------------
+
+# SID 9000400 - SSN pattern in HTTP response body (outbound PII leak)
+# Social Security Numbers (US format: XXX-XX-XXXX or XXXXXXXXX) in API
+# responses are a critical PII leak. They must never appear in plaintext
+# over HTTP; this also violates GDPR Article 9 (special category data).
+alert http $HTTP_SERVERS $HTTP_PORTS -> $EXTERNAL_NET any \
+    (msg:"IGAMING COMPLIANCE PII Leak - SSN Detected in HTTP Response Body"; \
+     flow:established,to_client; \
+     http.response_body; \
+     pcre:"/\b(?!219-09-9999|078-05-1120)[0-9]{3}-(?!00)[0-9]{2}-(?!0000)[0-9]{4}\b/"; \
+     classtype:policy-violation; \
+     sid:9000400; rev:1; \
+     metadata:affected_product iGaming_Platform, attack_target Player_Data, \
+               created_at 2024_01_01, deployment Internal, \
+               performance_impact High, signature_severity Critical, \
+               tag PII_Leak, regulatory_ref GDPR_Art32;)
+
+
+# ------------------------------------------------------------------------------
+# Section 2: PCI DSS - Credit Card PAN in HTTP Response
+# ------------------------------------------------------------------------------
+
+# SID 9000401 - Credit card PAN in HTTP response body (PCI DSS violation)
+# PCI DSS Requirement 3.4 mandates that PANs be masked or tokenized at rest
+# and in transit. A full PAN appearing in an API response is a critical
+# PCI DSS violation and must be treated as a potential data breach event.
+# Pattern covers Visa, Mastercard, Amex, Discover, and JCB.
+alert http $HTTP_SERVERS $HTTP_PORTS -> $EXTERNAL_NET any \
+    (msg:"IGAMING COMPLIANCE PCI Violation - Credit Card PAN in HTTP Response"; \
+     flow:established,to_client; \
+     http.response_body; \
+     pcre:"/\b(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|2[2-7][0-9]{14}|3[47][0-9]{13}|6(?:011|5[0-9]{2})[0-9]{12}|(?:2131|1800|35[0-9]{3})[0-9]{11})\b/"; \
+     classtype:policy-violation; \
+     sid:9000401; rev:1; \
+     metadata:affected_product iGaming_Platform, attack_target Payment_Data, \
+               created_at 2024_01_01, deployment Internal, \
+               performance_impact High, signature_severity Critical, \
+               tag PCI_DSS, regulatory_ref PCI_DSS_Req3;)
+
+
+# ------------------------------------------------------------------------------
+# Section 3: Plaintext Password Transmission
+# ------------------------------------------------------------------------------
+
+# SID 9000402 - Plaintext password in POST body (insecure transmission)
+# Passwords transmitted in cleartext (not hashed/encrypted) in the POST body
+# violate OWASP guidelines and PCI DSS Req 8. This may indicate a broken
+# client implementation, a downgrade attack, or a misconfigured endpoint.
+# The pcre avoids matching bcrypt/argon2 hashes by checking for short values.
+alert http $EXTERNAL_NET any -> $HTTP_SERVERS $HTTP_PORTS \
+    (msg:"IGAMING COMPLIANCE Plaintext Password in POST Body - Insecure Transmission"; \
+     flow:established,to_server; \
+     http.method; content:"POST"; \
+     http.request_body; \
+     pcre:"/[\"&]password[\"=:]\s*[\"']?[a-zA-Z0-9@#$!%^&*()_+\-=\[\]{}|;':\",.\/\\<>?`~]{6,72}[\"'&\s]/i"; \
+     http.uri; pcre:"/\/(login|signin|register|signup|change.password|reset)/"; \
+     classtype:policy-violation; \
+     sid:9000402; rev:1; \
+     metadata:affected_product iGaming_Platform, attack_target Authentication, \
+               created_at 2024_01_01, deployment Perimeter, \
+               performance_impact Medium, signature_severity High, \
+               tag PlaintextPassword, regulatory_ref PCI_DSS_Req8;)
+
+
+# ------------------------------------------------------------------------------
+# Section 4: PII in URL Query String (GDPR Violation)
+# ------------------------------------------------------------------------------
+
+# SID 9000403 - PII email address in URL query string (GDPR/CCPA violation)
+# Email addresses in URL query parameters are logged in server access logs,
+# CDN logs, browser history, and Referer headers — constituting a GDPR
+# Article 5(1)(f) (confidentiality) and CCPA personal information exposure.
+alert http $EXTERNAL_NET any -> $HTTP_SERVERS $HTTP_PORTS \
+    (msg:"IGAMING COMPLIANCE GDPR Violation - Email PII Exposed in URL Query String"; \
+     flow:established,to_server; \
+     http.uri; \
+     pcre:"/[?&](email|e_mail|user_email|contact|username)=[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/i"; \
+     classtype:policy-violation; \
+     sid:9000403; rev:1; \
+     metadata:affected_product iGaming_Platform, attack_target Player_Data, \
+               created_at 2024_01_01, deployment Perimeter, \
+               performance_impact Low, signature_severity High, \
+               tag PII_URL, regulatory_ref GDPR_Art5;)
+
+
+# ------------------------------------------------------------------------------
+# Section 5: CDN Bypass / Direct Origin Access
+# ------------------------------------------------------------------------------
+
+# SID 9000404 - Direct origin access bypassing CDN
+# Attackers who discover the origin IP bypass WAF and DDoS protection.
+# Legitimate traffic should always arrive via CDN (Cloudflare, Akamai, Fastly).
+# This rule detects HTTP Host headers that match the direct origin IP rather
+# than the canonical domain name, indicating CDN bypass.
+# Replace 203.0.113.0/24 with your actual origin IP range.
+alert http $EXTERNAL_NET any -> $HTTP_SERVERS $HTTP_PORTS \
+    (msg:"IGAMING COMPLIANCE Direct Origin Access - CDN Bypass Detected"; \
+     flow:established,to_server; \
+     http.host; \
+     pcre:"/^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/"; \
+     classtype:policy-violation; \
+     sid:9000404; rev:1; \
+     metadata:affected_product iGaming_Platform, attack_target Origin_Server, \
+               created_at 2024_01_01, deployment Perimeter, \
+               performance_impact Low, signature_severity High, \
+               tag CDN_Bypass, regulatory_ref WAF_Compliance;)
+
+
+# ------------------------------------------------------------------------------
+# Section 6: SQL Injection - Player and Transaction Tables
+# ------------------------------------------------------------------------------
+
+# SID 9000405 - SQL injection targeting player/transaction tables
+# Targets iGaming-specific SQL injection patterns that reference player,
+# transaction, bet, and account tables. Covers both classic SQLi and
+# time-based blind injection patterns commonly used against gambling platforms.
+alert http $EXTERNAL_NET any -> $HTTP_SERVERS $HTTP_PORTS \
+    (msg:"IGAMING COMPLIANCE SQL Injection - Targeting Player or Transaction Tables"; \
+     flow:established,to_server; \
+     http.uri; \
+     pcre:"/(\bUNION\b.+\bSELECT\b|\bSELECT\b.+\bFROM\b.+(player|account|transaction|bet|wallet|deposit|withdrawal|balance)|\bOR\b.+['\"\`]?\s*[0-9]+\s*=\s*[0-9]|SLEEP\s*\(\d+\)|BENCHMARK\s*\(\d+|WAITFOR\s+DELAY|;\s*DROP\s+TABLE|;\s*DELETE\s+FROM)/i"; \
+     classtype:web-application-attack; \
+     sid:9000405; rev:1; \
+     metadata:affected_product iGaming_Platform, attack_target Database, \
+               created_at 2024_01_01, deployment Perimeter, \
+               performance_impact Medium, signature_severity Critical, \
+               tag SQLInjection, regulatory_ref OWASP_A03;)
+
+# Companion: SQL injection in POST body targeting gambling-specific table names
+alert http $EXTERNAL_NET any -> $HTTP_SERVERS $HTTP_PORTS \
+    (msg:"IGAMING COMPLIANCE SQL Injection in Request Body - Player Data Tables"; \
+     flow:established,to_server; \
+     http.method; content:"POST"; \
+     http.request_body; \
+     pcre:"/(\bUNION\b.{0,100}\bSELECT\b|\bOR\b\s+['\"]?\s*1\s*=\s*1|\bAND\b\s+['\"]?\s*1\s*=\s*1|SLEEP\s*\(\d+\)|0x[0-9a-f]{10,})/i"; \
+     classtype:web-application-attack; \
+     sid:9000409; rev:1; \
+     metadata:affected_product iGaming_Platform, attack_target Database, \
+               created_at 2024_01_01, deployment Perimeter, \
+               performance_impact Medium, signature_severity Critical, \
+               tag SQLInjection, regulatory_ref OWASP_A03;)
+
+
+# ------------------------------------------------------------------------------
+# Section 7: Database Exfiltration - Oversized Internal Response
+# ------------------------------------------------------------------------------
+
+# SID 9000406 - Database exfiltration - oversized response from internal service
+# Internal microservices (player profile service, transaction service) should
+# return small JSON payloads. A response exceeding 50MB from an internal
+# service to another internal service is anomalous and may indicate a
+# compromised service dumping the database, or an insider threat bulk export.
+alert http $HTTP_SERVERS $HTTP_PORTS -> $HOME_NET any \
+    (msg:"IGAMING COMPLIANCE Database Exfiltration - Oversized Internal API Response"; \
+     flow:established,to_client; \
+     http.uri; pcre:"/\/(player|account|transaction|wallet|bet|report|export)/"; \
+     http.response_body; \
+     byte_test:4,>,52428800,0,relative; \
+     classtype:policy-violation; \
+     sid:9000406; rev:1; \
+     metadata:affected_product iGaming_Platform, attack_target Internal_Database, \
+               created_at 2024_01_01, deployment Internal, \
+               performance_impact High, signature_severity Critical, \
+               tag DataExfil, regulatory_ref GDPR_Art32;)

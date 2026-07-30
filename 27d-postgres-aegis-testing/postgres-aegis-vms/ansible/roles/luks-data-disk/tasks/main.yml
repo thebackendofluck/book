@@ -1,0 +1,179 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 27d, PostgreSQL Aegis.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# luks-data-disk — formats {{ luks_device }} with LUKS2.
+#
+# Two modes:
+#
+#   smoke_mode = true  → controller generates a random 64-byte key locally,
+#     pushes to each VM at /etc/luks/<host>.key (0400 root), and opens the
+#     container from that key file. This is the path for "testou tudo"
+#     smoke runs: real LUKS, NOT HSM-wrapped. Fine for book chapter numbers,
+#     NOT for production.
+#
+#   smoke_mode = false → uses Vault Agent + per-node AppRole to fetch the
+#     HSM-wrapped DEK from Bao path casino/postgres-aegis/luks/<host>.
+#     This is the production path.
+
+- name: Packages (cryptsetup)
+  ansible.builtin.apt:
+    name: [cryptsetup, cryptsetup-bin]
+    state: present
+    update_cache: true
+
+- name: Ensure key dir
+  ansible.builtin.file:
+    path: /etc/luks
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Probe LUKS status on {{ luks_device }}
+  ansible.builtin.command: "cryptsetup isLuks {{ luks_device }}"
+  register: is_luks
+  changed_when: false
+  failed_when: false
+
+# ===================== SMOKE MODE =====================
+
+- name: (smoke) Generate random LUKS key on the controller (single use)
+  when: smoke_mode | bool
+  ansible.builtin.set_fact:
+    _smoke_luks_key: "{{ lookup('ansible.builtin.password', '/tmp/.aegis-smoke-luks-' ~ inventory_hostname, length=64, chars=['ascii_letters','digits']) }}"
+  no_log: true
+  run_once: false
+
+- name: (smoke) Push LUKS key file to the VM
+  when: smoke_mode | bool
+  ansible.builtin.copy:
+    content: "{{ _smoke_luks_key }}"
+    dest: "/etc/luks/{{ inventory_hostname }}.key"
+    owner: root
+    group: root
+    mode: "0400"
+  no_log: true
+
+# ===================== PROD MODE (Vault Agent) =====================
+
+- name: (prod) Ensure per-node Vault Agent config dir
+  when: not (smoke_mode | bool)
+  ansible.builtin.file:
+    path: /opt/vault-agent/postgres-aegis
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: (prod) Safety-check AppRole role-id/secret-id
+  when: not (smoke_mode | bool)
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  register: approle_files
+  loop:
+    - "/opt/vault-agent/postgres-aegis/role-id"
+    - "/opt/vault-agent/postgres-aegis/secret-id"
+  failed_when: not approle_files.results[-1].stat.exists
+
+- name: (prod) Render Vault Agent HCL
+  when: not (smoke_mode | bool)
+  ansible.builtin.template:
+    src: vault-agent-luks.hcl.j2
+    dest: /opt/vault-agent/postgres-aegis/agent-luks.hcl
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: (prod) Render key via Vault Agent (one-shot)
+  when: not (smoke_mode | bool)
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/bao
+      - agent
+      - "-config=/opt/vault-agent/postgres-aegis/agent-luks.hcl"
+    creates: "/etc/luks/{{ inventory_hostname }}.key"
+  changed_when: false
+
+# ===================== COMMON (format + open + fs + mount) =====================
+
+- name: LUKS2 format (first time only; WIPES the device)
+  when: is_luks.rc != 0
+  ansible.builtin.command:
+    argv:
+      - cryptsetup
+      - luksFormat
+      - "--type=luks2"
+      - "--cipher=aes-xts-plain64"
+      - "--key-size=512"
+      - "--hash=sha512"
+      - "--iter-time=2000"
+      - "--pbkdf=argon2id"
+      - "--batch-mode"
+      - "--key-file=/etc/luks/{{ inventory_hostname }}.key"
+      - "{{ luks_device }}"
+
+- name: Open LUKS → /dev/mapper/{{ luks_mapper_name }}
+  ansible.builtin.command:
+    argv:
+      - cryptsetup
+      - "--batch-mode"
+      - open
+      - "--key-file=/etc/luks/{{ inventory_hostname }}.key"
+      - "{{ luks_device }}"
+      - "{{ luks_mapper_name }}"
+  args:
+    creates: "/dev/mapper/{{ luks_mapper_name }}"
+
+- name: Make filesystem on mapper
+  community.general.filesystem:
+    dev: "/dev/mapper/{{ luks_mapper_name }}"
+    fstype: "{{ pgdata_fstype }}"
+    opts: "-L pgdata"
+
+- name: Ensure PGDATA mountpoint exists (owner fixed by postgres-16 role after pkg install)
+  ansible.builtin.file:
+    path: "{{ pgdata_mount }}"
+    state: directory
+    mode: "0755"
+
+- name: Mount {{ pgdata_mount }}
+  ansible.posix.mount:
+    path: "{{ pgdata_mount }}"
+    src: "/dev/mapper/{{ luks_mapper_name }}"
+    fstype: "{{ pgdata_fstype }}"
+    opts: "defaults,noatime,nodiratime"
+    state: mounted
+
+- name: Drop open-on-boot unlock script (systemd unit)
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/pg-aegis-luks-unlock.service
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Open pg-aegis LUKS container on boot
+      DefaultDependencies=no
+      After=local-fs.target
+      Before=postgresql.service patroni.service
+      [Service]
+      Type=oneshot
+      ExecStart=/bin/sh -c 'cryptsetup --batch-mode open --key-file=/etc/luks/{{ inventory_hostname }}.key {{ luks_device }} {{ luks_mapper_name }}; mount {{ pgdata_mount }}'
+      RemainAfterExit=true
+      [Install]
+      WantedBy=multi-user.target
+  notify: Reload systemd
+
+- name: Enable open-on-boot unit
+  ansible.builtin.systemd:
+    name: pg-aegis-luks-unlock.service
+    enabled: true
+    daemon_reload: true

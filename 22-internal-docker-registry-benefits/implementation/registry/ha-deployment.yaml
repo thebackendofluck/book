@@ -1,0 +1,457 @@
+# Companion code for "The Backend of Luck" - Chapter 22, Internal Docker Registry.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# Harbor High-Availability Deployment
+# This manifest supplements the Helm chart with HA-specific resources:
+# - PodDisruptionBudgets, TopologySpreadConstraints, anti-affinity
+# - External PostgreSQL HA (via CloudNativePG or RDS)
+# - External Redis HA (via Redis Sentinel)
+# - Registry replication endpoints
+#
+# Apply after Harbor Helm install:
+#   kubectl apply -f ha-deployment.yaml -n registry
+
+---
+# ============================================================
+# External PostgreSQL via CloudNativePG (replaces internal DB)
+# ============================================================
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: harbor-postgres
+  namespace: registry
+spec:
+  instances: 3
+  primaryUpdateStrategy: unsupervised
+
+  postgresql:
+    parameters:
+      max_connections: "200"
+      shared_buffers: "1GB"
+      effective_cache_size: "3GB"
+      work_mem: "16MB"
+      maintenance_work_mem: "256MB"
+      wal_buffers: "64MB"
+      max_wal_size: "2GB"
+
+  storage:
+    storageClass: gp3-encrypted
+    size: 100Gi
+
+  resources:
+    requests:
+      cpu: "1"
+      memory: 2Gi
+    limits:
+      cpu: "4"
+      memory: 8Gi
+
+  backup:
+    barmanObjectStore:
+      destinationPath: "s3://casino-harbor-backups/postgres/"
+      s3Credentials:
+        inheritFromIAMRole: true
+      wal:
+        compression: gzip
+        maxParallel: 4
+    retentionPolicy: "30d"
+
+  affinity:
+    topologyKey: topology.kubernetes.io/zone
+    podAntiAffinityType: required
+
+  monitoring:
+    enablePodMonitor: true
+
+---
+# ============================================================
+# External Redis Sentinel for HA caching/sessions
+# ============================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: harbor-redis-sentinel-config
+  namespace: registry
+data:
+  sentinel.conf: |
+    port 26379
+    sentinel monitor harbor-master harbor-redis-0.harbor-redis-headless.registry.svc.cluster.local 6379 2
+    sentinel down-after-milliseconds harbor-master 5000
+    sentinel failover-timeout harbor-master 60000
+    sentinel parallel-syncs harbor-master 1
+    sentinel auth-pass harbor-master ${REDIS_PASSWORD}
+
+  redis.conf: |
+    maxmemory 2gb
+    maxmemory-policy allkeys-lru
+    appendonly yes
+    appendfsync everysec
+    no-appendfsync-on-rewrite yes
+    tcp-keepalive 300
+    timeout 0
+    tcp-backlog 511
+    requirepass ${REDIS_PASSWORD}
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: harbor-redis
+  namespace: registry
+  labels:
+    app: harbor-redis
+spec:
+  serviceName: harbor-redis-headless
+  replicas: 3
+  selector:
+    matchLabels:
+      app: harbor-redis
+  template:
+    metadata:
+      labels:
+        app: harbor-redis
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: app
+                    operator: In
+                    values:
+                      - harbor-redis
+              topologyKey: topology.kubernetes.io/zone
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: redis
+          image: redis:8.8-alpine
+          ports:
+            - containerPort: 6379
+              name: redis
+          command:
+            - redis-server
+            - /etc/redis/redis.conf
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: harbor-redis-secret
+                  key: password
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 1
+              memory: 2Gi
+          volumeMounts:
+            - name: redis-config
+              mountPath: /etc/redis
+            - name: redis-data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+          livenessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+
+        - name: sentinel
+          image: redis:8.8-alpine
+          ports:
+            - containerPort: 26379
+              name: sentinel
+          command:
+            - redis-sentinel
+            - /etc/redis/sentinel.conf
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: harbor-redis-secret
+                  key: password
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+          volumeMounts:
+            - name: redis-config
+              mountPath: /etc/redis
+            - name: tmp
+              mountPath: /tmp
+
+      volumes:
+        - name: redis-config
+          configMap:
+            name: harbor-redis-sentinel-config
+        - name: tmp
+          emptyDir: {}
+
+  volumeClaimTemplates:
+    - metadata:
+        name: redis-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: gp3-encrypted
+        resources:
+          requests:
+            storage: 10Gi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: harbor-redis-headless
+  namespace: registry
+spec:
+  clusterIP: None
+  ports:
+    - port: 6379
+      name: redis
+    - port: 26379
+      name: sentinel
+  selector:
+    app: harbor-redis
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: harbor-redis
+  namespace: registry
+spec:
+  ports:
+    - port: 6379
+      name: redis
+    - port: 26379
+      name: sentinel
+  selector:
+    app: harbor-redis
+
+---
+# ============================================================
+# Registry Replication Policy (multi-region)
+# Applied via Harbor API post-install
+# ============================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: harbor-replication-config
+  namespace: registry
+data:
+  setup-replication.sh: |
+    #!/usr/bin/env bash
+    # Configure cross-region replication for disaster recovery
+    # Run after Harbor is fully initialized
+    set -euo pipefail
+
+    HARBOR_URL="https://registry.casino-platform.internal"
+    HARBOR_USER="admin"
+    HARBOR_PASS="${HARBOR_ADMIN_PASSWORD}"
+
+    # Register DR registry endpoint
+    curl -sk -u "${HARBOR_USER}:${HARBOR_PASS}" \
+      -X POST "${HARBOR_URL}/api/v2.0/registries" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "name": "dr-registry-us-east",
+        "type": "harbor",
+        "url": "https://registry-dr.casino-platform.internal",
+        "credential": {
+          "type": "basic",
+          "access_key": "replication-user",
+          "access_secret": "'"${DR_REGISTRY_PASSWORD}"'"
+        },
+        "insecure": false
+      }'
+
+    # Create push-based replication policy for critical images
+    curl -sk -u "${HARBOR_USER}:${HARBOR_PASS}" \
+      -X POST "${HARBOR_URL}/api/v2.0/replication/policies" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "name": "dr-replication-critical",
+        "src_registry": null,
+        "dest_registry": {"id": 1},
+        "dest_namespace_replace_count": 0,
+        "trigger": {
+          "type": "event_based",
+          "trigger_settings": {}
+        },
+        "filters": [
+          {"type": "name", "value": "casino-platform/**"},
+          {"type": "name", "value": "casino-games/**"},
+          {"type": "tag", "value": "v*"},
+          {"type": "label", "value": "production"}
+        ],
+        "deletion": false,
+        "override": true,
+        "enabled": true,
+        "speed": 0
+      }'
+
+    echo "Replication policies configured successfully"
+
+---
+# ============================================================
+# NetworkPolicy — restrict registry access
+# ============================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: harbor-registry-access
+  namespace: registry
+spec:
+  podSelector:
+    matchLabels:
+      app: harbor
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow from ingress controller
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+      ports:
+        - port: 8443
+          protocol: TCP
+    # Allow from CI/CD namespace (image push)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: cicd
+      ports:
+        - port: 8443
+          protocol: TCP
+    # Allow from all namespaces (image pull)
+    - from:
+        - namespaceSelector: {}
+      ports:
+        - port: 8443
+          protocol: TCP
+  egress:
+    # Allow DNS
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    # Allow S3 (image storage)
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - port: 443
+          protocol: TCP
+    # Allow internal DB and Redis
+    - to:
+        - podSelector: {}
+
+---
+# ============================================================
+# HPA for Harbor Core and Registry
+# ============================================================
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: harbor-core-hpa
+  namespace: registry
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: harbor-core
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 120
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: harbor-registry-hpa
+  namespace: registry
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: harbor-registry
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300

@@ -1,0 +1,32 @@
+{
+  "devDependencies": {
+    "@manifoldco/swagger-to-ts": "^2.0.0",
+    "glob": "^7.1.6",
+    "js-yaml": "^3.15.0"
+  },
+  "files": [
+    "dist"
+  ],
+  "name": "@acmetocasino/payments-openapi",
+  "version": "0.0.3",
+  "description": "Contains all OPEN API files with the Payment endpoint",
+  "main": "index.js",
+  "scripts": {
+    "prepublish": "node ./scripts/generateTsDefinitions.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AcmetoCasino/PaymentsOpenApi.git"
+  },
+  "author": "",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/AcmetoCasino/PaymentsOpenApi/issues"
+  },
+  "homepage": "https://github.com/AcmetoCasino/PaymentsOpenApi#readme",
+  "overrides": {
+    "brace-expansion": "5.0.8",
+    "minimatch": ">=3.1.2",
+    "semver": ">=7.5.2"
+  }
+}

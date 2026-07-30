@@ -1,0 +1,99 @@
+# Companion code for "The Backend of Luck" - Chapter 36, Financial Operations.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+swagger: "2.0"
+info:
+  description: ""
+  version: "0.0.1"
+  title: "Swagger documentation"
+schemes: ["https"]
+paths:
+  /adyen/apple/merchant/v1/validate:
+    post:
+      summary: "Validating us as a mechant with Apple"
+      description: "application/json"
+      produces:
+      - "application/json"
+      parameters:
+      - in: "body"
+        name: "body"
+        required: true
+        schema:
+          $ref: "#/definitions/MerchantValidationRequest"
+      responses:
+        200:
+          description: "successful operation"
+          schema:
+            $ref: "#/definitions/ValidatedMerchant"
+        400:
+          description: "Non-parsable body"
+        403:
+          description: "No permission for merchant validation with the specified amount"
+        500:
+          description: "General error"
+        503:
+          description: "Problem with Apple servers"
+definitions:
+  MerchantValidationRequest:
+    type: "object"
+    required:
+    - amount
+    - appleValidationURL
+    - sessionid
+    - hostname
+    properties:
+      amount:
+        type: "integer"
+        format: "int64"
+      appleValidationURL:
+        type: "string"
+      sessionid:
+        type: "string"
+      hostname:
+        type: "string"
+      bonusGroupId:
+        type: "integer"
+        format: "int32"
+      isMobile:
+        type: "integer"
+        format: "boolean"
+  AppleMerchantSession:
+    type: "object"
+    properties:
+      epochTimestamp:
+        type: "integer"
+        format: "int64"
+      expiresAt:
+        type: "integer"
+        format: "int64"
+      merchantSessionIdentifier:
+        type: "string"
+      nonce:
+        type: "string"
+      merchantIdentifier:
+        type: "string"
+      domainName:
+        type: "string"
+      displayName:
+        type: "string"
+      signature:
+        type: "string"
+  ValidatedMerchant:
+    type: "object"
+    properties:
+      merchantSession:
+        $ref: '#/definitions/AppleMerchantSession'
+      paymentId:
+        type: "integer"
+        format: "int64"
+
+externalDocs:
+  description: "Find out more about Swagger"
+  url: "http://swagger.io"

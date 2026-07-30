@@ -1,0 +1,91 @@
+# Companion code for "The Backend of Luck" - Chapter 25, GLI-GSF Compliance Framework.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gli-compliance-runner
+  namespace: gli-compliance
+  labels:
+    app.kubernetes.io/name: gli-compliance-runner
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: gli-compliance-runner
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: gli-compliance-runner
+    spec:
+      serviceAccountName: gli-compliance
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: runner
+          image: registry.internal.example:5000/gli-compliance-runner:0.1.1
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: gli-compliance-runtime
+          env:
+            - name: JACKPOT_CONFIG
+              value: /etc/gli/jackpot-config.json
+            - name: JACKPOT_LEDGER
+              value: /etc/gli/jackpot-ledger.csv
+            - name: RECON_PROVIDER
+              value: /etc/gli/provider.csv
+            - name: RECON_OPERATOR
+              value: /etc/gli/operator.csv
+          volumeMounts:
+            - name: stub-data
+              mountPath: /etc/gli
+              readOnly: true
+            - name: evidence
+              mountPath: /var/lib/gli-evidence
+            - name: tmp
+              mountPath: /tmp
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          resources:
+            requests: { cpu: "50m", memory: "128Mi" }
+            limits:   { cpu: "500m", memory: "512Mi" }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: stub-data
+          configMap:
+            name: gli-compliance-stub-data
+        - name: evidence
+          persistentVolumeClaim:
+            claimName: gli-evidence
+        - name: tmp
+          emptyDir: {}

@@ -1,0 +1,38 @@
+# Companion code for "The Backend of Luck" - Chapter 24h, Mutual TLS Between Kubernetes Services for iGaming Platforms.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# File: manifests/player-service/certificate.yaml
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: player-service-tls
+  namespace: player-service
+spec:
+  secretName: player-service-tls
+  commonName: player-service.player-service.svc.cluster.local
+  dnsNames:
+    - player-service
+    - player-service.player-service
+    - player-service.player-service.svc
+    - player-service.player-service.svc.cluster.local
+  duration: 720h    # 30 days
+  renewBefore: 168h # Renew 7 days before expiry
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always  # Generate new private key on each renewal
+  issuerRef:
+    name: namespace-issuer
+    kind: Issuer
+    group: cert-manager.io
+  usages:
+    - server auth
+    - client auth  # Both usages required for mTLS

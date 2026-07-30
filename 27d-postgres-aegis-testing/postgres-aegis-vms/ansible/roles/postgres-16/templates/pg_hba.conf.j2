@@ -1,0 +1,20 @@
+# pg_hba.conf for postgres-aegis / {{ inventory_hostname }}
+# All network paths are TLS-only. Replication uses a dedicated role.
+
+local   all             all                                     peer
+hostssl all             all             127.0.0.1/32            scram-sha-256
+hostssl all             all             ::1/128                 scram-sha-256
+
+# Application traffic arrives through PgBouncer / PgCat; lock to the pgcat subnet.
+{% for h in groups['pgcat'] | default([]) %}
+hostssl {{ pg_database }}  {{ pg_superuser }}  {{ hostvars[h].ansible_host }}/32  scram-sha-256
+{% endfor %}
+
+# Streaming replication peers (Patroni nodes in the same shard)
+{% for h in (groups['shard_a_writer'] | default([])) + (groups['shard_a_readers'] | default([])) + (groups['shard_b_writer'] | default([])) + (groups['shard_b_readers'] | default([])) %}
+hostssl replication        {{ pg_repl_user }}  {{ hostvars[h].ansible_host }}/32  scram-sha-256
+{% endfor %}
+
+# Deny everything else
+host    all             all             0.0.0.0/0              reject
+host    all             all             ::/0                    reject

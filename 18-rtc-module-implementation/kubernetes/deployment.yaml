@@ -1,0 +1,480 @@
+# Companion code for "The Backend of Luck" - Chapter 18, Real-Time Clock Module Implementation.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# =============================================================================
+# RTC System Kubernetes Deployment
+# =============================================================================
+#
+# This manifest deploys the RTC system to Kubernetes with:
+# - High availability (3 replicas across AZs)
+# - Security hardening (non-root, read-only fs)
+# - Resource limits and requests
+# - Health checks (liveness, readiness)
+# - Horizontal Pod Autoscaler
+# - Pod Disruption Budget
+# - Network Policies
+#
+# =============================================================================
+
+---
+# =============================================================================
+# Namespace
+# =============================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: rtc-system
+  labels:
+    name: rtc-system
+    environment: production
+
+---
+# =============================================================================
+# ConfigMap
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rtc-config
+  namespace: rtc-system
+data:
+  # RTC Configuration
+  RTC_CONSENSUS_QUORUM: "2"
+  RTC_DRIFT_THRESHOLD_MS: "10"
+  RTC_SYNC_INTERVAL_MS: "1000"
+
+  # API Configuration
+  API_PORT: "8080"
+  METRICS_PORT: "9090"
+
+  # Logging
+  LOG_LEVEL: "info"
+  LOG_FORMAT: "json"
+
+  # Performance
+  WORKER_THREADS: "4"
+  MAX_CONNECTIONS: "1000"
+
+---
+# =============================================================================
+# Secret (placeholder - use External Secrets Operator in production)
+# =============================================================================
+apiVersion: v1
+kind: Secret
+metadata:
+  name: rtc-secrets
+  namespace: rtc-system
+type: Opaque
+stringData:
+  # Redis authentication
+  REDIS_AUTH_TOKEN: "PLACEHOLDER_USE_EXTERNAL_SECRETS"
+
+  # Database credentials
+  DB_HOST: "PLACEHOLDER"
+  DB_PASSWORD: "PLACEHOLDER_USE_EXTERNAL_SECRETS"
+
+  # HSM configuration (if using YubiHSM)
+  HSM_CONNECTOR_URL: "http://yubihsm-connector:12345"
+  HSM_AUTH_KEY_ID: "1"
+  HSM_PASSWORD: "PLACEHOLDER_USE_EXTERNAL_SECRETS"
+
+---
+# =============================================================================
+# ServiceAccount
+# =============================================================================
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: rtc-service
+  namespace: rtc-system
+  annotations:
+    # Enable IRSA for AWS access
+    eks.amazonaws.com/role-arn: "arn:aws:iam::ACCOUNT_ID:role/rtc-service-role"
+
+---
+# =============================================================================
+# Deployment
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rtc-service
+  namespace: rtc-system
+  labels:
+    app: rtc-service
+    version: v1
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: rtc-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: rtc-service
+        version: v1
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: rtc-service
+
+      # Anti-affinity for HA across AZs
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: rtc-service
+                topologyKey: topology.kubernetes.io/zone
+
+      # Security context at pod level
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+
+      containers:
+        - name: rtc-service
+          image: rtc-service:v1.0.0
+          imagePullPolicy: Always
+
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+            - name: metrics
+              containerPort: 9090
+              protocol: TCP
+            - name: grpc
+              containerPort: 50051
+              protocol: TCP
+
+          # Environment variables from ConfigMap and Secrets
+          envFrom:
+            - configMapRef:
+                name: rtc-config
+            - secretRef:
+                name: rtc-secrets
+
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+
+          # Container security context
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+
+          # Resource limits
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "2000m"
+              memory: "2Gi"
+
+          # Liveness probe
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          # Readiness probe
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+          # Startup probe for slow starts
+          startupProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 30
+
+          # Volume mounts
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: cache
+              mountPath: /var/cache/rtc
+
+      volumes:
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 100Mi
+        - name: cache
+          emptyDir:
+            sizeLimit: 500Mi
+
+      # Termination handling
+      terminationGracePeriodSeconds: 30
+
+---
+# =============================================================================
+# Service
+# =============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: rtc-service
+  namespace: rtc-system
+  labels:
+    app: rtc-service
+spec:
+  type: ClusterIP
+  selector:
+    app: rtc-service
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
+    - name: metrics
+      port: 9090
+      targetPort: metrics
+      protocol: TCP
+    - name: grpc
+      port: 50051
+      targetPort: grpc
+      protocol: TCP
+
+---
+# =============================================================================
+# Horizontal Pod Autoscaler
+# =============================================================================
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: rtc-service-hpa
+  namespace: rtc-system
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: rtc-service
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 10
+          periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+        - type: Percent
+          value: 50
+          periodSeconds: 30
+
+---
+# =============================================================================
+# Pod Disruption Budget
+# =============================================================================
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: rtc-service-pdb
+  namespace: rtc-system
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: rtc-service
+
+---
+# =============================================================================
+# Network Policy - Default Deny
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: rtc-system
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+
+---
+# =============================================================================
+# Network Policy - Allow RTC Service
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-rtc-service
+  namespace: rtc-system
+spec:
+  podSelector:
+    matchLabels:
+      app: rtc-service
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow from ingress controller
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8080
+    # Allow from Prometheus
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: monitoring
+      ports:
+        - protocol: TCP
+          port: 9090
+    # Allow internal communication
+    - from:
+        - podSelector:
+            matchLabels:
+              app: rtc-service
+      ports:
+        - protocol: TCP
+          port: 50051
+  egress:
+    # Allow DNS
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+    # Allow Redis (ElastiCache)
+    - to:
+        - ipBlock:
+            cidr: 10.50.0.0/16
+      ports:
+        - protocol: TCP
+          port: 6379
+    # Allow PostgreSQL (RDS)
+    - to:
+        - ipBlock:
+            cidr: 10.50.0.0/16
+      ports:
+        - protocol: TCP
+          port: 5432
+    # Allow internal gRPC
+    - to:
+        - podSelector:
+            matchLabels:
+              app: rtc-service
+      ports:
+        - protocol: TCP
+          port: 50051
+
+---
+# =============================================================================
+# Ingress
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: rtc-service-ingress
+  namespace: rtc-system
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/rate-limit: "1000"
+    nginx.ingress.kubernetes.io/rate-limit-window: "1s"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  tls:
+    - hosts:
+        - rtc.example.com
+      secretName: rtc-tls-secret
+  rules:
+    - host: rtc.example.com
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: rtc-service
+                port:
+                  name: http
+
+---
+# =============================================================================
+# ServiceMonitor for Prometheus
+# =============================================================================
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: rtc-service-monitor
+  namespace: rtc-system
+  labels:
+    app: rtc-service
+spec:
+  selector:
+    matchLabels:
+      app: rtc-service
+  endpoints:
+    - port: metrics
+      interval: 15s
+      path: /metrics

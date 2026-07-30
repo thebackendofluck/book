@@ -1,0 +1,83 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 27d, PostgreSQL Aegis.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+all:
+  vars:
+    ansible_user: ansible
+    ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+    ansible_ssh_common_args: '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
+    ansible_become: true
+    target_host: secondary-host
+    proxmox_api_url: https://10.0.0.10:8006/api2/json
+    proxmox_node: secondary-host
+    proxmox_template: tmpl-aegis-noble
+    template_vmid: 9000
+    proxmox_storage: nvme-zfs-vms
+    network_bridge: vmbr0
+    network_vlan: 42
+    hsm_connector_url: http://10.0.0.11:12345
+    bao_addr: https://10.0.0.11:8200
+    proxmox_api_token_id: "{{ lookup('env','PROXMOX_API_TOKEN_ID') }}"
+    proxmox_api_token_secret: "{{ lookup('env','PROXMOX_API_TOKEN_SECRET') }}"
+    # smoke LUKS (local random key) + REAL BAO-sourced pg_aegis master + Wasabi for pgbackrest
+    smoke_mode: true
+    bao_approle_role_id_local: "/opt/vault-agent/postgres-aegis/role-id"
+    bao_approle_secret_id_local: "/opt/vault-agent/postgres-aegis/secret-id"
+
+  children:
+    etcd:
+      hosts:
+        pg-etcd-1: {ansible_host: 10.0.42.21, vmid: 1001, vm_cpu: 2, vm_ram_mb: 2048}
+        pg-etcd-2: {ansible_host: 10.0.42.22, vmid: 1002, vm_cpu: 2, vm_ram_mb: 2048}
+        pg-etcd-3: {ansible_host: 10.0.42.23, vmid: 1003, vm_cpu: 2, vm_ram_mb: 2048}
+
+    shard_a_writer:
+      hosts:
+        pg-shard-a-writer-1:
+          ansible_host: 10.0.42.30
+          vmid: 1010
+          vm_cpu: 2
+          vm_ram_mb: 4096
+          patroni_scope: shard-a
+
+    shard_a_readers:
+      hosts:
+        pg-shard-a-reader-1: {ansible_host: 10.0.42.31, vmid: 1011, patroni_scope: shard-a}
+      vars:
+        vm_cpu: 2
+        vm_ram_mb: 2048
+
+    shard_b_writer:
+      hosts:
+        pg-shard-b-writer-1:
+          ansible_host: 10.0.42.32
+          vmid: 1012
+          vm_cpu: 2
+          vm_ram_mb: 4096
+          patroni_scope: shard-b
+
+    shard_b_readers:
+      hosts:
+        pg-shard-b-reader-1: {ansible_host: 10.0.42.33, vmid: 1013, patroni_scope: shard-b}
+      vars:
+        vm_cpu: 2
+        vm_ram_mb: 4096
+
+    pgcat:
+      hosts:
+        pg-cat-1: {ansible_host: 10.0.42.50, vmid: 1030, vm_cpu: 2, vm_ram_mb: 2048}
+
+    writers:
+      children: {shard_a_writer: null, shard_b_writer: null}
+    readers:
+      children: {shard_a_readers: null, shard_b_readers: null}
+    postgres:
+      children: {writers: null, readers: null}

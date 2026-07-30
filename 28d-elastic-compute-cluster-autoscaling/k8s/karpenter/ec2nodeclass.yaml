@@ -1,0 +1,115 @@
+# Companion code for "The Backend of Luck" - Chapter 28d, Elastic Compute and Cluster Autoscaling on EKS.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# EC2NodeClass — node templates for AcmetoCasino Karpenter NodePools.
+# `role` must equal the Terraform `node_role_arn` output (the worker node role).
+# Subnet/SG selection is by the karpenter.sh/discovery tag set in main.tf.
+#
+# Two classes, not one, because the two tiers have different change control:
+#
+#   casino-default    stateless-arm64 + system pools. Recycled weekly by the
+#                     168h expireAfter; AMI bumps are ordinary platform work.
+#   casino-certified  stateful-amd64 only: the certified RNG, the game-math
+#                     engine, HSM-adjacent services and in-progress sessions.
+#                     The AMI under a certified binary is part of the tested
+#                     configuration, so it moves only after the lab signs off.
+#
+# Sharing one class across both tiers means a routine AMI bump for the web tier
+# also re-images the certified tier. Splitting them costs one extra manifest and
+# buys an independent, auditable change cadence.
+#
+# --- On AMI pinning ---------------------------------------------------------
+# `alias: al2023@latest` is a floating reference: Karpenter picks up each new
+# EKS-optimised release and drift-replaces nodes on its own schedule. For a
+# regulated platform that is an untracked change to the runtime under the money
+# path, and it makes an incident unreproducible ("which kernel was that node
+# on?" has no answer once the node is gone). Pin it and bump in a reviewed PR.
+#
+# Resolve the current releases before bumping:
+#   aws ssm get-parameters-by-path --recursive \
+#     --path /aws/service/eks/optimized-ami/1.31/amazon-linux-2023 \
+#     --query 'Parameters[].Name'
+#
+# The alias is also Kubernetes-version sensitive: on a control-plane upgrade
+# Karpenter resolves the pinned AMI version for the *new* K8s minor. For the
+# certified tier, where even that is a change you must control, replace the
+# alias with the immutable ID once the lab has signed off on a build:
+#   amiSelectorTerms:
+#     - id: ami-0123456789abcdef0
+apiVersion: karpenter.k8s.aws/v1
+kind: EC2NodeClass
+metadata:
+  name: casino-default
+spec:
+  role: "acmetocasino-staging-eks-node-role" # prod: acmetocasino-prod-eks-node-role
+  amiSelectorTerms:
+    # Pinned, resolves per-arch (amd64 AND arm64) automatically. Never @latest.
+    - alias: al2023@v20250821
+  subnetSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: "acmetocasino-staging-eks"
+  securityGroupSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: "acmetocasino-staging-eks"
+  metadataOptions:
+    httpTokens: required # IMDSv2 only (PCI-DSS hardening)
+    httpPutResponseHopLimit: 1
+  blockDeviceMappings:
+    - deviceName: /dev/xvda
+      ebs:
+        volumeSize: 50Gi
+        volumeType: gp3
+        encrypted: true # PCI-DSS Req 3 — encryption at rest
+        deleteOnTermination: true
+  tags:
+    Platform: acmetocasino
+    Compliance: PCI-DSS
+    ManagedBy: karpenter
+    Tier: stateless
+---
+# The certified tier. Same discovery tags and the same hardening, but its own
+# AMI lifecycle: this version changes only once the test lab has re-run the
+# certification suite against it.
+apiVersion: karpenter.k8s.aws/v1
+kind: EC2NodeClass
+metadata:
+  name: casino-certified
+  annotations:
+    acmetocasino.com/certification-scope: "RNG + game-math engine"
+    acmetocasino.com/ami-signoff: "lab reference recorded in the change ticket"
+spec:
+  role: "acmetocasino-staging-eks-node-role" # prod: acmetocasino-prod-eks-node-role
+  amiSelectorTerms:
+    # Deliberately a separate pin from casino-default so a web-tier patch does
+    # not re-image the certified nodes. Swap to `- id: ami-...` after sign-off.
+    - alias: al2023@v20250821
+  subnetSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: "acmetocasino-staging-eks"
+  securityGroupSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: "acmetocasino-staging-eks"
+  metadataOptions:
+    httpTokens: required
+    httpPutResponseHopLimit: 1
+  blockDeviceMappings:
+    - deviceName: /dev/xvda
+      ebs:
+        # Larger root volume than the stateless tier: in-progress session state
+        # and the game-math engine's working set live here.
+        volumeSize: 100Gi
+        volumeType: gp3
+        encrypted: true
+        deleteOnTermination: true
+  tags:
+    Platform: acmetocasino
+    Compliance: PCI-DSS
+    ManagedBy: karpenter
+    Tier: certified

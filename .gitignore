@@ -1,0 +1,50 @@
+# Virtual environments and dependency trees are never published here.
+# A plain ".venv" entry once missed ".venv312" and let 6,000 vendored files in.
+.venv*/
+venv*/
+ENV/
+site-packages/
+node_modules/
+vendor/
+target/
+dist/
+build/
+*.egg-info/
+*.dist-info/
+
+# Caches and build output
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.coverage
+htmlcov/
+.ipynb_checkpoints/
+.next/
+
+# Terraform state holds live infrastructure detail
+.terraform/
+*.tfstate
+*.tfstate.backup
+
+# Secrets never belong in this repository
+.env
+.env.local
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+
+# Local databases and logs
+*.sqlite
+*.sqlite3
+*.db
+*.log
+
+.DS_Store
+
+# Added by ggshield
+.cache_ggshield

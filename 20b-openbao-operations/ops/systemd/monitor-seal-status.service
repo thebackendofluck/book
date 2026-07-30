@@ -1,0 +1,45 @@
+[Unit]
+Description=OpenBao seal-status probe (one-shot, paired with monitor-seal-status.timer)
+Documentation=file:///opt/egambling-book/writing/new-book/chapters/20b-openbao-operations.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Use a dedicated unprivileged user; the seal-status endpoint is unauthenticated
+# so the probe never needs a token.
+User=bao-monitor
+Group=bao-monitor
+
+# Override BAO_ADDR via a drop-in (/etc/systemd/system/monitor-seal-status.service.d/override.conf):
+#   [Service]
+#   Environment=BAO_ADDR=https://vault.internal:8200
+#   Environment=CA_BUNDLE=/etc/ssl/certs/internal-ca.pem
+Environment=BAO_ADDR=https://127.0.0.1:8200
+
+# Prometheus textfile collector path. node_exporter must be configured with
+# --collector.textfile.directory=/var/lib/node_exporter/textfile_collector
+ExecStart=/usr/local/bin/monitor-seal-status.sh \
+  --once \
+  --prometheus /var/lib/node_exporter/textfile_collector/bao_seal.prom
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ReadWritePaths=/var/lib/node_exporter/textfile_collector
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+
+# Output capture: stderr -> journal -> Wazuh via existing rsyslog pipeline.
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+# Not enabled directly; the .timer activates it.
+WantedBy=multi-user.target

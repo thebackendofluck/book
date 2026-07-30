@@ -1,0 +1,109 @@
+# Companion code for "The Backend of Luck" - Chapter 31, Performance Benchmarks and Metrics.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: casino-service
+    team: platform
+    version: 1.0.0
+  name: casino-service
+  namespace: casino-prod
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 20
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: casino-service
+  strategy:
+    rollingUpdate:
+      maxSurge: 2
+      maxUnavailable: 0
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: casino-service
+        team: platform
+        version: 1.0.0
+    spec:
+      containers:
+      - env:
+        - name: MAX_BET
+          valueFrom:
+            configMapKeyRef:
+              key: max_bet
+              name: casino-config
+        - name: BONUS_MULTIPLIER
+          value: "1.0"
+        - name: RTP
+          value: "96.5"
+        image: casino-service:prod
+        imagePullPolicy: Never
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /health
+            port: 8000
+            scheme: HTTP
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+        name: casino
+        ports:
+        - containerPort: 8000
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /health
+            port: 8000
+            scheme: HTTP
+          initialDelaySeconds: 5
+          periodSeconds: 3
+          successThreshold: 1
+          timeoutSeconds: 1
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 100m
+            memory: 128Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          privileged: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        # The service only writes scratch files, so /tmp is an emptyDir and the
+        # image layer itself stays immutable. Load tests are exactly where a
+        # writable root filesystem hides: it never fails, it just lets a
+        # compromised pod persist.
+        - mountPath: /tmp
+          name: tmp
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      volumes:
+      - emptyDir: {}
+        name: tmp
+      terminationGracePeriodSeconds: 30

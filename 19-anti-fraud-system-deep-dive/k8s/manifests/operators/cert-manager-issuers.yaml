@@ -1,0 +1,81 @@
+# Companion code for "The Backend of Luck" - Chapter 19, Anti-Fraud System Deep Dive.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# -----------------------------------------------------------------------------
+# CERT-MANAGER CLUSTER ISSUERS
+# -----------------------------------------------------------------------------
+# Two issuers:
+#   - letsencrypt-staging: for dry runs (higher rate limits, untrusted cert)
+#   - letsencrypt-prod:    for real certificates
+#
+# HTTP-01 solver via Traefik. Works IFF the cluster has a public IP reachable
+# from ACME servers. For a LAN-only k3d/K3s topology this is NOT the case —
+# flip to DNS-01 (Route53, Cloudflare, Njalla, etc.) or use the self-signed
+# internal CA below.
+# -----------------------------------------------------------------------------
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-staging
+spec:
+  acme:
+    email: ops@example.com
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    privateKeySecretRef:
+      name: letsencrypt-staging-key
+    solvers:
+      - http01:
+          ingress:
+            class: traefik
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    email: ops@example.com
+    server: https://acme-v02.api.letsencrypt.org/directory
+    privateKeySecretRef:
+      name: letsencrypt-prod-key
+    solvers:
+      - http01:
+          ingress:
+            class: traefik
+---
+# Internal self-signed root for dev / LAN-only services. Used until DNS-01 is wired.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned-root
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: fraud-internal-ca
+  namespace: cert-manager
+spec:
+  isCA: true
+  commonName: fraud-internal-ca
+  secretName: fraud-internal-ca-tls
+  duration: 87600h  # 10 years
+  issuerRef:
+    name: selfsigned-root
+    kind: ClusterIssuer
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: fraud-internal-issuer
+spec:
+  ca:
+    secretName: fraud-internal-ca-tls

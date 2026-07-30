@@ -1,0 +1,93 @@
+harness/vendor
+harness/node_modules
+harness/.env
+harness/database/database.sqlite
+harness/storage/logs/*.log
+harness/storage/framework/cache/data/*
+harness/storage/framework/sessions/*
+harness/storage/framework/views/*
+harness/storage/app/private/*
+.dockerignore
+Dockerfile
+docker-compose.yml
+
+# --- Extended: the list above missed VCS history and generic secret patterns ---
+# Patterns are relative to the context root (not gitignore semantics), so
+# anything that can appear at any depth is written with a leading **/.
+
+# VCS and CI metadata
+.git
+.gitattributes
+.gitmodules
+.github
+.gitlab-ci.yml
+.circleci
+**/.gitignore
+
+# Credentials and key material (must never reach a layer)
+**/.env
+**/.env.*
+**/*.pem
+**/*.key
+**/*.crt
+**/*.p12
+**/*.pfx
+**/*.jks
+**/*.keystore
+**/id_rsa*
+**/id_ed25519*
+**/id_ecdsa*
+**/*.ppk
+**/secrets
+**/.netrc
+**/.npmrc
+**/.pypirc
+**/credentials
+**/*.tfstate
+**/*.tfstate.*
+**/.terraform
+!**/.env.example
+
+# Docker and compose files at any depth
+**/Dockerfile
+**/Dockerfile.*
+**/*.dockerfile
+**/.dockerignore
+**/docker-compose*.yml
+**/docker-compose*.yaml
+**/compose*.yml
+**/compose*.yaml
+
+# Editor and OS noise
+**/.DS_Store
+**/.idea
+**/.vscode
+**/*.swp
+**/*.swo
+**/*~
+
+# Local state, logs and archives
+**/tmp
+**/temp
+**/*.log
+**/*.tar
+**/*.tar.gz
+**/*.tgz
+**/*.zip
+
+# PHP
+**/vendor
+**/composer.phar
+**/.phpunit.result.cache
+
+# Node (the Laravel harness ships a package.json)
+**/node_modules
+**/npm-debug.log*
+**/pnpm-debug.log*
+**/.npm
+**/coverage
+
+# Local SQLite state
+**/*.sqlite
+**/*.sqlite3
+**/*.db

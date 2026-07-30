@@ -1,0 +1,167 @@
+# Companion code for "The Backend of Luck" - Chapter 23, DevSecOps for iGaming.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# Falco Custom Rules — iGaming Platform Security
+# Deploy: kubectl create configmap falco-igaming-rules \
+#           --from-file=igaming-rules.yaml -n falco \
+#           --dry-run=client -o yaml | kubectl apply -f -
+# Then patch Falco DaemonSet to mount the configmap.
+
+- rule: Shell Executed in Payment Container
+  desc: >
+    Detects shell execution inside payment or wallet service containers.
+    Shells in production payment containers are almost always indicative of
+    an attack (RCE, container escape, insider threat).
+  condition: >
+    spawned_process and
+    container and
+    (proc.name in (bash, sh, zsh, ksh, dash, fish)) and
+    (container.image.repository contains "payment" or
+     container.image.repository contains "wallet" or
+     container.image.repository contains "transaction" or
+     k8s.ns.name in (casino-payments) or
+     k8s.pod.label.app in ("payment-service","wallet-service","psp-gateway"))
+  output: >
+    Shell executed in payment container
+    (user=%user.name user_uid=%user.uid container=%container.name
+     image=%container.image.repository:%container.image.tag
+     cmd=%proc.cmdline parent=%proc.pname
+     k8s_ns=%k8s.ns.name k8s_pod=%k8s.pod.name)
+  priority: CRITICAL
+  tags: [igaming, payment, shell, container]
+
+- rule: Sensitive File Read in Game Container
+  desc: >
+    Detects reads of /etc/shadow, /etc/passwd, or private key files
+    from within any casino-namespace container. These reads indicate
+    potential credential harvesting or privilege escalation.
+  condition: >
+    open_read and
+    container and
+    (fd.name in (/etc/shadow, /etc/passwd, /etc/sudoers) or
+     fd.name startswith /etc/ssh/ or
+     fd.name endswith ".key" or
+     fd.name endswith ".pem" or
+     fd.name endswith "id_rsa") and
+    (k8s.ns.name startswith "casino" or
+     container.image.repository contains "casino" or
+     container.image.repository contains "game")
+  output: >
+    Sensitive file read in game container
+    (user=%user.name file=%fd.name container=%container.name
+     image=%container.image.repository:%container.image.tag
+     k8s_ns=%k8s.ns.name k8s_pod=%k8s.pod.name
+     proc=%proc.cmdline)
+  priority: WARNING
+  tags: [igaming, credential-access, file-read]
+
+- rule: Unexpected Outbound Connection from Game Container
+  desc: >
+    Game logic containers should only connect to known internal services.
+    Any outbound connection to external IPs from a game container could
+    indicate data exfiltration, C2 communication, or cryptomining.
+  condition: >
+    outbound and
+    container and
+    not proc.name in (curl, wget, apt, apt-get, pip, npm) and
+    (k8s.ns.name startswith "casino" or
+     container.image.repository contains "game" or
+     container.image.repository contains "slot" or
+     container.image.repository contains "rng") and
+    not (fd.sip in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")) and
+    not fd.sport in (443, 80, 5432, 3306, 6379, 9200, 27017)
+  output: >
+    Unexpected outbound connection from game container
+    (user=%user.name container=%container.name
+     image=%container.image.repository:%container.image.tag
+     connection=%fd.name proto=%fd.proto
+     k8s_ns=%k8s.ns.name k8s_pod=%k8s.pod.name
+     proc=%proc.name cmd=%proc.cmdline)
+  priority: WARNING
+  tags: [igaming, network, exfiltration]
+
+- rule: Player Database Access Outside Business Hours
+  desc: >
+    Database queries to player data outside of maintenance windows may
+    indicate unauthorized bulk data export (GDPR concern) or insider threat.
+    Adjust the time window to match your maintenance schedule.
+  condition: >
+    spawned_process and
+    container and
+    proc.name in (psql, mysql, mongodump, pg_dump, mysqldump) and
+    (k8s.ns.name startswith "casino") and
+    not (proc.pname in (cron, crond, systemd)) and
+    (evt.time.s % 86400 > 79200 or evt.time.s % 86400 < 21600)
+  output: >
+    Database dump tool executed in casino namespace (possible data exfil)
+    (user=%user.name tool=%proc.name container=%container.name
+     k8s_ns=%k8s.ns.name k8s_pod=%k8s.pod.name
+     parent=%proc.pname cmd=%proc.cmdline)
+  priority: CRITICAL
+  tags: [igaming, database, exfiltration, gdpr]
+
+- rule: Privilege Escalation Attempt in Casino Pod
+  desc: >
+    Detects setuid/setgid execution or sudo usage inside casino containers,
+    which may indicate privilege escalation attempts.
+  condition: >
+    spawned_process and
+    container and
+    (proc.name in (sudo, su, newgrp) or
+     (proc.is_suid = true) or
+     (proc.is_sgid = true)) and
+    k8s.ns.name startswith "casino"
+  output: >
+    Privilege escalation attempt in casino container
+    (user=%user.name proc=%proc.name container=%container.name
+     image=%container.image.repository:%container.image.tag
+     k8s_ns=%k8s.ns.name k8s_pod=%k8s.pod.name
+     is_suid=%proc.is_suid cmd=%proc.cmdline)
+  priority: CRITICAL
+  tags: [igaming, privilege-escalation, container]
+
+- rule: Cryptocurrency Mining Process in Casino Container
+  desc: >
+    Detects known cryptomining processes and tools running inside casino
+    containers. Mining would indicate container compromise.
+  condition: >
+    spawned_process and
+    container and
+    (proc.name in (xmrig, cgminer, bfgminer, cpuminer, minerd, nbminer) or
+     proc.cmdline contains "stratum+" or
+     proc.cmdline contains "--mining-threads" or
+     proc.cmdline contains "nicehash") and
+    k8s.ns.name startswith "casino"
+  output: >
+    Cryptocurrency mining detected in casino container
+    (user=%user.name proc=%proc.name cmd=%proc.cmdline
+     container=%container.name image=%container.image.repository
+     k8s_ns=%k8s.ns.name k8s_pod=%k8s.pod.name)
+  priority: CRITICAL
+  tags: [igaming, cryptomining, compromise]
+
+- rule: RNG Seed File Access
+  desc: >
+    Access to RNG (Random Number Generator) seed files or entropy sources
+    outside of expected RNG service processes may indicate game integrity tampering.
+  condition: >
+    open_read and
+    container and
+    (fd.name startswith "/var/lib/rng" or
+     fd.name = "/dev/urandom" or
+     fd.name = "/dev/random") and
+    not proc.name in (rng-service, rngd, haveged, node, java, python, python3) and
+    k8s.ns.name startswith "casino"
+  output: >
+    Unexpected RNG/entropy source access in casino container
+    (user=%user.name file=%fd.name proc=%proc.name
+     container=%container.name k8s_ns=%k8s.ns.name k8s_pod=%k8s.pod.name)
+  priority: WARNING
+  tags: [igaming, rng, game-integrity]

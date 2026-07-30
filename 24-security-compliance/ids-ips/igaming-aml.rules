@@ -1,0 +1,153 @@
+# ==============================================================================
+# igaming-aml.rules
+# Anti-Money Laundering (AML) and Compliance Rules for iGaming Platforms
+# SID Range: 9000300 - 9000399
+#
+# Coverage:
+#   - Structuring (smurfing) - high-frequency sub-threshold transactions
+#   - Bonus abuse rapid claim pattern
+#   - Arbitrage detection - opposing bets from same subnet
+#   - Multi-accounting via device fingerprint cookie
+#   - VPN/proxy usage detection (jurisdictional compliance)
+#
+# Regulatory context:
+#   - Rules align with FATF Recommendation 16 (wire transfers)
+#   - Structuring rule (9000300) supports BSA/Bank Secrecy Act CTR obligations
+#   - Arbitrage rule (9000302) supports exchange-rate manipulation detection
+#   - Multi-accounting (9000303) supports KYC one-account-per-person requirements
+#   - VPN detection (9000304) supports geo-restriction enforcement under
+#     national gambling licenses (UKGC, MGA, NJDGE, etc.)
+#
+# Deployment notes:
+#   - These rules generate alerts that should feed a SIEM for SAR filing workflows
+#   - $HOME_NET should cover all internal application servers
+#   - Adjust structuring threshold (9000300) to match your jurisdiction's
+#     reporting threshold (default: $10,000 USD / EUR equivalent)
+# ==============================================================================
+
+
+# ------------------------------------------------------------------------------
+# Section 1: Structuring / Smurfing
+# ------------------------------------------------------------------------------
+
+# SID 9000300 - High-frequency transactions - structuring indicator
+# "Structuring" (smurfing) is breaking up large deposits into smaller amounts
+# to avoid the $10,000 CTR threshold. Eight deposit transactions in one hour
+# from the same source IP is a strong structuring indicator requiring SAR review.
+alert http $EXTERNAL_NET any -> $HTTP_SERVERS $HTTP_PORTS \
+    (msg:"IGAMING AML Structuring Indicator - High Frequency Deposit Transactions"; \
+     flow:established,to_server; \
+     http.method; content:"POST"; \
+     http.uri; content:"/api/"; content:"deposit"; \
+     threshold:type threshold, track by_src, count 8, seconds 3600; \
+     classtype:policy-violation; \
+     sid:9000300; rev:1; \
+     metadata:affected_product iGaming_Platform, attack_target Payment_System, \
+               created_at 2024_01_01, deployment Perimeter, \
+               performance_impact Low, signature_severity High, \
+               tag AML_Structuring, regulatory_ref BSA_CTR;)
+
+
+# ------------------------------------------------------------------------------
+# Section 2: Bonus Abuse
+# ------------------------------------------------------------------------------
+
+# SID 9000301 - Bonus abuse rapid claim pattern
+# Three bonus claims within 300 seconds from a single IP indicates automated
+# multi-accounting to harvest welcome bonuses, reload bonuses, or free spins.
+# This is a direct revenue leakage and KYC violation in most jurisdictions.
+alert http $EXTERNAL_NET any -> $HTTP_SERVERS $HTTP_PORTS \
+    (msg:"IGAMING AML Bonus Abuse - Rapid Bonus Claim Pattern Detected"; \
+     flow:established,to_server; \
+     http.method; content:"POST"; \
+     http.uri; pcre:"/\/(bonus|promo|promotion|claim|free.spin|free-spin|offer)/"; \
+     threshold:type threshold, track by_src, count 3, seconds 300; \
+     classtype:policy-violation; \
+     sid:9000301; rev:1; \
+     metadata:affected_product iGaming_Platform, attack_target Promotions_Engine, \
+               created_at 2024_01_01, deployment Perimeter, \
+               performance_impact Low, signature_severity High, \
+               tag BonusAbuse, regulatory_ref KYC;)
+
+
+# ------------------------------------------------------------------------------
+# Section 3: Arbitrage / Opposing Bets
+# ------------------------------------------------------------------------------
+
+# SID 9000302 - Arbitrage detection - opposing bets from same subnet
+# Placing opposing bets (back and lay, or both outcomes) from the same /24
+# subnet allows guaranteed profit extraction and is a form of market
+# manipulation. Four such events in 120 seconds from the same subnet signals
+# a coordinated arbitrage ring or matched betting operation.
+alert http $EXTERNAL_NET any -> $HTTP_SERVERS $HTTP_PORTS \
+    (msg:"IGAMING AML Arbitrage Detection - Opposing Bets From Same Subnet"; \
+     flow:established,to_server; \
+     http.method; content:"POST"; \
+     http.uri; pcre:"/\/(bet|wager|betslip)/"; \
+     http.request_body; pcre:"/\"selection\"\s*:\s*\"(lay|back|oppose|draw|both)\"/i"; \
+     threshold:type threshold, track by_src, count 4, seconds 120; \
+     classtype:policy-violation; \
+     sid:9000302; rev:1; \
+     metadata:affected_product iGaming_Platform, attack_target Sportsbook_API, \
+               created_at 2024_01_01, deployment Perimeter, \
+               performance_impact Low, signature_severity High, \
+               tag Arbitrage, regulatory_ref FATF_R16;)
+
+
+# ------------------------------------------------------------------------------
+# Section 4: Multi-Accounting via Device Fingerprint
+# ------------------------------------------------------------------------------
+
+# SID 9000303 - Multi-accounting indicator - same device fingerprint cookie
+# Many platforms set a device fingerprint cookie (e.g., fp_id, dfp, device_id)
+# to track devices across accounts. The same fingerprint appearing in multiple
+# Account-bearing requests indicates multi-accounting, a KYC violation.
+# Tune the cookie name to match your platform's fingerprinting implementation.
+alert http $EXTERNAL_NET any -> $HTTP_SERVERS $HTTP_PORTS \
+    (msg:"IGAMING AML Multi-Accounting - Same Device Fingerprint Across Accounts"; \
+     flow:established,to_server; \
+     http.method; content:"POST"; \
+     http.cookie; pcre:"/fp_id=[a-f0-9]{32,}/i"; \
+     http.uri; pcre:"/\/(register|signup|create.account|login)/"; \
+     threshold:type threshold, track by_rule, count 3, seconds 600; \
+     classtype:policy-violation; \
+     sid:9000303; rev:1; \
+     metadata:affected_product iGaming_Platform, attack_target Authentication, \
+               created_at 2024_01_01, deployment Perimeter, \
+               performance_impact Low, signature_severity High, \
+               tag MultiAccounting, regulatory_ref KYC;)
+
+
+# ------------------------------------------------------------------------------
+# Section 5: VPN / Proxy Detection
+# ------------------------------------------------------------------------------
+
+# SID 9000304 - VPN/proxy detection via known user-agent and header patterns
+# Customers using VPN or proxy services may be violating geo-restrictions
+# imposed by gambling licenses. Common VPN clients expose themselves via
+# User-Agent strings, custom headers, or known proxy service identifiers.
+# This rule catches common commercial VPN software user-agents and headers
+# associated with datacenter proxies used to circumvent IP geo-blocks.
+alert http $EXTERNAL_NET any -> $HTTP_SERVERS $HTTP_PORTS \
+    (msg:"IGAMING AML VPN/Proxy Usage Detected - Jurisdictional Compliance Risk"; \
+     flow:established,to_server; \
+     http.user_agent; \
+     pcre:"/(ExpressVPN|NordVPN|CyberGhost|Mullvad|ProtonVPN|TorBrowser|Tor Browser|IVPN|PIA\/|Windscribe)/i"; \
+     classtype:policy-violation; \
+     sid:9000304; rev:1; \
+     metadata:affected_product iGaming_Platform, attack_target All_Endpoints, \
+               created_at 2024_01_01, deployment Perimeter, \
+               performance_impact Low, signature_severity Medium, \
+               tag VPN_Proxy, regulatory_ref GeoRestriction;)
+
+# Companion rule: detect Tor exit node header injection patterns
+alert http $EXTERNAL_NET any -> $HTTP_SERVERS $HTTP_PORTS \
+    (msg:"IGAMING AML Tor Network Access - Jurisdictional Compliance Risk"; \
+     flow:established,to_server; \
+     http.header; content:"X-Tor-Exit"; \
+     classtype:policy-violation; \
+     sid:9000305; rev:1; \
+     metadata:affected_product iGaming_Platform, attack_target All_Endpoints, \
+               created_at 2024_01_01, deployment Perimeter, \
+               performance_impact Low, signature_severity Medium, \
+               tag TorNetwork, regulatory_ref GeoRestriction;)

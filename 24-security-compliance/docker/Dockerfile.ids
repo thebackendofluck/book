@@ -1,0 +1,66 @@
+# =============================================================================
+# IDS/IPS Dockerfile - Intrusion Detection System
+# =============================================================================
+# Multi-stage build for production-ready IDS container
+# CIS Docker Benchmark compliant
+# =============================================================================
+
+# Stage 1: Builder
+FROM python:3.14-slim as builder
+
+WORKDIR /build
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    libffi-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create virtual environment
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Install Python dependencies
+COPY requirements-ids.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements-ids.txt
+
+# Stage 2: Production
+FROM python:3.14-slim
+
+# CIS 4.1 - Create non-root user
+RUN groupadd -r appgroup && \
+    useradd -r -g appgroup -d /app -s /sbin/nologin appuser
+
+WORKDIR /app
+
+# Copy virtual environment from builder
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# CIS 4.9 - Use COPY instead of ADD
+COPY --chown=appuser:appgroup security-compliance/*.py ./
+COPY --chown=appuser:appgroup config/ ./config/
+
+# Create necessary directories
+RUN mkdir -p /app/logs && \
+    chown -R appuser:appgroup /app
+
+# CIS 4.1 - Run as non-root user
+USER appuser
+
+# CIS 4.6 - Add HEALTHCHECK
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/health/live')" || exit 1
+
+# Expose ports
+EXPOSE 8080 9090
+
+# Environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    LOG_LEVEL=INFO
+
+# CIS 4.7 - Use exec form for ENTRYPOINT
+ENTRYPOINT ["python", "-m", "ids_ips"]
+CMD ["--host", "0.0.0.0", "--port", "8080"]

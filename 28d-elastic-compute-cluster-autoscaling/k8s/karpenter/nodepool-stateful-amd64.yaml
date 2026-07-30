@@ -1,0 +1,66 @@
+# Companion code for "The Backend of Luck" - Chapter 28d, Elastic Compute and Cluster Autoscaling on EKS.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# NodePool: stateful-amd64
+# ---------------------------------------------------------------------------
+# The money/certified tier: in-progress game sessions, the certified RNG /
+# game-math engine, and HSM-adjacent services.
+#   - amd64 ONLY (certified binaries are x86; arm64 would require re-cert).
+#   - on-demand ONLY (a spot reclaim mid-spin is a player dispute, never run
+#     the money path on spot).
+#   - tainted so only workloads that explicitly tolerate `workload-class=stateful`
+#     land here.
+#   - conservative consolidation: reclaim only EMPTY nodes, never repack a node
+#     holding a live session.
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: stateful-amd64
+spec:
+  template:
+    metadata:
+      labels:
+        workload-class: stateful
+    spec:
+      taints:
+        - key: workload-class
+          value: stateful
+          effect: NoSchedule
+      requirements:
+        - key: kubernetes.io/arch
+          operator: In
+          values: ["amd64"]
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: ["on-demand"]
+        - key: karpenter.k8s.aws/instance-category
+          operator: In
+          values: ["c", "m"]
+        - key: karpenter.k8s.aws/instance-size
+          operator: In
+          values: ["xlarge", "2xlarge", "4xlarge"]
+      expireAfter: Never # don't expire nodes that may hold in-progress sessions
+      nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
+        # The certified class, not casino-default: its AMI pin moves only after
+        # lab sign-off, so a routine web-tier patch cannot re-image the nodes
+        # running the certified RNG and game-math engine.
+        name: casino-certified
+  # Sizing — STAGING values shown. Prod: cpu "400", memory 1600Gi (see README).
+  limits:
+    cpu: "64"
+    memory: 256Gi
+  disruption:
+    consolidationPolicy: WhenEmpty # never repack a live node
+    consolidateAfter: 30m
+    budgets:
+      - nodes: "1" # at most one stateful node disrupted at a time
+  weight: 50 # prefer this pool for pods that tolerate the taint

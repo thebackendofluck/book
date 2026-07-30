@@ -1,0 +1,79 @@
+# Companion code for "The Backend of Luck" - Chapter 33, Operational Playbooks.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# Prometheus Configuration - Hardware Monitoring Stack - Chapter 23: Operational Playbooks
+#
+# Metrics aggregation configuration that scrapes the following targets:
+#   - prometheus:       Self-scrape for Prometheus health metrics
+#   - pushgateway:      Custom metrics pushed by hardware-agent and ml-predictor
+#   - hardware-agents:  Custom metrics endpoint on port 8000 (30s interval)
+#   - ml-predictor:     Failure probability metrics on port 8001 (60s interval)
+#   - node-exporter:    Host OS metrics on port 9100 (30s interval)
+#   - elasticsearch:    ES cluster health on port 9114 (30s interval)
+#   - influxdb:         InfluxDB health metrics on port 8086 (30s interval)
+#
+# Alert rules are loaded from alert_rules.yml. AlertManager is configured
+# at alertmanager:9093. Storage retention is set to 200h to balance query
+# performance with disk usage.
+#
+# Part of the iGaming Platform Engineering book.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - "alert_rules.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'pushgateway'
+    honor_labels: true
+    static_configs:
+      - targets: ['pushgateway:9091']
+
+  - job_name: 'hardware-agents'
+    scrape_interval: 30s
+    static_configs:
+      - targets:
+        - 'hardware-agent:8000'  # Custom metrics endpoint
+
+  - job_name: 'ml-predictor'
+    scrape_interval: 60s
+    static_configs:
+      - targets:
+        - 'ml-predictor:8001'
+
+  - job_name: 'node-exporter'
+    scrape_interval: 30s
+    static_configs:
+      - targets:
+        - 'node-exporter:9100'
+
+  - job_name: 'elasticsearch'
+    scrape_interval: 30s
+    static_configs:
+      - targets:
+        - 'elasticsearch:9114'
+
+  - job_name: 'influxdb'
+    scrape_interval: 30s
+    static_configs:
+      - targets:
+        - 'influxdb:8086'

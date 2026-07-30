@@ -1,0 +1,35 @@
+# Companion code for "The Backend of Luck" - Chapter 23b, DevSecOps Pipeline Implementation.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# GitLab CI: trigger a Qualys Web Application Scanning (WAS) DAST scan
+# after staging deploy. Qualys WAS is ASV-approved for PCI DSS 4.0.
+qualys-was-dast:
+  stage: dast
+  image: curlimages/curl:8.10.1
+  timeout: 60 minutes
+  rules:
+    - if: $CI_COMMIT_BRANCH == "staging"
+  script:
+    - |
+      TOKEN=$(curl -s -u "$QUALYS_USERNAME:$QUALYS_PASSWORD" \
+        -H "X-Requested-With: gitlab-ci" \
+        -X POST "https://qualysapi.qg3.apps.qualys.com/qps/rest/2.0/launch/was/wasscan" \
+        -H "Content-Type: application/xml" \
+        --data "<ServiceRequest>
+                  <data><WasScan>
+                    <name>casino-staging-$CI_COMMIT_SHORT_SHA</name>
+                    <type>VULNERABILITY</type>
+                    <target><webApp><id>$QUALYS_WAS_APP_ID</id></webApp></target>
+                  </WasScan></data>
+                </ServiceRequest>")
+    - echo "Qualys WAS scan launched. Poll via the Qualys API for completion."
+  artifacts:
+    paths: [qualys-was-report.xml]
+    when: always

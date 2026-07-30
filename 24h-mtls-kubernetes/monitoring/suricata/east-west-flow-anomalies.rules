@@ -1,0 +1,7 @@
+# suricata/rules/east-west-flow-anomalies.rules
+# Alert on unusually high volume connections within cluster (potential data exfiltration)
+alert tcp 10.42.0.0/16 any -> 10.42.0.0/16 8443 (
+  msg:"Unusual east-west connection volume - possible exfiltration";
+  threshold: type threshold, track by_src, count 1000, seconds 10;
+  sid:9001003; rev:1;
+)

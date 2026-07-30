@@ -1,0 +1,112 @@
+# Companion code for "The Backend of Luck" - Chapter 24i, Blue-Green Cluster Switching for iGaming Kubernetes Environm.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# pod-security-policy-example.yaml
+# Demonstrating what 'restricted' PSS enforces (applied via namespace labels)
+# Reference: kubernetes.io/docs/concepts/security/pod-security-standards/
+
+# A wallet-service pod that passes restricted PSS:
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wallet-service
+  namespace: casino-prod
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wallet-service
+      tier: backend
+  template:
+    metadata:
+      labels:
+        app: wallet-service
+        tier: backend
+        cluster: "{{ .Values.cluster.color }}"
+      annotations:
+        cluster.casino.io/provisioned-at: "{{ .Values.provisionedAt }}"
+        cluster.casino.io/image-tag: "{{ .Values.image.tag }}"
+    spec:
+      serviceAccountName: wallet-service
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10000
+        runAsGroup: 10000
+        fsGroup: 10000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: wallet-service
+          image: "{{ .Values.image.registry }}/wallet-service:{{ .Values.image.tag }}"
+          ports:
+            - containerPort: 8080
+              name: http
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "2000m"
+              memory: "1Gi"
+          env:
+            - name: POSTGRES_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: casino-db
+                  key: host
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: casino-db
+                  key: password
+            - name: REDIS_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: casino-redis
+                  key: host
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: casino-redis
+                  key: password
+            - name: CLUSTER_COLOR
+              value: "{{ .Values.cluster.color }}"
+            - name: CLAIM_PRIMARY
+              value: "false"  # Set to true during switchover
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /live
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: cache
+              mountPath: /app/cache
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: cache
+          emptyDir: {}

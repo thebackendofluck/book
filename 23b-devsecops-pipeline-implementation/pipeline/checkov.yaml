@@ -1,0 +1,70 @@
+# Companion code for "The Backend of Luck" - Chapter 23b, DevSecOps Pipeline Implementation.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# Checkov IaC security scanner configuration
+# Run: checkov -d new-platform/terraform --config-file .checkov.yaml
+# Or:  checkov --config-file .checkov.yaml  (uses 'directory' key below)
+
+# Scan targets
+directory:
+  - new-platform/terraform
+
+# Frameworks to evaluate
+framework:
+  - terraform
+  - dockerfile
+  - helm
+  - kubernetes
+
+# ---------------------------------------------------------------------------
+# Skipped checks — LocalStack dev environment or non-applicable controls
+# ---------------------------------------------------------------------------
+skip-check:
+  # CKV_AWS_18: S3 bucket access logging — not applicable for LocalStack;
+  # production uses CloudTrail + S3 server access logging separately
+  - CKV_AWS_18
+  # CKV_AWS_145: S3 bucket KMS encryption — LocalStack free tier lacks KMS;
+  # production buckets use SSE-S3 by policy; revisit when migrating to live AWS
+  - CKV_AWS_145
+  # CKV_AWS_144: S3 cross-region replication — single-region LocalStack setup
+  - CKV_AWS_144
+  # CKV_AWS_21: S3 versioning — LocalStack; enable for production state buckets
+  - CKV_AWS_21
+  # CKV_DOCKER_2: Healthcheck instruction — not all internal images need it
+  - CKV_DOCKER_2
+  # CKV_K8S_43: Image tag pinning — dev images use :latest intentionally
+  - CKV_K8S_43
+
+# Output format (SARIF for DefectDojo ingestion)
+output: sarif
+
+# Soft-fail: report issues but do not exit non-zero (initial rollout phase)
+# Set to false once baseline is clean and findings are remediated
+soft-fail: true
+
+# Paths to exclude from all framework scans
+skip-path:
+  - writing
+  - support_material
+  - docs
+  - node_modules
+  - __pycache__
+  - casino-games
+  - portrasdasorte
+  - thebackendofluck
+  - "**/.terraform"
+  - "**/terraform.tfstate"
+  - "**/terraform.tfstate.backup"
+
+# Download external modules for deeper analysis
+download-external-modules: false
+
+# Compact output — reduce noise in CI logs
+compact: true

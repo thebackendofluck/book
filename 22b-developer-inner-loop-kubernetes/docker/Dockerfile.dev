@@ -1,0 +1,53 @@
+# Dockerfile.dev — Development inner loop
+# Source is mounted via volume — NOT copied into image
+# Do NOT use in CI/CD, staging, or production
+
+FROM python:3.14-slim-bookworm
+
+WORKDIR /app
+
+# Install dev dependencies including build tools and debug packages
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    libpq-dev \
+    curl \
+    git \
+    procps \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user (same as prod for consistency)
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+
+# Install Python dependencies including dev extras
+COPY requirements.txt requirements-dev.txt* ./
+RUN pip install --no-cache-dir \
+    -r requirements.txt \
+    watchfiles \
+    debugpy \
+    pytest \
+    pytest-asyncio \
+    httpx \
+    factory-boy \
+    freezegun \
+    && if [ -f requirements-dev.txt ]; then pip install --no-cache-dir -r requirements-dev.txt; fi
+
+# Source will be mounted at /app — do not copy here
+# The COPY below is only to make the image buildable without a volume mount
+# (e.g., for `docker build` smoke tests in CI that verify the dev image builds)
+COPY --chown=appuser:appuser . .
+
+USER appuser
+
+EXPOSE 8000 5678
+
+# Dev healthcheck — lightweight process check (not for prod)
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD curl -sf http://localhost:8000/health || exit 1
+
+# debugpy wrapper: starts debugpy listener first, then uvicorn
+# VS Code attaches to port 5678 and can set breakpoints in live code
+CMD ["python", "-m", "debugpy", "--listen", "0.0.0.0:5678", \
+     "-m", "uvicorn", "app:app", \
+     "--host", "0.0.0.0", "--port", "8000", \
+     "--reload", "--reload-dir", "/app", \
+     "--log-level", "debug"]

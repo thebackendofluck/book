@@ -1,0 +1,23 @@
+{
+  "_comment": "Meraki Dashboard API configuration for the SDDS Meraki Eliminator module. Store the actual API key in the MERAKI_API_KEY environment variable, not here. Chapter 45: Secure Infrastructure Decommissioning.",
+  "org_id": "REPLACE_WITH_YOUR_ORG_ID",
+  "api_key_env": "MERAKI_API_KEY",
+  "base_url": "https://api.meraki.com/api/v1",
+  "request_timeout_seconds": 30,
+  "rate_limit_sleep_seconds": 1,
+  "destruction": {
+    "delete_networks": true,
+    "unclaim_devices": true,
+    "wipe_ssids": true,
+    "wipe_vlans": true,
+    "wipe_firewall_rules": true
+  },
+  "dry_run_networks": [
+    "REPLACE_WITH_NETWORK_ID_1",
+    "REPLACE_WITH_NETWORK_ID_2"
+  ],
+  "exclusions": {
+    "_comment": "Network IDs to exclude from destruction (e.g., out-of-band management). Empty list = destroy all.",
+    "network_ids": []
+  }
+}

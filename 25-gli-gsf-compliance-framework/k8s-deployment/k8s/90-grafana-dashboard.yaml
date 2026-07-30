@@ -1,0 +1,147 @@
+# Companion code for "The Backend of Luck" - Chapter 25, GLI-GSF Compliance Framework.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dashboard-gli-compliance
+  namespace: gli-compliance
+  labels:
+    grafana_dashboard: "1"
+  annotations:
+    grafana_folder: "Compliance"
+data:
+  gli-compliance.json: |
+    {
+      "title": "GLI Compliance Runner",
+      "uid": "gli-compliance",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "30s",
+      "time": { "from": "now-6h", "to": "now" },
+      "tags": ["gli", "compliance", "iGaming"],
+      "panels": [
+        {
+          "id": 1,
+          "type": "timeseries",
+          "title": "GLI check runs/min by check + outcome",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+          "fieldConfig": {
+            "defaults": { "unit": "ops", "min": 0 },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (check, outcome) (rate(gli_check_runs_total[5m])) * 60",
+              "legendFormat": "{{check}} / {{outcome}}"
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "type": "stat",
+          "title": "Failure ratio (last 1h)",
+          "gridPos": { "h": 8, "w": 6, "x": 12, "y": 0 },
+          "options": {
+            "reduceOptions": { "calcs": ["lastNotNull"] },
+            "colorMode": "background"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "min": 0, "max": 1,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "yellow", "value": 0.01 },
+                  { "color": "red", "value": 0.05 }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(rate(gli_check_runs_total{outcome!=\"success\"}[1h])) / clamp_min(sum(rate(gli_check_runs_total[1h])), 0.0001)"
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "type": "stat",
+          "title": "Total runs (24h)",
+          "gridPos": { "h": 8, "w": 6, "x": 18, "y": 0 },
+          "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+          "fieldConfig": {
+            "defaults": { "unit": "short" },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(increase(gli_check_runs_total[24h]))"
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "type": "timeseries",
+          "title": "Duration p50 / p95 / p99 by check",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+          "fieldConfig": {
+            "defaults": { "unit": "s" },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "histogram_quantile(0.50, sum by (le, check) (rate(gli_check_duration_seconds_bucket[5m])))",
+              "legendFormat": "p50 {{check}}"
+            },
+            {
+              "refId": "B",
+              "expr": "histogram_quantile(0.95, sum by (le, check) (rate(gli_check_duration_seconds_bucket[5m])))",
+              "legendFormat": "p95 {{check}}"
+            },
+            {
+              "refId": "C",
+              "expr": "histogram_quantile(0.99, sum by (le, check) (rate(gli_check_duration_seconds_bucket[5m])))",
+              "legendFormat": "p99 {{check}}"
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "type": "table",
+          "title": "Per-check totals (24h)",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+          "options": {
+            "showHeader": true
+          },
+          "transformations": [
+            {
+              "id": "labelsToFields",
+              "options": { "valueLabel": "value" }
+            }
+          ],
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (check, outcome) (increase(gli_check_runs_total[24h]))",
+              "instant": true,
+              "format": "table"
+            }
+          ]
+        }
+      ]
+    }

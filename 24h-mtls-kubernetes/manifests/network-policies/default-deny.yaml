@@ -1,0 +1,31 @@
+# Companion code for "The Backend of Luck" - Chapter 24h, Mutual TLS Between Kubernetes Services for iGaming Platforms.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# File: manifests/network-policies/default-deny.yaml
+# Applied to every service namespace after initial rollout.
+# Forces explicit allowlist per namespace.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: player-service
+spec:
+  podSelector: {}  # Applies to all pods in namespace
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress: []   # Deny all ingress by default
+  egress:       # Allow DNS egress always; everything else must be explicit
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP

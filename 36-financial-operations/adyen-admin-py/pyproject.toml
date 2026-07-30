@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "adyen-admin"
+version = "0.0.18"
+description = "Adyen Admin Skin API and Command line tool"
+authors = [{ name = "AcmetoCasino Platform Team", email = "platform@acmetocasino.com" }]
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+dependencies = [
+    "httpx>=0.28",
+    "click>=8.1",
+    "pydantic>=2.10",
+    "PyYAML>=6.0",
+]
+
+[project.scripts]
+adyen-admin = "adyen_admin.cli:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "pytest-httpx>=0.35",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["adyen_admin*"]

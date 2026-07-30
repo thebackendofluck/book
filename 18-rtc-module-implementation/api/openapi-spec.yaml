@@ -1,0 +1,779 @@
+# Companion code for "The Backend of Luck" - Chapter 18, Real-Time Clock Module Implementation.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+openapi: 3.0.3
+info:
+  title: Casino RTC Timestamp Service API
+  description: |
+    Hardware-backed Real-Time Clock timestamp service for regulated online
+    gambling platforms. Provides cryptographically signed timestamps from
+    BFT consensus across multiple hardware RTC modules.
+
+    ## GLI-11 Compliance
+
+    This API implements GLI-11 Section 5.4 requirements:
+    - Timestamps sourced from tamper-resistant hardware RTC modules
+    - BFT consensus ensures accuracy even with faulty modules
+    - HMAC-SHA256 signatures provide non-repudiation
+    - All operations produce audit records
+
+    ## Authentication
+
+    All endpoints require Bearer token authentication via the
+    `Authorization` header. Tokens are issued by the platform
+    identity provider (Keycloak/Auth0).
+
+    ## Rate Limits
+
+    | Endpoint           | Limit           | Window |
+    |--------------------|-----------------|--------|
+    | GET /timestamp     | 10,000 req/s    | 1s     |
+    | POST /batch        | 100 req/s       | 1s     |
+    | POST /validate     | 5,000 req/s     | 1s     |
+    | GET /health        | 100 req/s       | 1s     |
+
+  version: 1.0.0
+  contact:
+    name: Platform Engineering
+    email: platform-eng@casino-internal.example
+  license:
+    name: Proprietary
+    url: https://internal.example/licenses/rtc-service
+
+servers:
+  - url: https://rtc.casino-internal.example/api/v1
+    description: Production (internal)
+  - url: https://rtc-staging.casino-internal.example/api/v1
+    description: Staging
+  - url: http://localhost:8080/api/v1
+    description: Local development
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Timestamps
+    description: RTC timestamp operations
+  - name: Validation
+    description: Timestamp signature validation
+  - name: Health
+    description: Service health and monitoring
+  - name: Consensus
+    description: Consensus state and diagnostics
+  - name: Admin
+    description: Administrative operations (privileged)
+
+paths:
+  /timestamp:
+    get:
+      tags: [Timestamps]
+      summary: Get a signed RTC timestamp
+      description: |
+        Returns a cryptographically signed timestamp from BFT consensus
+        across hardware RTC modules. This is the primary endpoint used
+        by game servers for timestamping game events.
+
+        **GLI-11**: Every timestamp includes an HMAC-SHA256 signature
+        and the source module ID for audit trail purposes.
+      operationId: getTimestamp
+      parameters:
+        - name: X-Request-ID
+          in: header
+          description: Unique request identifier for tracing
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: X-Game-ID
+          in: header
+          description: Game identifier for event correlation
+          required: false
+          schema:
+            type: string
+        - name: X-Session-ID
+          in: header
+          description: Player session identifier
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: precision
+          in: query
+          description: Requested timestamp precision
+          required: false
+          schema:
+            type: string
+            enum: [seconds, milliseconds, microseconds, nanoseconds]
+            default: nanoseconds
+      responses:
+        '200':
+          description: Signed RTC timestamp
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Timestamp'
+              example:
+                unix: 1709856000
+                nano: 1709856000123456789
+                iso8601: "2024-03-08T00:00:00.123456789Z"
+                source: "rtc-dc-east-1-01"
+                signature: "a1b2c3d4e5f6..."
+                confidence: 0.9875
+                drift_ms: 0.042
+                temperature: 26.5
+                metadata:
+                  request_id: "550e8400-e29b-41d4-a716-446655440000"
+                  game_id: "slots-fortune-tiger"
+                  consensus_round: "consensus-00000042-1709856000"
+          headers:
+            X-RTC-Source:
+              description: Primary RTC module that provided the timestamp
+              schema:
+                type: string
+            X-Consensus-Confidence:
+              description: BFT consensus confidence score (0.0-1.0)
+              schema:
+                type: number
+                format: double
+            X-Request-Duration-Us:
+              description: Server-side processing time in microseconds
+              schema:
+                type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ConsensusUnavailable'
+
+  /timestamp/batch:
+    post:
+      tags: [Timestamps]
+      summary: Get multiple signed timestamps in a batch
+      description: |
+        Returns multiple timestamps in a single request. Useful for
+        pre-fetching timestamps for batch game round processing.
+
+        Each timestamp in the batch is independently signed and includes
+        its own consensus metadata.
+
+        **Maximum batch size**: 100 timestamps per request.
+      operationId: batchTimestamp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchRequest'
+            example:
+              count: 10
+              interval_ms: 100
+              metadata:
+                game_id: "roulette-european"
+                session_id: "550e8400-e29b-41d4-a716-446655440000"
+      responses:
+        '200':
+          description: Array of signed timestamps
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  timestamps:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Timestamp'
+                  batch_id:
+                    type: string
+                    description: Unique batch identifier
+                  batch_signature:
+                    type: string
+                    description: HMAC-SHA256 signature covering the entire batch
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /timestamp/validate:
+    post:
+      tags: [Validation]
+      summary: Validate a timestamp signature
+      description: |
+        Verifies the HMAC-SHA256 signature on a previously issued timestamp.
+        Used during dispute resolution and regulatory audits to confirm
+        timestamp authenticity.
+
+        **GLI-11**: This endpoint is critical for non-repudiation. The
+        signature verification uses the same key hierarchy as timestamp
+        generation, with support for historical key lookup for rotated keys.
+      operationId: validateTimestamp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidationRequest'
+      responses:
+        '200':
+          description: Validation result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationResponse'
+              example:
+                valid: true
+                reason: "Signature verified successfully"
+                actual_drift_ms: 0.042
+                verified_at: "2024-03-08T12:00:00Z"
+                key_id: "rtc-key-2024-q1"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /timestamp/stream:
+    get:
+      tags: [Timestamps]
+      summary: Stream timestamps via WebSocket
+      description: |
+        Upgrades to a WebSocket connection and streams signed timestamps
+        at the specified interval. Used for real-time game state
+        synchronization.
+
+        **Connection Parameters** (query string):
+        - `interval_ms`: Timestamp push interval (default: 100, min: 10)
+        - `include_drift`: Include drift measurements (default: false)
+
+        **Message Format**: Each WebSocket message contains a JSON-encoded
+        Timestamp object.
+      operationId: streamTimestamp
+      parameters:
+        - name: interval_ms
+          in: query
+          schema:
+            type: integer
+            minimum: 10
+            maximum: 60000
+            default: 100
+        - name: include_drift
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '101':
+          description: WebSocket upgrade successful
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /consensus/state:
+    get:
+      tags: [Consensus]
+      summary: Get current consensus state
+      description: |
+        Returns the current state of the BFT consensus algorithm,
+        including participating modules, confidence level, and any
+        detected anomalies.
+      operationId: getConsensusState
+      responses:
+        '200':
+          description: Current consensus state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsensusState'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /consensus/history:
+    get:
+      tags: [Consensus]
+      summary: Get consensus round history
+      description: |
+        Returns recent consensus round results for diagnostics and
+        audit purposes. Supports pagination and time range filtering.
+      operationId: getConsensusHistory
+      parameters:
+        - name: since
+          in: query
+          description: Start time (ISO 8601)
+          schema:
+            type: string
+            format: date-time
+        - name: until
+          in: query
+          description: End time (ISO 8601)
+          schema:
+            type: string
+            format: date-time
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: status
+          in: query
+          description: Filter by consensus status
+          schema:
+            type: string
+            enum: [success, degraded, quorum_failure, byzantine_detected]
+      responses:
+        '200':
+          description: Paginated list of consensus rounds
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rounds:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ConsensusRound'
+                  total:
+                    type: integer
+                  has_more:
+                    type: boolean
+
+  /health:
+    get:
+      tags: [Health]
+      summary: Service health check
+      description: |
+        Returns overall service health status, including individual
+        RTC module health and consensus availability.
+      operationId: getHealth
+      security: []
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+              example:
+                status: "healthy"
+                version: "1.0.0"
+                uptime_seconds: 86400
+                rtc_modules:
+                  total: 4
+                  healthy: 4
+                  degraded: 0
+                  failed: 0
+                consensus:
+                  available: true
+                  confidence: 0.9875
+                  last_round_ms: 0.12
+                database:
+                  connected: true
+                  latency_ms: 1.2
+                cache:
+                  connected: true
+                  hit_rate: 0.95
+        '503':
+          description: Service is unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+
+  /health/live:
+    get:
+      tags: [Health]
+      summary: Kubernetes liveness probe
+      security: []
+      responses:
+        '200':
+          description: Service is alive
+        '503':
+          description: Service is not alive
+
+  /health/ready:
+    get:
+      tags: [Health]
+      summary: Kubernetes readiness probe
+      security: []
+      responses:
+        '200':
+          description: Service is ready to receive traffic
+        '503':
+          description: Service is not ready
+
+  /admin/modules:
+    get:
+      tags: [Admin]
+      summary: List all RTC modules
+      description: Returns detailed information about all configured RTC modules.
+      operationId: listModules
+      responses:
+        '200':
+          description: List of RTC modules
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RTCModule'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/modules/{moduleId}/calibrate:
+    post:
+      tags: [Admin]
+      summary: Trigger module calibration
+      description: |
+        Initiates a calibration cycle for the specified RTC module.
+        The module will be temporarily taken out of the consensus pool
+        during calibration.
+      operationId: calibrateModule
+      parameters:
+        - name: moduleId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '202':
+          description: Calibration initiated
+        '404':
+          description: Module not found
+
+  /admin/keys/rotate:
+    post:
+      tags: [Admin]
+      summary: Rotate signing keys
+      description: |
+        Triggers rotation of the HMAC-SHA256 signing key. The old key
+        is retained for 90 days to allow validation of historical
+        timestamps. Requires admin privileges.
+
+        **GLI-11**: Key rotation must be logged in the audit trail
+        and the old key must remain available for dispute resolution.
+      operationId: rotateKeys
+      responses:
+        '200':
+          description: Key rotation initiated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  new_key_id:
+                    type: string
+                  old_key_expiry:
+                    type: string
+                    format: date-time
+                  rotation_timestamp:
+                    type: string
+                    format: date-time
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token from platform identity provider
+
+  schemas:
+    Timestamp:
+      type: object
+      required: [unix, nano, iso8601, source, signature, confidence]
+      properties:
+        unix:
+          type: integer
+          format: int64
+          description: Unix timestamp in seconds
+        nano:
+          type: integer
+          format: int64
+          description: Unix timestamp in nanoseconds
+        iso8601:
+          type: string
+          format: date-time
+          description: ISO 8601 formatted timestamp with nanosecond precision
+        source:
+          type: string
+          description: RTC module ID that provided the primary reading
+        signature:
+          type: string
+          description: HMAC-SHA256 signature for non-repudiation
+        confidence:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+          description: BFT consensus confidence score
+        drift_ms:
+          type: number
+          format: double
+          description: Drift from system clock in milliseconds
+        temperature:
+          type: number
+          format: double
+          description: RTC module temperature in Celsius
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+          description: Request metadata (game_id, session_id, etc.)
+
+    BatchRequest:
+      type: object
+      required: [count]
+      properties:
+        count:
+          type: integer
+          minimum: 1
+          maximum: 100
+          description: Number of timestamps to generate
+        interval_ms:
+          type: integer
+          minimum: 0
+          maximum: 60000
+          default: 0
+          description: Interval between timestamps in milliseconds
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+
+    ValidationRequest:
+      type: object
+      required: [timestamp]
+      properties:
+        timestamp:
+          $ref: '#/components/schemas/Timestamp'
+        tolerance_ms:
+          type: integer
+          default: 1000
+          description: Maximum acceptable drift for validation
+
+    ValidationResponse:
+      type: object
+      properties:
+        valid:
+          type: boolean
+        reason:
+          type: string
+        actual_drift_ms:
+          type: number
+          format: double
+        verified_at:
+          type: string
+          format: date-time
+        key_id:
+          type: string
+          description: ID of the signing key used for verification
+
+    ConsensusState:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unavailable]
+        confidence:
+          type: number
+          format: double
+        participating_modules:
+          type: array
+          items:
+            type: string
+        excluded_modules:
+          type: array
+          items:
+            type: string
+        last_round_id:
+          type: string
+        last_round_duration_us:
+          type: integer
+        spread_ms:
+          type: number
+          format: double
+        byzantine_events_24h:
+          type: integer
+
+    ConsensusRound:
+      type: object
+      properties:
+        round_id:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        status:
+          type: string
+        confidence:
+          type: number
+          format: double
+        participants:
+          type: integer
+        excluded:
+          type: integer
+        spread_ms:
+          type: number
+          format: double
+        duration_us:
+          type: integer
+
+    RTCModule:
+      type: object
+      properties:
+        module_id:
+          type: string
+        status:
+          type: string
+          enum: [active, degraded, failed, maintenance, quarantined]
+        serial_number:
+          type: string
+        manufacturer:
+          type: string
+        firmware_version:
+          type: string
+        datacenter:
+          type: string
+        drift_ms:
+          type: number
+          format: double
+        temperature_celsius:
+          type: number
+          format: double
+        battery_percentage:
+          type: number
+          format: double
+        last_sync:
+          type: string
+          format: date-time
+        last_calibration:
+          type: string
+          format: date-time
+
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+        version:
+          type: string
+        uptime_seconds:
+          type: integer
+        rtc_modules:
+          type: object
+          properties:
+            total:
+              type: integer
+            healthy:
+              type: integer
+            degraded:
+              type: integer
+            failed:
+              type: integer
+        consensus:
+          type: object
+          properties:
+            available:
+              type: boolean
+            confidence:
+              type: number
+              format: double
+            last_round_ms:
+              type: number
+              format: double
+        database:
+          type: object
+          properties:
+            connected:
+              type: boolean
+            latency_ms:
+              type: number
+              format: double
+        cache:
+          type: object
+          properties:
+            connected:
+              type: boolean
+            hit_rate:
+              type: number
+              format: double
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+        request_id:
+          type: string
+          format: uuid
+
+  responses:
+    BadRequest:
+      description: Invalid request parameters
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    Unauthorized:
+      description: Missing or invalid authentication token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    RateLimited:
+      description: Rate limit exceeded
+      headers:
+        X-RateLimit-Limit:
+          schema:
+            type: integer
+        X-RateLimit-Remaining:
+          schema:
+            type: integer
+        X-RateLimit-Reset:
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    ConsensusUnavailable:
+      description: RTC consensus not available (insufficient healthy modules)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

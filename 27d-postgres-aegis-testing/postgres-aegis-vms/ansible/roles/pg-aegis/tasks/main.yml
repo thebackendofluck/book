@@ -1,0 +1,140 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 27d, PostgreSQL Aegis.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# pg-aegis — installs the REAL pg_aegis.so compiled from
+# {{ pg_aegis_build_dir }}/ on lab-server (pre-built for PG 18).
+# Reference: /opt/backup/PLAN-pg_aegis-implementation.md (2026-04-18)
+#
+# If the pre-built .so is not accessible OR PG version on VMs != 18,
+# the role falls back to pgcrypto and logs honestly.
+
+- name: Ensure pgcrypto (always present, used as fallback or helper)
+  ansible.builtin.apt:
+    name: "postgresql-contrib-{{ pg_version }}"
+    state: present
+
+- name: Check for pre-built pg_aegis artifacts (on the Ansible controller)
+  ansible.builtin.stat:
+    path: "{{ pg_aegis_build_dir }}/target/release/pg_aegis-pg{{ pg_version }}/usr/lib/postgresql/{{ pg_version }}/lib/pg_aegis.so"
+  register: aegis_so
+  delegate_to: localhost
+  become: false
+
+- name: Copy pg_aegis.so into the VM (when pre-built for this PG version)
+  when: aegis_so.stat.exists
+  ansible.builtin.copy:
+    src: "{{ pg_aegis_build_dir }}/target/release/pg_aegis-pg{{ pg_version }}/usr/lib/postgresql/{{ pg_version }}/lib/pg_aegis.so"
+    dest: "/usr/lib/postgresql/{{ pg_version }}/lib/pg_aegis.so"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Copy pg_aegis extension SQL + control (when pre-built)
+  when: aegis_so.stat.exists
+  ansible.builtin.copy:
+    src: "{{ pg_aegis_build_dir }}/target/release/pg_aegis-pg{{ pg_version }}/usr/share/postgresql/{{ pg_version }}/extension/"
+    dest: "/usr/share/postgresql/{{ pg_version }}/extension/"
+    owner: root
+    group: root
+    mode: "0644"
+    directory_mode: "0755"
+
+- name: shared_preload_libraries += pg_aegis (on writer only, Patroni propagates)
+  when:
+    - aegis_so.stat.exists
+    - "'writers' in group_names"
+  ansible.builtin.blockinfile:
+    path: "/etc/postgresql/{{ pg_version }}/main/postgresql.auto.conf"
+    create: true
+    owner: postgres
+    group: postgres
+    mode: "0640"
+    block: |
+      shared_preload_libraries = 'pg_stat_statements,pgaudit,pg_aegis'
+  notify: Restart postgres
+
+- name: Fetch master key from Vault (delegated; on controller with sudo bao)
+  when:
+    - aegis_so.stat.exists
+    - "'writers' in group_names"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  ansible.builtin.shell: |
+    T=$(sudo -n cat /opt/dashboard-keys/bao_token 2>/dev/null || echo "${BAO_TOKEN:-}")
+    [ -z "$T" ] && echo "NO_TOKEN" && exit 0
+    BAO_ADDR=https://127.0.0.1:8200 BAO_TOKEN=$T bao kv get -field=value secret/casino/postgres-aegis/master_key_b64 2>/dev/null || echo "NO_KEY"
+  register: aegis_master_raw
+  no_log: true
+  failed_when: false
+  changed_when: false
+
+- name: Set pg_aegis.master_key_b64 GUC (ALTER SYSTEM on writer)
+  when:
+    - aegis_so.stat.exists
+    - aegis_master_raw is defined
+    - aegis_master_raw.stdout not in ('NO_TOKEN','NO_KEY','')
+    - "'writers' in group_names"
+  become_user: postgres
+  community.postgresql.postgresql_query:
+    db: "{{ pg_database }}"
+    query: "ALTER SYSTEM SET pg_aegis.master_key_b64 = %(k)s"
+    named_args:
+      k: "{{ aegis_master_raw.stdout }}"
+  no_log: true
+
+# (old duplicate task removed — the one above is the consolidated version)
+  notify: Reload postgres
+
+- name: Enable pgcrypto + pg_stat_statements
+  become_user: postgres
+  community.postgresql.postgresql_query:
+    db: "{{ pg_database }}"
+    query: |
+      CREATE EXTENSION IF NOT EXISTS pgcrypto;
+      CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+
+- name: Enable pg_aegis (real or fallback)
+  become_user: postgres
+  community.postgresql.postgresql_query:
+    db: "{{ pg_database }}"
+    query: |
+      DO $do$
+      BEGIN
+        BEGIN
+          CREATE EXTENSION IF NOT EXISTS pg_aegis;
+          RAISE NOTICE 'pg_aegis loaded: %', (SELECT aegis_version());
+        EXCEPTION WHEN OTHERS THEN
+          RAISE NOTICE 'pg_aegis unavailable (PG%), staying on pgcrypto', current_setting('server_version');
+        END;
+      END$do$;
+  register: aegis_load
+  changed_when: false
+
+- name: Generate the per-cluster DEK (only on writer; idempotent)
+  when:
+    - "'writers' in group_names"
+    - aegis_so.stat.exists
+  become_user: postgres
+  community.postgresql.postgresql_query:
+    db: "{{ pg_database }}"
+    query: |
+      SELECT aegis_generate_key('player_pii_key')
+      WHERE NOT EXISTS (
+        SELECT 1 FROM pg_aegis_keys WHERE key_name = 'player_pii_key'
+      );
+  ignore_errors: true
+
+- name: Install demo helpers (same API across pg_aegis / pgcrypto)
+  become_user: postgres
+  community.postgresql.postgresql_query:
+    db: "{{ pg_database }}"
+    query: "{{ lookup('file', 'aegis_helpers.sql') }}"

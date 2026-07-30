@@ -1,0 +1,44 @@
+[package]
+name = "crypto-engine"
+version = "0.1.0"
+edition = "2021"
+description = "High-throughput AEAD crypto library for iGaming (AEGIS-128L, AEGIS-256, AES-256-GCM, ChaCha20-Poly1305)"
+license = "Apache-2.0"
+
+[lib]
+name = "crypto_engine"
+crate-type = ["rlib", "cdylib"]
+
+[dependencies]
+aegis = "0.9"
+aes-gcm = "0.11"
+chacha20poly1305 = "0.11"
+rand = "0.10"
+thiserror = "2.0"
+zeroize = { version = "1.7", features = ["derive"] }
+
+[dev-dependencies]
+hex = "0.4"
+
+[[bin]]
+name = "bench"
+path = "src/bin/bench.rs"
+
+[[example]]
+name = "kafka_event_encrypt"
+path = "examples/kafka_event_encrypt/src/main.rs"
+
+[[example]]
+name = "log_stream_encrypt"
+path = "examples/log_stream_encrypt/src/main.rs"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = "symbols"
+
+[profile.bench]
+opt-level = 3
+lto = true
+codegen-units = 1

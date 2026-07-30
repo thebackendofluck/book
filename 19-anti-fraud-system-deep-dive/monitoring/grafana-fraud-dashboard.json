@@ -1,0 +1,118 @@
+{
+  "dashboard": {
+    "title": "Fraud Detection - Fraud Analytics",
+    "tags": ["fraud-detection", "fraud-analytics"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Fraud Score Distribution",
+        "type": "histogram",
+        "targets": [
+          {
+            "expr": "fraud_score",
+            "legendFormat": "Fraud Scores"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "High Risk Transactions",
+        "type": "table",
+        "targets": [
+          {
+            "expr": "rate(fraud_score_total{fraud_score=\"high\"}[5m])",
+            "legendFormat": "High Risk Rate"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Alert Rate by Category",
+        "type": "bargauge",
+        "targets": [
+          {
+            "expr": "rate(fraud_alerts_total[5m])",
+            "legendFormat": "{{category}}"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "False Positive Rate",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "rate(fraud_false_positives_total[1h]) / rate(fraud_alerts_total[1h]) * 100",
+            "legendFormat": "False Positive %"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "Model Performance",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "fraud_model_accuracy",
+            "legendFormat": "{{model}} Accuracy"
+          },
+          {
+            "expr": "fraud_model_precision",
+            "legendFormat": "{{model}} Precision"
+          },
+          {
+            "expr": "fraud_model_recall",
+            "legendFormat": "{{model}} Recall"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "title": "Blocked Amount",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "increase(fraud_blocked_amount_total[1h])",
+            "legendFormat": "Amount Blocked (1h)"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "currencyUSD"
+          }
+        }
+      },
+      {
+        "id": 7,
+        "title": "Top Fraud Patterns",
+        "type": "table",
+        "targets": [
+          {
+            "expr": "topk(10, rate(fraud_pattern_detected_total[1h]))",
+            "legendFormat": "{{pattern}}"
+          }
+        ]
+      },
+      {
+        "id": 8,
+        "title": "Geographic Fraud Distribution",
+        "type": "geomap",
+        "targets": [
+          {
+            "expr": "rate(fraud_by_country_total[1h])",
+            "legendFormat": "{{country}}"
+          }
+        ]
+      }
+    ],
+    "time": {
+      "from": "now-24h",
+      "to": "now"
+    },
+    "refresh": "5m",
+    "schemaVersion": 27,
+    "version": 0,
+    "links": []
+  }
+}

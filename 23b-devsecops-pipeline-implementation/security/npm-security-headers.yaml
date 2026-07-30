@@ -1,0 +1,115 @@
+# Companion code for "The Backend of Luck" - Chapter 23b, DevSecOps Pipeline Implementation.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# ===========================================================================
+# Nginx Proxy Manager (NPM) — Security Headers Configuration
+#
+# NPM host: YOUR_NPM_HOST_IP
+# Admin UI: http://YOUR_NPM_HOST_IP:81  (default creds on first boot)
+#
+# These headers must be applied to every proxy host via the "Advanced" tab
+# in the NPM web UI (or via the NPM API).
+#
+# IMPORTANT: This YAML file is documentation/reference, not a K8s manifest.
+# The actual configuration is applied to NPM's nginx config blocks below.
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# METHOD 1: NPM "Advanced" tab (per proxy host)
+# ---------------------------------------------------------------------------
+# For each Proxy Host in NPM:
+#   1. Open the host editor
+#   2. Click the "Advanced" tab
+#   3. Paste the nginx snippet below into the "Custom Nginx Configuration" box
+#   4. Save
+
+# ---- Paste into NPM Advanced tab ----------------------------------------
+#
+# # Security headers
+# add_header X-Content-Type-Options       "nosniff"                                          always;
+# add_header X-Frame-Options              "DENY"                                             always;
+# add_header X-XSS-Protection            "1; mode=block"                                    always;
+# add_header Strict-Transport-Security   "max-age=31536000; includeSubDomains; preload"     always;
+# add_header Content-Security-Policy     "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.acmetocasino.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' wss://acmetocasino.com; frame-ancestors 'none';" always;
+# add_header Referrer-Policy             "strict-origin-when-cross-origin"                  always;
+# add_header Permissions-Policy          "geolocation=(), microphone=(), camera=()"         always;
+# add_header X-Request-ID                $request_id                                        always;
+#
+# # Remove headers that leak server information
+# more_clear_headers Server;
+# more_clear_headers X-Powered-By;
+# more_clear_headers X-AspNet-Version;
+#
+# ---- End of NPM Advanced tab snippet ------------------------------------
+
+# ---------------------------------------------------------------------------
+# METHOD 2: Global snippet via NPM config file (applies to ALL proxy hosts)
+# ---------------------------------------------------------------------------
+# SSH to the NPM host (YOUR_NPM_HOST_IP) and create:
+#   /etc/nginx/conf.d/security-headers.conf
+#
+# Then reference it from /etc/nginx/nginx.conf or the NPM template.
+# Content (save as-is to /etc/nginx/conf.d/security-headers.conf):
+#
+# ---- /etc/nginx/conf.d/security-headers.conf ----------------------------
+#
+# # Global security headers for all proxy hosts managed by NPM
+# # Applied in the http {} block; individual hosts may override with
+# # add_header in the server {} block (last wins).
+#
+# map $host $csp_policy {
+#     default                          "default-src 'self'; frame-ancestors 'none';";
+#     "~*acmetocasino"                 "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' wss://acmetocasino.com; frame-ancestors 'none';";
+# }
+#
+# ---- End of /etc/nginx/conf.d/security-headers.conf --------------------
+#
+# NOTE: NPM runs in Docker; mount the file via volume or edit in the container:
+#   docker exec -it nginx-proxy-manager sh
+#   vi /etc/nginx/conf.d/security-headers.conf
+
+# ---------------------------------------------------------------------------
+# METHOD 3: NPM REST API (automate per-host Advanced config)
+# ---------------------------------------------------------------------------
+# NPM exposes a REST API on port 81.  Authenticate first, then PATCH hosts.
+#
+# Step 1 — Get auth token:
+#   curl -s -X POST http://YOUR_NPM_HOST_IP:81/api/tokens \
+#     -H "Content-Type: application/json" \
+#     -d '{"identity":"admin@example.com","secret":"changeme"}' \
+#     | jq -r '.token'
+#
+# Step 2 — List proxy hosts:
+#   curl -s http://YOUR_NPM_HOST_IP:81/api/nginx/proxy-hosts \
+#     -H "Authorization: Bearer <TOKEN>" | jq '.[].id'
+#
+# Step 3 — Patch Advanced config for each host (replace HOST_ID and TOKEN):
+#   HEADERS_SNIPPET='add_header X-Content-Type-Options "nosniff" always;\nadd_header X-Frame-Options "DENY" always;\nadd_header X-XSS-Protection "1; mode=block" always;\nadd_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;\nadd_header Content-Security-Policy "default-src '"'"'self'"'"'; frame-ancestors '"'"'none'"'"';" always;\nadd_header Referrer-Policy "strict-origin-when-cross-origin" always;\nadd_header Permissions-Policy "geolocation=(), microphone=(), camera=()" always;'
+#
+#   curl -s -X PUT http://YOUR_NPM_HOST_IP:81/api/nginx/proxy-hosts/<HOST_ID> \
+#     -H "Authorization: Bearer <TOKEN>" \
+#     -H "Content-Type: application/json" \
+#     -d "{\"advanced_config\": \"${HEADERS_SNIPPET}\"}"
+
+# ---------------------------------------------------------------------------
+# Header Reference
+# ---------------------------------------------------------------------------
+# Header                       Value                                   Purpose
+# X-Content-Type-Options       nosniff                                 Prevent MIME-sniffing
+# X-Frame-Options              DENY                                    Block clickjacking (iframes)
+# X-XSS-Protection             1; mode=block                           Legacy XSS filter (IE/Edge)
+# Strict-Transport-Security    max-age=31536000; includeSubDomains     Enforce HTTPS for 1 year
+# Content-Security-Policy      default-src 'self'; ...                 Restrict resource origins
+# Referrer-Policy              strict-origin-when-cross-origin         Limit referrer leakage
+# Permissions-Policy           geolocation=(), microphone=(), ...      Restrict browser APIs
+#
+# Test headers after applying:
+#   curl -sI https://acmetocasino.com | grep -iE 'x-frame|x-content|strict|csp|referrer'
+#   OR: https://securityheaders.com/?q=acmetocasino.com

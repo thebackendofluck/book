@@ -1,0 +1,55 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 20, Hardware Security Module Infrastructure.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# YubiHSM 2 Setup Playbook
+# Installs yubihsm-shell, configures PKCS#11, and tests key generation
+#
+# Usage:
+#   ansible-playbook -i inventory/hosts.yml playbook-yubihsm-setup.yml
+#
+# Prerequisites:
+#   - Target hosts running Ubuntu 22.04+ or Debian 12+
+#   - YubiHSM 2 device connected via USB
+#   - Root/sudo access on target hosts
+
+- name: YubiHSM 2 Installation and Configuration
+  hosts: hsm_servers
+  become: true
+  gather_facts: true
+
+  vars:
+    yubihsm_connector_listen: "127.0.0.1:12345"
+    yubihsm_auth_key_id: 1
+    yubihsm_pkcs11_lib: "/usr/lib/x86_64-linux-gnu/pkcs11/yubihsm_pkcs11.so"
+    yubihsm_enable_fips: true
+    yubihsm_test_key_generation: true
+
+  roles:
+    - role: yubihsm
+      tags: [yubihsm, hsm, security]
+
+  post_tasks:
+    - name: Display YubiHSM setup summary
+      ansible.builtin.debug:
+        msg: |
+          YubiHSM 2 Setup Complete
+          ========================
+          Connector URL: http://{{ yubihsm_connector_listen }}
+          PKCS#11 Library: {{ yubihsm_pkcs11_lib }}
+          FIPS Mode: {{ yubihsm_enable_fips }}
+          Service Status: {{ yubihsm_connector_status.stdout | default('unknown') }}
+
+    - name: Verify YubiHSM connector is running
+      ansible.builtin.systemd:
+        name: yubihsm-connector
+        state: started
+      register: yubihsm_connector_status
+      tags: [verify]

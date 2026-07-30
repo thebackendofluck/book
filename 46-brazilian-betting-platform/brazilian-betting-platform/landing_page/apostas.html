@@ -1,0 +1,1226 @@
+<!DOCTYPE html>
+<html class="dark" lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AcmeToCasino Sportsbook | Brazil</title>
+<script src="/assets/tailwind.browser.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+tailwind.config = {
+  darkMode: "class",
+  theme: {
+    extend: {
+      colors: {
+        "primary-fixed": "#ffe088", "on-primary-container": "#554300",
+        "inverse-surface": "#e2e0fa", "inverse-on-surface": "#2f2f42",
+        "surface-dim": "#111124", "tertiary": "#eabfff",
+        "surface-container-high": "#28283c", "inverse-primary": "#735c00",
+        "on-secondary-fixed": "#0d0861", "tertiary-fixed-dim": "#e5b4ff",
+        "surface-variant": "#333347", "on-tertiary-fixed-variant": "#623080",
+        "outline": "#99907c", "on-primary-fixed-variant": "#574500",
+        "on-primary-fixed": "#241a00", "on-secondary-container": "#adaeff",
+        "on-error": "#690005", "on-tertiary-fixed": "#30004b",
+        "error": "#ffb4ab", "primary-container": "#d4af37",
+        "surface-container-low": "#1a1a2c", "on-error-container": "#ffdad6",
+        "surface-container-lowest": "#0c0c1e", "tertiary-container": "#d69df5",
+        "error-container": "#93000a", "on-secondary-fixed-variant": "#3c3d8d",
+        "on-tertiary-container": "#602e7e", "on-background": "#e2e0fa",
+        "on-surface": "#e2e0fa", "background": "#111124", "surface": "#111124",
+        "surface-container": "#1e1e31", "surface-bright": "#38374c",
+        "primary": "#f2ca50", "outline-variant": "#4d4635",
+        "surface-container-highest": "#333347", "on-tertiary": "#491667",
+        "primary-fixed-dim": "#e9c349", "tertiary-fixed": "#f5d9ff",
+        "on-surface-variant": "#d0c5af", "on-primary": "#3c2f00",
+        "surface-tint": "#e9c349", "secondary-fixed": "#e1dfff",
+        "secondary-container": "#3c3d8d", "secondary-fixed-dim": "#c1c1ff",
+        "on-secondary": "#252575", "secondary": "#c1c1ff"
+      },
+      fontFamily: {
+        "headline": ["Space Grotesk"], "body": ["Inter"],
+        "label": ["Inter"], "technical": ["Fira Code"]
+      },
+      borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+    },
+  },
+}
+</script>
+<style>
+.material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+.glow-primary { box-shadow: 0 0 20px rgba(242, 202, 80, 0.05); }
+.glass-panel { background: rgba(30, 30, 49, 0.7); backdrop-filter: blur(12px); }
+</style>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --gold:#d4af37;--gold-light:#f5d060;--gold-dim:#a08520;
+  --bg:#08081a;--bg-card:rgba(16,16,40,0.85);--bg-card-hover:rgba(22,22,55,0.95);
+  --border:rgba(212,175,55,0.15);--border-hover:rgba(212,175,55,0.35);
+  --text:#e8e6e3;--text-dim:#8a8a9a;--text-bright:#ffffff;
+  --green:#00e676;--red:#ff5252;--blue:#448aff;--purple:#b388ff;--cyan:#18ffff;--orange:#ffab40;
+  --radius:12px;--radius-sm:8px;--radius-xs:4px;
+  --shadow:0 4px 30px rgba(0,0,0,0.4);
+  --font-heading:'Space Grotesk',sans-serif;--font-body:'Inter',sans-serif;--font-mono:'Fira Code',monospace;
+  --transition:all 0.2s ease;
+}
+html{scroll-behavior:smooth;font-size:16px}
+body{font-family:var(--font-body);background:var(--bg);color:var(--text);line-height:1.6;min-height:100vh;overflow-x:hidden;opacity:0;animation:fadeIn 0.25s ease forwards}
+@keyframes fadeIn{to{opacity:1}}
+body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellipse at 20% 50%,rgba(90,40,120,0.08) 0%,transparent 60%),radial-gradient(ellipse at 80% 20%,rgba(40,40,120,0.06) 0%,transparent 50%);pointer-events:none;z-index:0}
+::-webkit-scrollbar{width:6px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--gold-dim);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--gold)}
+
+/* Header */
+.header{position:sticky;top:0;z-index:999;background:rgba(8,8,26,0.95);backdrop-filter:blur(20px);border-bottom:1px solid var(--border);padding:0 24px;display:flex;align-items:center;justify-content:space-between;height:64px}
+.logo{display:flex;align-items:center;gap:10px;text-decoration:none}
+.logo-text{font-family:var(--font-heading);font-size:1.3rem;color:var(--gold);letter-spacing:1px;font-weight:700}
+.logo-sub{font-size:0.65rem;color:var(--text-dim);letter-spacing:2px;text-transform:uppercase;margin-top:-2px}
+.nav{display:flex;align-items:center;gap:4px}
+.nav a{font-family:var(--font-body);font-weight:500;font-size:0.85rem;color:var(--text-dim);text-decoration:none;padding:8px 16px;border-radius:var(--radius-sm);transition:var(--transition);cursor:pointer;min-height:44px;display:flex;align-items:center}
+.nav a:hover{color:var(--text);background:rgba(212,175,55,0.08)}
+.nav a.active{color:var(--gold);background:rgba(212,175,55,0.1)}
+.header-actions{display:flex;gap:8px;align-items:center}
+
+/* Simulation Banner */
+.sim-banner{background:linear-gradient(90deg,rgba(255,82,82,0.12),rgba(255,82,82,0.06),rgba(255,82,82,0.12));border-bottom:1px solid rgba(255,82,82,0.2);padding:6px 24px;display:flex;align-items:center;justify-content:center;gap:10px;font-size:0.72rem;font-weight:700;color:#ff5252;letter-spacing:1px;text-transform:uppercase}
+.sim-dot{width:8px;height:8px;border-radius:50%;background:#ff5252;animation:simPulse 1.5s infinite;display:inline-block}
+@keyframes simPulse{0%,100%{opacity:1}50%{opacity:0.3}}
+
+/* Live Scores Bar */
+.scores-bar{position:sticky;top:64px;z-index:90;background:rgba(10,10,22,0.97);backdrop-filter:blur(16px);border-bottom:1px solid var(--border);padding:0;overflow:hidden;height:44px}
+.scores-track{display:flex;gap:0;height:100%;align-items:center;animation:scrollScores 60s linear infinite;white-space:nowrap}
+.scores-track:hover{animation-play-state:paused}
+.score-item{display:inline-flex;align-items:center;gap:8px;padding:0 20px;border-right:1px solid rgba(255,255,255,0.05);height:100%;font-size:0.75rem;flex-shrink:0;cursor:pointer;transition:var(--transition)}
+.score-item:hover{background:rgba(212,175,55,0.05)}
+.score-comp{font-size:0.62rem;color:var(--gold);font-weight:700;text-transform:uppercase;letter-spacing:0.5px}
+.score-teams{color:var(--text-bright);font-weight:600}
+.score-result{font-family:var(--font-mono);color:var(--gold-light);font-weight:700;font-size:0.8rem}
+.score-time{font-size:0.65rem;color:var(--text-dim);background:rgba(255,255,255,0.05);padding:2px 6px;border-radius:3px}
+.score-live-dot{width:6px;height:6px;border-radius:50%;background:var(--red);animation:simPulse 1s infinite;flex-shrink:0}
+@keyframes scrollScores{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
+
+/* Main layout */
+.main-wrapper{display:grid;grid-template-columns:1fr 320px;gap:0;max-width:1600px;margin:0 auto;min-height:calc(100vh - 130px)}
+.content-area{padding:20px 24px 60px;min-width:0}
+.sidebar{padding:20px 20px 60px 0;position:sticky;top:108px;height:calc(100vh - 108px);overflow-y:auto}
+
+/* Cards */
+.card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:20px;backdrop-filter:blur(10px);transition:var(--transition);position:relative;overflow:hidden;margin-bottom:20px}
+.card::before{content:'';position:absolute;inset:0;border-radius:var(--radius);background:linear-gradient(135deg,rgba(212,175,55,0.03),transparent 60%);pointer-events:none}
+.card:hover{border-color:var(--border-hover)}
+.card-title{font-family:var(--font-heading);font-size:0.9rem;color:var(--gold);margin-bottom:16px;display:flex;align-items:center;gap:8px;letter-spacing:0.5px;font-weight:700}
+.section-label{font-size:0.65rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;font-weight:700}
+
+/* Featured Event Cards */
+.featured-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;margin-bottom:20px}
+.event-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:16px;transition:var(--transition);cursor:pointer;position:relative;overflow:hidden}
+.event-card::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(212,175,55,0.02),transparent 50%);pointer-events:none}
+.event-card:hover{border-color:var(--border-hover);box-shadow:0 0 24px rgba(212,175,55,0.06);transform:translateY(-2px)}
+.event-comp{display:flex;align-items:center;gap:6px;margin-bottom:10px}
+.comp-badge{font-size:0.62rem;font-weight:700;padding:2px 8px;border-radius:3px;text-transform:uppercase;letter-spacing:0.5px}
+.comp-brasileirao{background:rgba(0,186,80,0.12);color:#00ba50}
+.comp-copa{background:rgba(242,202,80,0.12);color:#f2ca50}
+.comp-libertadores{background:rgba(68,138,255,0.12);color:#448aff}
+.comp-ufc{background:rgba(255,82,82,0.12);color:#ff5252}
+.comp-nba{background:rgba(179,136,255,0.12);color:#b388ff}
+.event-date{font-size:0.65rem;color:var(--text-dim);margin-left:auto}
+.event-teams{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.team-name{font-family:var(--font-heading);font-size:0.9rem;font-weight:700;color:var(--text-bright)}
+.event-vs{font-size:0.7rem;color:var(--text-dim);padding:0 8px}
+.event-odds-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:10px}
+.odd-btn{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:var(--radius-sm);padding:8px 6px;text-align:center;cursor:pointer;transition:var(--transition);position:relative}
+.odd-btn:hover{background:rgba(212,175,55,0.1);border-color:var(--border-hover)}
+.odd-btn.selected{background:rgba(212,175,55,0.15);border-color:var(--gold)}
+.odd-label{font-size:0.6rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.3px;display:block;margin-bottom:2px}
+.odd-value{font-family:var(--font-mono);font-size:0.85rem;font-weight:700;color:var(--gold-light)}
+.odd-btn.selected .odd-value{color:var(--gold)}
+
+/* Odds Table */
+.odds-table{width:100%;border-collapse:collapse;font-size:0.8rem}
+.odds-table th{font-family:var(--font-body);font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;font-size:0.65rem;padding:8px 12px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap;background:rgba(255,255,255,0.01)}
+.odds-table td{padding:10px 12px;border-bottom:1px solid rgba(255,255,255,0.03);color:var(--text);vertical-align:middle}
+.odds-table tr:hover td{background:rgba(212,175,55,0.02)}
+.odds-table .odd-cell{cursor:pointer;transition:var(--transition);font-family:var(--font-mono);font-weight:600;color:var(--gold-light)}
+.odds-table .odd-cell:hover{color:var(--gold)}
+.odds-table .odd-cell.selected{color:var(--gold);background:rgba(212,175,55,0.08);border-radius:4px}
+.match-info{display:flex;flex-direction:column;gap:2px}
+.match-teams-sm{font-weight:700;color:var(--text-bright);font-size:0.82rem}
+.match-meta-sm{font-size:0.65rem;color:var(--text-dim)}
+
+/* Live Section */
+.live-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;margin-bottom:20px}
+.live-card{background:var(--bg-card);border:1px solid rgba(255,82,82,0.2);border-radius:var(--radius);padding:16px;transition:var(--transition);position:relative;overflow:hidden}
+.live-card::after{content:'AO VIVO';position:absolute;top:10px;right:10px;font-size:0.6rem;font-weight:800;letter-spacing:1px;color:#ff5252;background:rgba(255,82,82,0.1);border:1px solid rgba(255,82,82,0.25);padding:2px 7px;border-radius:3px}
+.live-score-display{display:flex;align-items:center;justify-content:center;gap:16px;padding:12px 0;margin-bottom:12px}
+.live-team{text-align:center;flex:1}
+.live-team-name{font-family:var(--font-heading);font-size:0.8rem;font-weight:700;color:var(--text-bright);margin-bottom:4px}
+.live-team-score{font-family:var(--font-mono);font-size:2rem;font-weight:700;color:var(--gold-light);line-height:1}
+.live-vs-block{text-align:center;padding:0 8px}
+.live-time{font-size:0.7rem;color:var(--red);font-weight:700;animation:simPulse 2s infinite}
+.live-minute{font-family:var(--font-mono);font-size:1.1rem;color:var(--text-dim)}
+.live-stats{display:grid;grid-template-columns:1fr auto 1fr;gap:4px;margin-bottom:12px;font-size:0.7rem}
+.live-stat-val{text-align:center;font-family:var(--font-mono);font-weight:700;color:var(--text)}
+.live-stat-val.home{text-align:right;color:var(--blue)}
+.live-stat-val.away{text-align:left;color:var(--purple)}
+.live-stat-label{text-align:center;color:var(--text-dim);font-size:0.62rem}
+.live-odds-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+
+/* Bet Slip */
+.betslip{background:rgba(12,12,30,0.95);border:1px solid var(--border);border-radius:var(--radius);height:fit-content}
+.betslip-header{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.betslip-title{font-family:var(--font-heading);font-size:0.9rem;font-weight:700;color:var(--gold);display:flex;align-items:center;gap:8px}
+.betslip-count{background:var(--gold);color:#0a0a1a;font-size:0.65rem;font-weight:800;padding:2px 7px;border-radius:20px}
+.betslip-body{padding:14px 16px}
+.betslip-empty{text-align:center;padding:32px 16px;color:var(--text-dim)}
+.betslip-empty-icon{font-size:2rem;margin-bottom:8px;opacity:0.3}
+.betslip-empty p{font-size:0.8rem}
+.bet-item{background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:8px;position:relative}
+.bet-item-remove{position:absolute;top:8px;right:8px;background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.7rem;padding:2px;transition:var(--transition)}
+.bet-item-remove:hover{color:var(--red)}
+.bet-item-match{font-size:0.72rem;color:var(--text-dim);margin-bottom:2px}
+.bet-item-selection{font-size:0.82rem;font-weight:700;color:var(--text-bright);margin-bottom:4px;padding-right:18px}
+.bet-item-odd{font-family:var(--font-mono);font-size:0.9rem;font-weight:700;color:var(--gold-light)}
+.betslip-stake{margin-top:12px}
+.stake-label{font-size:0.7rem;color:var(--text-dim);margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px}
+.stake-input-wrap{position:relative}
+.stake-currency{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--gold);font-weight:700;font-size:0.85rem;font-family:var(--font-mono)}
+.stake-input{width:100%;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text-bright);padding:10px 12px 10px 36px;font-family:var(--font-mono);font-size:1rem;font-weight:700;outline:none;transition:var(--transition)}
+.stake-input:focus{border-color:var(--gold);background:rgba(212,175,55,0.05)}
+.stake-presets{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.stake-preset{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);border-radius:4px;color:var(--text-dim);font-size:0.72rem;font-weight:600;padding:5px 10px;cursor:pointer;transition:var(--transition);font-family:var(--font-mono)}
+.stake-preset:hover{background:rgba(212,175,55,0.08);color:var(--gold);border-color:var(--border)}
+.betslip-summary{margin-top:14px;padding:12px;background:rgba(212,175,55,0.04);border:1px solid rgba(212,175,55,0.1);border-radius:var(--radius-sm)}
+.summary-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:0.78rem}
+.summary-row:last-child{margin-bottom:0;padding-top:8px;border-top:1px solid rgba(212,175,55,0.1)}
+.summary-label{color:var(--text-dim)}
+.summary-value{font-family:var(--font-mono);font-weight:700;color:var(--text-bright)}
+.summary-value.potential{color:var(--green);font-size:0.9rem}
+.acca-toggle{display:flex;align-items:center;gap:8px;margin-top:12px;padding:8px 10px;background:rgba(255,255,255,0.02);border-radius:var(--radius-sm);cursor:pointer}
+.acca-label{font-size:0.75rem;font-weight:600;color:var(--text-dim)}
+.toggle-switch{width:32px;height:18px;background:rgba(255,255,255,0.1);border-radius:9px;position:relative;transition:var(--transition);flex-shrink:0}
+.toggle-switch.on{background:rgba(212,175,55,0.4)}
+.toggle-knob{width:12px;height:12px;background:#888;border-radius:50%;position:absolute;top:3px;left:3px;transition:var(--transition)}
+.toggle-switch.on .toggle-knob{transform:translateX(14px);background:var(--gold)}
+.place-bet-btn{width:100%;margin-top:14px;background:linear-gradient(135deg,var(--gold),var(--gold-light));color:#0a0a1a;border:none;padding:14px;border-radius:var(--radius-sm);font-family:var(--font-heading);font-weight:700;font-size:0.95rem;cursor:pointer;transition:var(--transition);letter-spacing:0.5px}
+.place-bet-btn:hover{background:linear-gradient(135deg,var(--gold-light),#ffe090);box-shadow:0 4px 20px rgba(212,175,55,0.3)}
+.place-bet-btn:active{transform:scale(0.98)}
+
+/* Compliance */
+.compliance{background:rgba(6,7,10,0.9);border-top:1px solid rgba(255,255,255,0.04);padding:28px 24px 48px;margin-top:20px}
+.compliance-inner{max-width:900px;margin:0 auto;text-align:center}
+.compliance-badges{display:flex;justify-content:center;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:16px}
+.comp-badge-item{display:flex;align-items:center;gap:6px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:6px;padding:6px 12px;font-size:11px;color:#9a9aaa}
+.rg-links{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.rg-link{color:#7a7a8a;font-size:12px;font-weight:600;padding:4px 10px;border-radius:5px;border:1px solid rgba(255,255,255,0.07);text-decoration:none;transition:var(--transition)}
+.rg-link:hover{color:#e2e0fa;border-color:rgba(255,255,255,0.2)}
+
+.section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.see-all-btn{font-size:0.72rem;color:var(--gold);font-weight:600;cursor:pointer;display:flex;align-items:center;gap:4px;background:none;border:none;padding:0;transition:var(--transition)}
+.see-all-btn:hover{color:var(--gold-light)}
+.toast{position:fixed;bottom:24px;right:24px;background:rgba(16,16,40,0.97);border:1px solid var(--gold-dim);border-radius:var(--radius-sm);padding:14px 20px;color:var(--gold-light);font-weight:700;font-size:0.85rem;z-index:3000;transform:translateY(100px);opacity:0;transition:all 0.3s ease;backdrop-filter:blur(10px);max-width:300px}
+.toast.show{transform:translateY(0);opacity:1}
+
+@media(max-width:1024px){
+  .main-wrapper{grid-template-columns:1fr}
+  .sidebar{position:fixed;right:-360px;top:108px;width:340px;height:calc(100vh - 108px);z-index:500;background:rgba(8,8,26,0.98);backdrop-filter:blur(20px);border-left:1px solid var(--border);padding:16px;transition:right 0.3s ease;overflow-y:auto}
+  .sidebar.open{right:0}
+  .betslip-fab{display:flex}
+}
+@media(min-width:1025px){.betslip-fab{display:none}}
+.betslip-fab{position:fixed;bottom:24px;right:24px;z-index:490;background:linear-gradient(135deg,var(--gold),var(--gold-light));color:#0a0a1a;border:none;border-radius:50px;padding:12px 20px;font-weight:800;font-size:0.85rem;cursor:pointer;box-shadow:0 4px 20px rgba(212,175,55,0.4);gap:8px;align-items:center}
+@media(max-width:768px){
+  .featured-grid{grid-template-columns:1fr}
+  .live-grid{grid-template-columns:1fr}
+  .nav{display:none}
+  .content-area{padding:16px}
+}
+@keyframes pulse{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(0,230,118,0.4)}50%{opacity:0.8;box-shadow:0 0 0 6px rgba(0,230,118,0)}}
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<header class="header">
+  <a href="/" class="logo">
+    <div>
+      <div class="logo-text">AcmeToCasino</div>
+      <div class="logo-sub">Sportsbook | Brazil</div>
+    </div>
+  </a>
+  <nav class="nav">
+    <a href="index.html">Lobby</a>
+    <a href="https://new.acmetocasino.com/dashboard.html">Dashboard</a>
+    <a href="index.html">Casino</a>
+    <a href="apostas.html" class="active">Brazil Bet</a>
+  </nav>
+  <div class="header-actions">
+    <div style="display:flex;align-items:center;gap:6px;font-size:0.72rem;color:var(--text-dim);padding:4px 12px;border-radius:20px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.05)">
+      <div id="ws-dot" style="width:8px;height:8px;border-radius:50%;background:#ff5252;transition:var(--transition)"></div>
+      <span id="ws-label">Conectando...</span>
+    </div>
+    <div style="font-size:0.72rem;color:var(--text-dim);padding:4px 12px;border:1px solid var(--border);border-radius:20px">
+      CPF: ***.***.***-<span style="color:var(--gold)">12</span>
+    </div>
+  </div>
+</header>
+
+<!-- Simulation Banner -->
+<div class="sim-banner">
+  <span class="sim-dot"></span>
+  PLATAFORMA DE SIMULACAO &mdash; APENAS PARA FINS DEMONSTRATIVOS &mdash; NAO ENVOLVE DINHEIRO REAL
+  <span class="sim-dot"></span>
+</div>
+
+<!-- Live Scores Bar -->
+<div class="scores-bar">
+  <div class="scores-track" id="scoresTrack">
+    <div class="score-item">
+      <span class="score-live-dot"></span>
+      <span class="score-comp">Brasileirao</span>
+      <span class="score-teams">Flamengo vs Palmeiras</span>
+      <span class="score-result" id="sc1">2 x 1</span>
+      <span class="score-time" id="sc1t">78'</span>
+    </div>
+    <div class="score-item">
+      <span class="score-live-dot"></span>
+      <span class="score-comp">Copa do Brasil</span>
+      <span class="score-teams">Corinthians vs Sao Paulo</span>
+      <span class="score-result" id="sc2">0 x 0</span>
+      <span class="score-time" id="sc2t">45'</span>
+    </div>
+    <div class="score-item">
+      <span class="score-live-dot" style="background:#666;animation:none"></span>
+      <span class="score-comp">Libertadores</span>
+      <span class="score-teams">Boca Juniors vs Fluminense</span>
+      <span class="score-result">1 x 3</span>
+      <span class="score-time" style="color:var(--text-dim)">FT</span>
+    </div>
+    <div class="score-item">
+      <span class="score-live-dot" style="background:var(--purple);animation:simPulse 1s infinite"></span>
+      <span class="score-comp">NBA</span>
+      <span class="score-teams">Lakers vs Celtics</span>
+      <span class="score-result" id="sc4">98 x 102</span>
+      <span class="score-time" id="sc4t">Q4 3:42</span>
+    </div>
+    <div class="score-item">
+      <span class="score-live-dot" style="background:var(--orange);animation:none"></span>
+      <span class="score-comp">UFC 320</span>
+      <span class="score-teams">Silva vs Jones</span>
+      <span class="score-result" style="color:var(--orange)">Main Card</span>
+      <span class="score-time" style="color:var(--orange)">Em Breve</span>
+    </div>
+    <!-- Duplicate set for seamless loop -->
+    <div class="score-item">
+      <span class="score-live-dot"></span>
+      <span class="score-comp">Brasileirao</span>
+      <span class="score-teams">Flamengo vs Palmeiras</span>
+      <span class="score-result">2 x 1</span>
+      <span class="score-time">78'</span>
+    </div>
+    <div class="score-item">
+      <span class="score-live-dot"></span>
+      <span class="score-comp">Copa do Brasil</span>
+      <span class="score-teams">Corinthians vs Sao Paulo</span>
+      <span class="score-result">0 x 0</span>
+      <span class="score-time">45'</span>
+    </div>
+    <div class="score-item">
+      <span class="score-live-dot" style="background:#666;animation:none"></span>
+      <span class="score-comp">Libertadores</span>
+      <span class="score-teams">Boca Juniors vs Fluminense</span>
+      <span class="score-result">1 x 3</span>
+      <span class="score-time" style="color:var(--text-dim)">FT</span>
+    </div>
+    <div class="score-item">
+      <span class="score-live-dot" style="background:var(--purple);animation:simPulse 1s infinite"></span>
+      <span class="score-comp">NBA</span>
+      <span class="score-teams">Lakers vs Celtics</span>
+      <span class="score-result">98 x 102</span>
+      <span class="score-time">Q4 3:42</span>
+    </div>
+    <div class="score-item">
+      <span class="score-live-dot" style="background:var(--orange);animation:none"></span>
+      <span class="score-comp">UFC 320</span>
+      <span class="score-teams">Silva vs Jones</span>
+      <span class="score-result" style="color:var(--orange)">Main Card</span>
+      <span class="score-time" style="color:var(--orange)">Em Breve</span>
+    </div>
+  </div>
+</div>
+
+<!-- Main Layout -->
+<div class="main-wrapper">
+  <!-- Content -->
+  <div class="content-area">
+
+    <!-- Featured Events -->
+    <div>
+      <div class="section-header">
+        <div>
+          <div class="card-title" style="margin-bottom:2px">
+            &#11088; Eventos em Destaque
+          </div>
+          <div class="section-label">proximas grandes partidas</div>
+        </div>
+        <button class="see-all-btn" type="button">Ver todos &#8594;</button>
+      </div>
+      <div class="featured-grid">
+
+        <!-- Brasileirao Rodada 8 -->
+        <div class="event-card">
+          <div class="event-comp">
+            <span class="comp-badge comp-brasileirao">Brasileirao Serie A</span>
+            <span class="event-date">Sab 29 Mar, 16h</span>
+          </div>
+          <div class="event-teams">
+            <span class="team-name">Flamengo</span>
+            <span class="event-vs">vs</span>
+            <span class="team-name">Palmeiras</span>
+          </div>
+          <div style="font-size:0.68rem;color:var(--text-dim);margin-bottom:10px">Rodada 8 &mdash; Maracana, Rio de Janeiro</div>
+          <div class="event-odds-row">
+            <div class="odd-btn" data-match="Flamengo vs Palmeiras" data-sel="Flamengo" data-odd="2.10" data-market="br8-1x2" onclick="handleOddClick(event,this)">
+              <span class="odd-label">1 Casa</span>
+              <span class="odd-value">2.10</span>
+            </div>
+            <div class="odd-btn" data-match="Flamengo vs Palmeiras" data-sel="Empate" data-odd="3.20" data-market="br8-1x2" onclick="handleOddClick(event,this)">
+              <span class="odd-label">X Empate</span>
+              <span class="odd-value">3.20</span>
+            </div>
+            <div class="odd-btn" data-match="Flamengo vs Palmeiras" data-sel="Palmeiras" data-odd="3.60" data-market="br8-1x2" onclick="handleOddClick(event,this)">
+              <span class="odd-label">2 Fora</span>
+              <span class="odd-value">3.60</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Copa do Brasil Quartas -->
+        <div class="event-card">
+          <div class="event-comp">
+            <span class="comp-badge comp-copa">Copa do Brasil</span>
+            <span class="event-date">Dom 30 Mar, 18h</span>
+          </div>
+          <div class="event-teams">
+            <span class="team-name">Corinthians</span>
+            <span class="event-vs">vs</span>
+            <span class="team-name">Atletico-MG</span>
+          </div>
+          <div style="font-size:0.68rem;color:var(--text-dim);margin-bottom:10px">Quartas de Final &mdash; Arena Corinthians</div>
+          <div class="event-odds-row">
+            <div class="odd-btn" data-match="Corinthians vs Atletico-MG" data-sel="Corinthians" data-odd="2.45" data-market="cqf-1x2" onclick="handleOddClick(event,this)">
+              <span class="odd-label">1 Casa</span>
+              <span class="odd-value">2.45</span>
+            </div>
+            <div class="odd-btn" data-match="Corinthians vs Atletico-MG" data-sel="Empate" data-odd="3.10" data-market="cqf-1x2" onclick="handleOddClick(event,this)">
+              <span class="odd-label">X Empate</span>
+              <span class="odd-value">3.10</span>
+            </div>
+            <div class="odd-btn" data-match="Corinthians vs Atletico-MG" data-sel="Atletico-MG" data-odd="2.90" data-market="cqf-1x2" onclick="handleOddClick(event,this)">
+              <span class="odd-label">2 Fora</span>
+              <span class="odd-value">2.90</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Libertadores Group Stage -->
+        <div class="event-card">
+          <div class="event-comp">
+            <span class="comp-badge comp-libertadores">Libertadores</span>
+            <span class="event-date">Ter 1 Abr, 21h30</span>
+          </div>
+          <div class="event-teams">
+            <span class="team-name">Fluminense</span>
+            <span class="event-vs">vs</span>
+            <span class="team-name">River Plate</span>
+          </div>
+          <div style="font-size:0.68rem;color:var(--text-dim);margin-bottom:10px">Fase de Grupos &mdash; Estadio Maracana</div>
+          <div class="event-odds-row">
+            <div class="odd-btn" data-match="Fluminense vs River Plate" data-sel="Fluminense" data-odd="2.30" data-market="lib-1x2" onclick="handleOddClick(event,this)">
+              <span class="odd-label">1 Casa</span>
+              <span class="odd-value">2.30</span>
+            </div>
+            <div class="odd-btn" data-match="Fluminense vs River Plate" data-sel="Empate" data-odd="3.40" data-market="lib-1x2" onclick="handleOddClick(event,this)">
+              <span class="odd-label">X Empate</span>
+              <span class="odd-value">3.40</span>
+            </div>
+            <div class="odd-btn" data-match="Fluminense vs River Plate" data-sel="River Plate" data-odd="3.00" data-market="lib-1x2" onclick="handleOddClick(event,this)">
+              <span class="odd-label">2 Fora</span>
+              <span class="odd-value">3.00</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- UFC 320 -->
+        <div class="event-card">
+          <div class="event-comp">
+            <span class="comp-badge comp-ufc">UFC 320</span>
+            <span class="event-date">Sab 5 Abr, 22h</span>
+          </div>
+          <div class="event-teams">
+            <span class="team-name">A. Silva</span>
+            <span class="event-vs">vs</span>
+            <span class="team-name">J. Jones</span>
+          </div>
+          <div style="font-size:0.68rem;color:var(--text-dim);margin-bottom:10px">Peso Pesado &mdash; T-Mobile Arena, Las Vegas</div>
+          <div class="event-odds-row">
+            <div class="odd-btn" data-match="Silva vs Jones (UFC 320)" data-sel="A. Silva Vence" data-odd="3.75" data-market="ufc320-main" onclick="handleOddClick(event,this)">
+              <span class="odd-label">Silva Vence</span>
+              <span class="odd-value">3.75</span>
+            </div>
+            <div class="odd-btn" data-match="Silva vs Jones (UFC 320)" data-sel="Empate/NC" data-odd="18.00" data-market="ufc320-main" onclick="handleOddClick(event,this)">
+              <span class="odd-label">Empate/NC</span>
+              <span class="odd-value">18.00</span>
+            </div>
+            <div class="odd-btn" data-match="Silva vs Jones (UFC 320)" data-sel="J. Jones Vence" data-odd="1.35" data-market="ufc320-main" onclick="handleOddClick(event,this)">
+              <span class="odd-label">Jones Vence</span>
+              <span class="odd-value">1.35</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Odds Markets Table -->
+    <div class="card">
+      <div class="card-title">
+        &#9776; Mercados &mdash; Brasileirao Serie A Rodada 8
+      </div>
+      <div style="overflow-x:auto">
+        <table class="odds-table">
+          <thead>
+            <tr>
+              <th style="min-width:200px">Partida</th>
+              <th>Data</th>
+              <th>1 Casa</th>
+              <th>X Empate</th>
+              <th>2 Fora</th>
+              <th>+2.5 Gols</th>
+              <th>-2.5 Gols</th>
+              <th>Ambos Marcam</th>
+              <th>Hcp -1</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>
+                <div class="match-info">
+                  <span class="match-teams-sm">Gremio vs Internacional</span>
+                  <span class="match-meta-sm">Rodada 8 &bull; Arena do Gremio</span>
+                </div>
+              </td>
+              <td><span style="font-size:0.72rem;color:var(--text-dim)">Sab 29/03</span></td>
+              <td class="odd-cell" data-match="Gremio vs Internacional" data-sel="Gremio" data-odd="2.20" data-market="gre-int-1x2" onclick="handleTableOdd(event,this)">2.20</td>
+              <td class="odd-cell" data-match="Gremio vs Internacional" data-sel="Empate" data-odd="3.10" data-market="gre-int-1x2" onclick="handleTableOdd(event,this)">3.10</td>
+              <td class="odd-cell" data-match="Gremio vs Internacional" data-sel="Internacional" data-odd="3.40" data-market="gre-int-1x2" onclick="handleTableOdd(event,this)">3.40</td>
+              <td class="odd-cell" data-match="Gremio vs Internacional" data-sel="Over 2.5 Gols" data-odd="2.05" data-market="gre-int-ou" onclick="handleTableOdd(event,this)">2.05</td>
+              <td class="odd-cell" data-match="Gremio vs Internacional" data-sel="Under 2.5 Gols" data-odd="1.78" data-market="gre-int-ou" onclick="handleTableOdd(event,this)">1.78</td>
+              <td class="odd-cell" data-match="Gremio vs Internacional" data-sel="Ambos Marcam Sim" data-odd="1.95" data-market="gre-int-btts" onclick="handleTableOdd(event,this)">1.95</td>
+              <td class="odd-cell" data-match="Gremio vs Internacional" data-sel="Hcp -1 Gremio" data-odd="3.80" data-market="gre-int-hcp" onclick="handleTableOdd(event,this)">3.80</td>
+            </tr>
+            <tr>
+              <td>
+                <div class="match-info">
+                  <span class="match-teams-sm">Santos vs Vasco</span>
+                  <span class="match-meta-sm">Rodada 8 &bull; Vila Belmiro</span>
+                </div>
+              </td>
+              <td><span style="font-size:0.72rem;color:var(--text-dim)">Dom 30/03</span></td>
+              <td class="odd-cell" data-match="Santos vs Vasco" data-sel="Santos" data-odd="2.60" data-market="san-vas-1x2" onclick="handleTableOdd(event,this)">2.60</td>
+              <td class="odd-cell" data-match="Santos vs Vasco" data-sel="Empate" data-odd="3.00" data-market="san-vas-1x2" onclick="handleTableOdd(event,this)">3.00</td>
+              <td class="odd-cell" data-match="Santos vs Vasco" data-sel="Vasco" data-odd="2.75" data-market="san-vas-1x2" onclick="handleTableOdd(event,this)">2.75</td>
+              <td class="odd-cell" data-match="Santos vs Vasco" data-sel="Over 2.5 Gols" data-odd="2.20" data-market="san-vas-ou" onclick="handleTableOdd(event,this)">2.20</td>
+              <td class="odd-cell" data-match="Santos vs Vasco" data-sel="Under 2.5 Gols" data-odd="1.70" data-market="san-vas-ou" onclick="handleTableOdd(event,this)">1.70</td>
+              <td class="odd-cell" data-match="Santos vs Vasco" data-sel="Ambos Marcam Sim" data-odd="1.88" data-market="san-vas-btts" onclick="handleTableOdd(event,this)">1.88</td>
+              <td class="odd-cell" data-match="Santos vs Vasco" data-sel="Hcp -1 Santos" data-odd="4.20" data-market="san-vas-hcp" onclick="handleTableOdd(event,this)">4.20</td>
+            </tr>
+            <tr>
+              <td>
+                <div class="match-info">
+                  <span class="match-teams-sm">Cruzeiro vs Botafogo</span>
+                  <span class="match-meta-sm">Rodada 8 &bull; Mineirao</span>
+                </div>
+              </td>
+              <td><span style="font-size:0.72rem;color:var(--text-dim)">Dom 30/03</span></td>
+              <td class="odd-cell" data-match="Cruzeiro vs Botafogo" data-sel="Cruzeiro" data-odd="2.80" data-market="cru-bot-1x2" onclick="handleTableOdd(event,this)">2.80</td>
+              <td class="odd-cell" data-match="Cruzeiro vs Botafogo" data-sel="Empate" data-odd="3.20" data-market="cru-bot-1x2" onclick="handleTableOdd(event,this)">3.20</td>
+              <td class="odd-cell" data-match="Cruzeiro vs Botafogo" data-sel="Botafogo" data-odd="2.50" data-market="cru-bot-1x2" onclick="handleTableOdd(event,this)">2.50</td>
+              <td class="odd-cell" data-match="Cruzeiro vs Botafogo" data-sel="Over 2.5 Gols" data-odd="2.10" data-market="cru-bot-ou" onclick="handleTableOdd(event,this)">2.10</td>
+              <td class="odd-cell" data-match="Cruzeiro vs Botafogo" data-sel="Under 2.5 Gols" data-odd="1.75" data-market="cru-bot-ou" onclick="handleTableOdd(event,this)">1.75</td>
+              <td class="odd-cell" data-match="Cruzeiro vs Botafogo" data-sel="Ambos Marcam Sim" data-odd="1.92" data-market="cru-bot-btts" onclick="handleTableOdd(event,this)">1.92</td>
+              <td class="odd-cell" data-match="Cruzeiro vs Botafogo" data-sel="Hcp -1 Cruzeiro" data-odd="5.00" data-market="cru-bot-hcp" onclick="handleTableOdd(event,this)">5.00</td>
+            </tr>
+            <tr>
+              <td>
+                <div class="match-info">
+                  <span class="match-teams-sm">Atletico-MG vs Sao Paulo</span>
+                  <span class="match-meta-sm">Rodada 8 &bull; Arena MRV</span>
+                </div>
+              </td>
+              <td><span style="font-size:0.72rem;color:var(--text-dim)">Ter 1/04</span></td>
+              <td class="odd-cell" data-match="Atletico-MG vs Sao Paulo" data-sel="Atletico-MG" data-odd="1.85" data-market="atl-sao-1x2" onclick="handleTableOdd(event,this)">1.85</td>
+              <td class="odd-cell" data-match="Atletico-MG vs Sao Paulo" data-sel="Empate" data-odd="3.50" data-market="atl-sao-1x2" onclick="handleTableOdd(event,this)">3.50</td>
+              <td class="odd-cell" data-match="Atletico-MG vs Sao Paulo" data-sel="Sao Paulo" data-odd="4.20" data-market="atl-sao-1x2" onclick="handleTableOdd(event,this)">4.20</td>
+              <td class="odd-cell" data-match="Atletico-MG vs Sao Paulo" data-sel="Over 2.5 Gols" data-odd="1.95" data-market="atl-sao-ou" onclick="handleTableOdd(event,this)">1.95</td>
+              <td class="odd-cell" data-match="Atletico-MG vs Sao Paulo" data-sel="Under 2.5 Gols" data-odd="1.88" data-market="atl-sao-ou" onclick="handleTableOdd(event,this)">1.88</td>
+              <td class="odd-cell" data-match="Atletico-MG vs Sao Paulo" data-sel="Ambos Marcam Sim" data-odd="2.10" data-market="atl-sao-btts" onclick="handleTableOdd(event,this)">2.10</td>
+              <td class="odd-cell" data-match="Atletico-MG vs Sao Paulo" data-sel="Hcp -1 Atletico" data-odd="3.20" data-market="atl-sao-hcp" onclick="handleTableOdd(event,this)">3.20</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Live Events -->
+    <div>
+      <div class="section-header">
+        <div>
+          <div class="card-title" style="margin-bottom:2px;color:var(--red)">
+            <span class="sim-dot" style="width:10px;height:10px"></span> Ao Vivo Agora
+          </div>
+          <div class="section-label">cotações atualizadas em tempo real</div>
+        </div>
+        <button class="see-all-btn" type="button">Ver todos &#8594;</button>
+      </div>
+      <div class="live-grid">
+
+        <!-- Live 1: Flamengo vs Palmeiras -->
+        <div class="live-card">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px">
+            <span class="comp-badge comp-brasileirao">Brasileirao</span>
+            <span style="font-size:0.65rem;color:var(--text-dim)">Rodada 8 &bull; 2&ordm; Tempo</span>
+          </div>
+          <div class="live-score-display">
+            <div class="live-team">
+              <div class="live-team-name">FLA</div>
+              <div class="live-team-score" id="live1-home">2</div>
+            </div>
+            <div class="live-vs-block">
+              <div class="live-time">AO VIVO</div>
+              <div class="live-minute" id="live1-min">78'</div>
+            </div>
+            <div class="live-team">
+              <div class="live-team-name">PAL</div>
+              <div class="live-team-score" id="live1-away">1</div>
+            </div>
+          </div>
+          <div class="live-stats">
+            <span class="live-stat-val home" id="live1-poss-h">54%</span>
+            <span class="live-stat-label">Posse</span>
+            <span class="live-stat-val away" id="live1-poss-a">46%</span>
+            <span class="live-stat-val home" id="live1-shots-h">8</span>
+            <span class="live-stat-label">Chutes</span>
+            <span class="live-stat-val away" id="live1-shots-a">5</span>
+            <span class="live-stat-val home" id="live1-corners-h">4</span>
+            <span class="live-stat-label">Escanteios</span>
+            <span class="live-stat-val away" id="live1-corners-a">3</span>
+          </div>
+          <div class="live-odds-row">
+            <div class="odd-btn" data-match="Flamengo vs Palmeiras (AO VIVO)" data-sel="Flamengo Vence" data-odd="1.55" data-market="live1-result" onclick="handleOddClick(event,this)">
+              <span class="odd-label">Flamengo</span>
+              <span class="odd-value" id="live1-odd-h">1.55</span>
+            </div>
+            <div class="odd-btn" data-match="Flamengo vs Palmeiras (AO VIVO)" data-sel="Empate" data-odd="4.20" data-market="live1-result" onclick="handleOddClick(event,this)">
+              <span class="odd-label">Empate</span>
+              <span class="odd-value" id="live1-odd-d">4.20</span>
+            </div>
+            <div class="odd-btn" data-match="Flamengo vs Palmeiras (AO VIVO)" data-sel="Palmeiras Vence" data-odd="6.50" data-market="live1-result" onclick="handleOddClick(event,this)">
+              <span class="odd-label">Palmeiras</span>
+              <span class="odd-value" id="live1-odd-a">6.50</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Live 2: Corinthians vs Sao Paulo -->
+        <div class="live-card">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px">
+            <span class="comp-badge comp-copa">Copa do Brasil</span>
+            <span style="font-size:0.65rem;color:var(--text-dim)">Quartas &bull; Intervalo</span>
+          </div>
+          <div class="live-score-display">
+            <div class="live-team">
+              <div class="live-team-name">COR</div>
+              <div class="live-team-score" id="live2-home">0</div>
+            </div>
+            <div class="live-vs-block">
+              <div class="live-time">AO VIVO</div>
+              <div class="live-minute" id="live2-min">45'</div>
+            </div>
+            <div class="live-team">
+              <div class="live-team-name">SPF</div>
+              <div class="live-team-score" id="live2-away">0</div>
+            </div>
+          </div>
+          <div class="live-stats">
+            <span class="live-stat-val home" id="live2-poss-h">48%</span>
+            <span class="live-stat-label">Posse</span>
+            <span class="live-stat-val away" id="live2-poss-a">52%</span>
+            <span class="live-stat-val home" id="live2-shots-h">4</span>
+            <span class="live-stat-label">Chutes</span>
+            <span class="live-stat-val away" id="live2-shots-a">6</span>
+            <span class="live-stat-val home" id="live2-corners-h">2</span>
+            <span class="live-stat-label">Escanteios</span>
+            <span class="live-stat-val away" id="live2-corners-a">3</span>
+          </div>
+          <div class="live-odds-row">
+            <div class="odd-btn" data-match="Corinthians vs Sao Paulo (AO VIVO)" data-sel="Corinthians Vence" data-odd="2.90" data-market="live2-result" onclick="handleOddClick(event,this)">
+              <span class="odd-label">Corinthians</span>
+              <span class="odd-value" id="live2-odd-h">2.90</span>
+            </div>
+            <div class="odd-btn" data-match="Corinthians vs Sao Paulo (AO VIVO)" data-sel="Empate" data-odd="2.95" data-market="live2-result" onclick="handleOddClick(event,this)">
+              <span class="odd-label">Empate</span>
+              <span class="odd-value" id="live2-odd-d">2.95</span>
+            </div>
+            <div class="odd-btn" data-match="Corinthians vs Sao Paulo (AO VIVO)" data-sel="Sao Paulo Vence" data-odd="2.75" data-market="live2-result" onclick="handleOddClick(event,this)">
+              <span class="odd-label">Sao Paulo</span>
+              <span class="odd-value" id="live2-odd-a">2.75</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Live 3: NBA Lakers vs Celtics -->
+        <div class="live-card" style="border-color:rgba(179,136,255,0.2)">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px">
+            <span class="comp-badge comp-nba">NBA</span>
+            <span style="font-size:0.65rem;color:var(--text-dim)">Regular Season &bull; 4&ordm; Quarto</span>
+          </div>
+          <div class="live-score-display">
+            <div class="live-team">
+              <div class="live-team-name">LAL</div>
+              <div class="live-team-score" style="color:var(--purple)" id="live3-home">98</div>
+            </div>
+            <div class="live-vs-block">
+              <div class="live-time" style="color:var(--purple)">AO VIVO</div>
+              <div class="live-minute" id="live3-min">3:42</div>
+            </div>
+            <div class="live-team">
+              <div class="live-team-name">BOS</div>
+              <div class="live-team-score" style="color:var(--purple)" id="live3-away">102</div>
+            </div>
+          </div>
+          <div class="live-stats">
+            <span class="live-stat-val home" id="live3-reb-h">38</span>
+            <span class="live-stat-label">Rebotes</span>
+            <span class="live-stat-val away" id="live3-reb-a">44</span>
+            <span class="live-stat-val home" id="live3-ast-h">22</span>
+            <span class="live-stat-label">Assists</span>
+            <span class="live-stat-val away" id="live3-ast-a">26</span>
+            <span class="live-stat-val home" id="live3-fg-h">47%</span>
+            <span class="live-stat-label">FG%</span>
+            <span class="live-stat-val away" id="live3-fg-a">51%</span>
+          </div>
+          <div class="live-odds-row">
+            <div class="odd-btn" data-match="Lakers vs Celtics (AO VIVO)" data-sel="Lakers Vencedor" data-odd="3.20" data-market="live3-result" onclick="handleOddClick(event,this)">
+              <span class="odd-label">Lakers</span>
+              <span class="odd-value" id="live3-odd-h">3.20</span>
+            </div>
+            <div class="odd-btn" style="opacity:0.35;pointer-events:none">
+              <span class="odd-label">&mdash;</span>
+              <span class="odd-value">&mdash;</span>
+            </div>
+            <div class="odd-btn" data-match="Lakers vs Celtics (AO VIVO)" data-sel="Celtics Vencedor" data-odd="1.38" data-market="live3-result" onclick="handleOddClick(event,this)">
+              <span class="odd-label">Celtics</span>
+              <span class="odd-value" id="live3-odd-a">1.38</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div><!-- /content-area -->
+
+  <!-- Bet Slip Sidebar -->
+  <div class="sidebar" id="sidebar">
+    <div class="betslip" id="betslip">
+      <div class="betslip-header">
+        <div class="betslip-title">
+          &#128196; Bilhete de Aposta
+          <span class="betslip-count" id="betslip-count">0</span>
+        </div>
+        <button type="button" onclick="clearBetSlip()" style="background:none;border:1px solid rgba(255,255,255,0.08);border-radius:4px;color:var(--text-dim);font-size:0.68rem;padding:4px 8px;cursor:pointer;transition:var(--transition)">Limpar</button>
+      </div>
+      <div class="betslip-body">
+        <!-- Empty state -->
+        <div class="betslip-empty" id="betslip-empty">
+          <div class="betslip-empty-icon">&#128196;</div>
+          <p>Selecione apostas para<br>adicionar ao bilhete</p>
+        </div>
+
+        <!-- Bet items container — populated via DOM API, not innerHTML -->
+        <div id="betslip-items"></div>
+
+        <!-- Accumulator Toggle -->
+        <div class="acca-toggle" id="acca-toggle" style="display:none" onclick="toggleAcca()" role="button" tabindex="0">
+          <div class="toggle-switch" id="acca-switch">
+            <div class="toggle-knob"></div>
+          </div>
+          <span class="acca-label">Acumulador</span>
+          <span id="acca-multiplier" style="font-family:var(--font-mono);font-size:0.75rem;color:var(--gold);margin-left:auto"></span>
+        </div>
+
+        <!-- Stake -->
+        <div class="betslip-stake" id="betslip-stake" style="display:none">
+          <div class="stake-label">Valor da Aposta (BRL)</div>
+          <div class="stake-input-wrap">
+            <span class="stake-currency">R$</span>
+            <input type="number" class="stake-input" id="stake-input" value="10.00" min="1" max="10000" step="0.50" oninput="recalculate()">
+          </div>
+          <div class="stake-presets">
+            <button type="button" class="stake-preset" onclick="setStake(10)">10</button>
+            <button type="button" class="stake-preset" onclick="setStake(25)">25</button>
+            <button type="button" class="stake-preset" onclick="setStake(50)">50</button>
+            <button type="button" class="stake-preset" onclick="setStake(100)">100</button>
+            <button type="button" class="stake-preset" onclick="setStake(200)">200</button>
+          </div>
+        </div>
+
+        <!-- Summary -->
+        <div class="betslip-summary" id="betslip-summary" style="display:none">
+          <div class="summary-row">
+            <span class="summary-label">Apostas</span>
+            <span class="summary-value" id="summary-bets">0</span>
+          </div>
+          <div class="summary-row">
+            <span class="summary-label">Odd Total</span>
+            <span class="summary-value" id="summary-odd">1.00</span>
+          </div>
+          <div class="summary-row">
+            <span class="summary-label">Valor</span>
+            <span class="summary-value" id="summary-stake">R$ 0.00</span>
+          </div>
+          <div class="summary-row">
+            <span class="summary-label" style="font-weight:700;color:var(--text-bright)">Retorno Potencial</span>
+            <span class="summary-value potential" id="summary-return">R$ 0.00</span>
+          </div>
+        </div>
+
+        <!-- Place Bet -->
+        <button type="button" class="place-bet-btn" id="place-bet-btn" style="display:none" onclick="placeBet()">
+          Confirmar Aposta
+        </button>
+
+        <!-- CPF Notice -->
+        <div id="cpf-notice" style="display:none;margin-top:12px;background:rgba(255,171,64,0.06);border:1px solid rgba(255,171,64,0.15);border-radius:var(--radius-sm);padding:10px 12px;font-size:0.7rem;color:var(--orange)">
+          <strong>CPF Verificado</strong> &mdash; Apostas vinculadas ao CPF do titular. Lei 14.790/2023.
+        </div>
+      </div>
+
+      <!-- Compliance strip -->
+      <div style="border-top:1px solid rgba(255,255,255,0.05);padding:12px 16px">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+          <span style="background:rgba(50,188,173,0.08);border:1px solid rgba(50,188,173,0.2);border-radius:4px;padding:2px 8px;font-size:10px;font-weight:700;color:#32bcad">SIGAP</span>
+          <span style="background:#c0392b;color:#fff;font-size:10px;font-weight:900;padding:2px 7px;border-radius:4px">18+</span>
+          <span style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:4px;padding:2px 8px;font-size:10px;color:#6a6a7a;font-weight:600">SPA/MF</span>
+        </div>
+        <p style="font-size:10px;color:#3a3a4a;line-height:1.5">
+          Apostas sujeitas a verificacao CPF. Jogue com responsabilidade.
+          <a href="https://new.acmetocasino.com/responsible-gaming.html" style="color:#4a6a9a">Jogo Responsavel</a>
+        </p>
+      </div>
+    </div>
+  </div><!-- /sidebar -->
+
+</div><!-- /main-wrapper -->
+
+<!-- Compliance Footer -->
+<footer class="compliance">
+  <div class="compliance-inner">
+    <div class="compliance-badges">
+      <span class="comp-badge-item" style="color:#32bcad;border-color:rgba(50,188,173,0.2);background:rgba(50,188,173,0.06)">SIGAP Licenciado &bull; SPA-MF N&ordm; 2024/BR-0042</span>
+      <span style="background:#c0392b;color:#fff;font-weight:900;padding:4px 10px;border-radius:5px;font-size:11px">18+</span>
+      <span class="comp-badge-item">Lei 14.790/2023 &bull; Regulacao Brasileira</span>
+      <span class="comp-badge-item" style="color:#32bcad;border-color:rgba(50,188,173,0.2)">PIX &bull; Deposito Instantaneo</span>
+    </div>
+    <div class="rg-links">
+      <a href="https://new.acmetocasino.com/responsible-gaming.html" class="rg-link">Jogo Responsavel</a>
+      <a href="#" class="rg-link">Auto-exclusao</a>
+      <a href="#" class="rg-link">Verificacao CPF</a>
+      <a href="#" class="rg-link">Limites de Deposito</a>
+      <a href="#" class="rg-link">Central de Ajuda</a>
+    </div>
+    <div style="display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+      <span style="background:rgba(0,208,132,0.07);border:1px solid rgba(0,208,132,0.18);border-radius:5px;padding:3px 10px;color:#00d084;font-size:11px;font-weight:700">CVV: 188</span>
+      <span style="background:rgba(0,208,132,0.07);border:1px solid rgba(0,208,132,0.18);border-radius:5px;padding:3px 10px;color:#00d084;font-size:11px;font-weight:700">GAJAP: 0800 771 2484</span>
+    </div>
+    <p style="font-size:10px;color:#555;line-height:1.65;max-width:700px;margin:0 auto 8px">
+      As apostas esportivas envolvem risco financeiro. Destinadas exclusivamente a maiores de 18 anos domiciliados no Brasil com CPF regularizado. Plataforma em conformidade com a Lei 14.790/2023 e Secretaria de Premios e Apostas (SPA/MF). O excesso de apostas pode causar dependencia.
+    </p>
+    <p style="font-size:9px;color:#2a2a3a;font-style:italic">SIMULACAO &mdash; Nenhuma aposta real e processada. Dados e odds sao meramente ilustrativos para fins educacionais e de desenvolvimento de plataforma.</p>
+  </div>
+</footer>
+
+<!-- Mobile FAB -->
+<button type="button" class="betslip-fab" id="betslip-fab" onclick="toggleSidebar()">
+  &#128196; Bilhete <span id="fab-count" style="background:rgba(0,0,0,0.3);border-radius:10px;padding:1px 6px;margin-left:4px">0</span>
+</button>
+
+<!-- Toast notification -->
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<!-- GAL Adapter (demo mode) -->
+<script src="/games/gal-adapter.js" data-mode="demo-server"></script>
+
+<script>
+(function () {
+  'use strict';
+
+  // ──────────────────────────────────────────────
+  // Team Crests (Wikimedia Commons, public domain / CC-licensed)
+  // ──────────────────────────────────────────────
+  var TEAM_CRESTS = {
+    'Flamengo':      'https://upload.wikimedia.org/wikipedia/commons/9/91/CR_Flamengo.svg',
+    'Palmeiras':     'https://upload.wikimedia.org/wikipedia/commons/1/10/Palmeiras_logo.svg',
+    'Corinthians':   'https://upload.wikimedia.org/wikipedia/commons/e/e7/SC_Corinthians.svg',
+    'Sao Paulo':     'https://upload.wikimedia.org/wikipedia/commons/6/6f/Brasao_do_Sao_Paulo_Futebol_Clube.svg',
+    'Botafogo':      'https://upload.wikimedia.org/wikipedia/commons/5/52/Botafogo_de_Futebol_e_Regatas_logo.svg',
+    'Fluminense':    'https://upload.wikimedia.org/wikipedia/commons/1/12/Fluminense_Football_Club.svg',
+    'Gremio':        'https://upload.wikimedia.org/wikipedia/commons/0/08/Gremio_logo.svg',
+    'Atletico-MG':   'https://upload.wikimedia.org/wikipedia/commons/2/27/Clube_Atl%C3%A9tico_Mineiro_logo.svg',
+    'Internacional': 'https://upload.wikimedia.org/wikipedia/commons/c/c5/Sport_Club_Internacional_logo.svg',
+    'Santos':        'https://upload.wikimedia.org/wikipedia/commons/3/35/Santos_logo.svg',
+    'Vasco':         'https://upload.wikimedia.org/wikipedia/commons/d/d2/CR_Vasco_da_Gama.svg',
+    'Cruzeiro':      'https://upload.wikimedia.org/wikipedia/commons/9/90/Cruzeiro_Esporte_Clube_%28logo%29.svg',
+    'Fortaleza':     'https://upload.wikimedia.org/wikipedia/commons/3/3d/Fortaleza_Esporte_Clube_logo.svg',
+    'Bahia':         'https://upload.wikimedia.org/wikipedia/commons/2/2c/Esporte_Clube_Bahia_logo.svg',
+    'Athletico-PR':  'https://upload.wikimedia.org/wikipedia/commons/4/43/Athletico_Paranaense_%28Logo_2019%29.svg',
+    'Bragantino':    'https://upload.wikimedia.org/wikipedia/fr/b/b3/Red_Bull_Bragantino_%28logo%29.svg',
+    'Cuiaba':        'https://upload.wikimedia.org/wikipedia/commons/8/82/Cuiab%C3%A1_EC.svg',
+    'Goias':         'https://upload.wikimedia.org/wikipedia/commons/7/7f/Goias_Esporte_Clube_logo.svg',
+    'America-MG':    'https://upload.wikimedia.org/wikipedia/commons/a/ac/Escudo_do_America_Futebol_Clube.svg',
+    'Coritiba':      'https://upload.wikimedia.org/wikipedia/commons/c/ca/Coritiba_FC.svg',
+    'Boca Juniors':  'https://upload.wikimedia.org/wikipedia/commons/8/83/Escudo_del_Club_Atl%C3%A9tico_Boca_Juniors.svg',
+    'River Plate':   'https://upload.wikimedia.org/wikipedia/commons/a/ac/Escudo_del_C_A_River_Plate.svg',
+    'Real Madrid':   'https://upload.wikimedia.org/wikipedia/en/5/56/Real_Madrid_CF.svg',
+    'Barcelona':     'https://upload.wikimedia.org/wikipedia/en/4/47/FC_Barcelona_%28crest%29.svg',
+  };
+  function getBadgeImg(team) {
+    var url = TEAM_CRESTS[team];
+    if (!url) return null;
+    var img = document.createElement('img');
+    img.src = url;
+    img.alt = team;
+    img.style.cssText = 'width:28px;height:28px;border-radius:4px;object-fit:contain;vertical-align:middle;margin-right:4px';
+    return img;
+  }
+  // Inject badges into static HTML team-name elements
+  document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('.event-teams .team-name').forEach(function (el) {
+      var name = el.textContent.trim();
+      var img = getBadgeImg(name);
+      if (img) { el.textContent = ''; el.insertBefore(img, null); el.appendChild(document.createTextNode(name)); }
+    });
+    document.querySelectorAll('.match-teams-sm').forEach(function (el) {
+      var text = el.textContent;
+      var parts = text.split(' vs ');
+      if (parts.length === 2) {
+        var t1 = parts[0].trim(), t2 = parts[1].trim();
+        el.textContent = '';
+        var img1 = getBadgeImg(t1); if (img1) el.appendChild(img1);
+        el.appendChild(document.createTextNode(t1 + ' vs '));
+        var img2 = getBadgeImg(t2); if (img2) el.appendChild(img2);
+        el.appendChild(document.createTextNode(t2));
+      }
+    });
+  });
+
+  // ──────────────────────────────────────────────
+  // Bet Slip State
+  // ──────────────────────────────────────────────
+  var betSlip = {};   // key -> { match, sel, odd, key }
+  var accaMode = false;
+
+  // ──────────────────────────────────────────────
+  // Odd selection — card buttons
+  // ──────────────────────────────────────────────
+  window.handleOddClick = function (evt, btn) {
+    evt.stopPropagation();
+    var market = btn.getAttribute('data-market');
+    var match  = btn.getAttribute('data-match');
+    var sel    = btn.getAttribute('data-sel');
+    var odd    = parseFloat(btn.getAttribute('data-odd'));
+    var key    = market + '__' + sel.replace(/\s+/g, '_');
+
+    // Deselect siblings in same market
+    document.querySelectorAll('[data-market="' + market + '"]').forEach(function (el) {
+      el.classList.remove('selected');
+    });
+
+    if (betSlip[key]) {
+      delete betSlip[key];
+    } else {
+      betSlip[key] = { match: match, sel: sel, odd: odd, key: key };
+      btn.classList.add('selected');
+    }
+    renderBetSlip();
+  };
+
+  // ──────────────────────────────────────────────
+  // Odd selection — table cells
+  // ──────────────────────────────────────────────
+  window.handleTableOdd = function (evt, td) {
+    evt.stopPropagation();
+    var market = td.getAttribute('data-market');
+    var match  = td.getAttribute('data-match');
+    var sel    = td.getAttribute('data-sel');
+    var odd    = parseFloat(td.getAttribute('data-odd'));
+    var key    = market + '__' + sel.replace(/\s+/g, '_');
+    var wasSelected = td.classList.contains('selected');
+
+    // Deselect same-market cells
+    document.querySelectorAll('[data-market="' + market + '"]').forEach(function (el) {
+      el.classList.remove('selected');
+      var k = el.getAttribute('data-market') + '__' + (el.getAttribute('data-sel') || '').replace(/\s+/g, '_');
+      if (betSlip[k] && k !== key) { delete betSlip[k]; }
+    });
+
+    if (wasSelected) {
+      delete betSlip[key];
+    } else {
+      betSlip[key] = { match: match, sel: sel, odd: odd, key: key };
+      td.classList.add('selected');
+    }
+    renderBetSlip();
+  };
+
+  // ──────────────────────────────────────────────
+  // Render Bet Slip — DOM API only (no innerHTML)
+  // ──────────────────────────────────────────────
+  function renderBetSlip() {
+    var items = Object.values(betSlip);
+    var count = items.length;
+
+    document.getElementById('betslip-count').textContent = count;
+    document.getElementById('fab-count').textContent = count;
+
+    var show = count > 0;
+    document.getElementById('betslip-empty').style.display  = show ? 'none'  : 'block';
+    document.getElementById('betslip-stake').style.display  = show ? 'block' : 'none';
+    document.getElementById('betslip-summary').style.display = show ? 'block' : 'none';
+    document.getElementById('place-bet-btn').style.display  = show ? 'block' : 'none';
+    document.getElementById('cpf-notice').style.display     = show ? 'block' : 'none';
+    document.getElementById('acca-toggle').style.display    = (show && count > 1) ? 'flex' : 'none';
+
+    var container = document.getElementById('betslip-items');
+    // Clear existing items safely
+    while (container.firstChild) {
+      container.removeChild(container.firstChild);
+    }
+
+    items.forEach(function (b) {
+      var wrapper = document.createElement('div');
+      wrapper.className = 'bet-item';
+
+      var removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.className = 'bet-item-remove';
+      removeBtn.setAttribute('aria-label', 'Remover aposta');
+      removeBtn.textContent = '\u00D7';
+      removeBtn.addEventListener('click', function () { removeBet(b.key); });
+
+      var matchDiv = document.createElement('div');
+      matchDiv.className = 'bet-item-match';
+      matchDiv.textContent = b.match;
+
+      var selDiv = document.createElement('div');
+      selDiv.className = 'bet-item-selection';
+      selDiv.textContent = b.sel;
+
+      var oddDiv = document.createElement('div');
+      oddDiv.className = 'bet-item-odd';
+      oddDiv.textContent = b.odd.toFixed(2);
+
+      wrapper.appendChild(removeBtn);
+      wrapper.appendChild(matchDiv);
+      wrapper.appendChild(selDiv);
+      wrapper.appendChild(oddDiv);
+      container.appendChild(wrapper);
+    });
+
+    recalculate();
+  }
+
+  // ──────────────────────────────────────────────
+  // Remove a bet
+  // ──────────────────────────────────────────────
+  window.removeBet = function (key) {
+    if (!betSlip[key]) { return; }
+    var market = key.split('__')[0];
+    delete betSlip[key];
+    document.querySelectorAll('[data-market="' + market + '"]').forEach(function (el) {
+      el.classList.remove('selected');
+    });
+    renderBetSlip();
+  };
+
+  // ──────────────────────────────────────────────
+  // Clear all bets
+  // ──────────────────────────────────────────────
+  window.clearBetSlip = function () {
+    Object.keys(betSlip).forEach(function (k) { delete betSlip[k]; });
+    document.querySelectorAll('.odd-btn.selected, .odd-cell.selected').forEach(function (el) {
+      el.classList.remove('selected');
+    });
+    renderBetSlip();
+  };
+
+  // ──────────────────────────────────────────────
+  // Recalculate summary
+  // ──────────────────────────────────────────────
+  window.recalculate = function () {
+    var items = Object.values(betSlip);
+    if (!items.length) { return; }
+
+    var stake = parseFloat(document.getElementById('stake-input').value) || 0;
+    var totalOdd = 1;
+
+    if (accaMode && items.length > 1) {
+      items.forEach(function (b) { totalOdd *= b.odd; });
+    } else {
+      totalOdd = items.length === 1
+        ? items[0].odd
+        : items.reduce(function (acc, b) { return acc + b.odd; }, 0) / items.length;
+    }
+
+    var potReturn = stake * totalOdd;
+    var label = items.length + (accaMode && items.length > 1 ? ' (ACCA)' : ' (Singles)');
+
+    document.getElementById('summary-bets').textContent   = label;
+    document.getElementById('summary-odd').textContent    = totalOdd.toFixed(2);
+    document.getElementById('summary-stake').textContent  = 'R$ ' + stake.toFixed(2);
+    document.getElementById('summary-return').textContent = 'R$ ' + potReturn.toFixed(2);
+    document.getElementById('acca-multiplier').textContent = (accaMode && items.length > 1) ? 'x' + totalOdd.toFixed(2) : '';
+  };
+
+  window.setStake = function (val) {
+    document.getElementById('stake-input').value = val.toFixed(2);
+    recalculate();
+  };
+
+  window.toggleAcca = function () {
+    accaMode = !accaMode;
+    document.getElementById('acca-switch').classList.toggle('on', accaMode);
+    recalculate();
+  };
+
+  // ──────────────────────────────────────────────
+  // Place Bet (GAL API call in demo mode)
+  // ──────────────────────────────────────────────
+  window.placeBet = function () {
+    var items = Object.values(betSlip);
+    if (!items.length) { return; }
+    var stake = parseFloat(document.getElementById('stake-input').value) || 0;
+    if (stake <= 0) { showToast('Por favor insira um valor valido.'); return; }
+
+    try {
+      if (window.GAL && typeof window.GAL.emit === 'function') {
+        window.GAL.emit('sports_bet_placed', { bets: items, stake: stake, currency: 'BRL', mode: 'demo' });
+      }
+    } catch (e) { /* demo mode — ignore */ }
+
+    showToast('Aposta de R$ ' + stake.toFixed(2) + ' registrada! (Simulacao)');
+    clearBetSlip();
+  };
+
+  // ──────────────────────────────────────────────
+  // Toast
+  // ──────────────────────────────────────────────
+  window.showToast = function (msg) {
+    var t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(function () { t.classList.remove('show'); }, 3500);
+  };
+
+  // ──────────────────────────────────────────────
+  // Mobile sidebar toggle
+  // ──────────────────────────────────────────────
+  window.toggleSidebar = function () {
+    document.getElementById('sidebar').classList.toggle('open');
+  };
+
+  // ──────────────────────────────────────────────
+  // Live Odds Update (every 5 s)
+  // ──────────────────────────────────────────────
+  var live1Min = 78;
+  var live2Min = 45;
+  var lo1h = 1.55, lo1d = 4.20, lo1a = 6.50;
+  var lo2h = 2.90, lo2d = 2.95, lo2a = 2.75;
+  var lo3h = 3.20, lo3a = 1.38;
+
+  function jitter(v, pctMax) {
+    var delta = (Math.random() * 2 - 1) * pctMax / 100;
+    return Math.max(1.01, v * (1 + delta));
+  }
+
+  function fmt(v) { return v.toFixed(2); }
+
+  function setLiveOdds() {
+    // Advance clocks
+    live1Min = Math.min(live1Min + 1, 90);
+    live2Min = Math.min(live2Min + 1, 50);
+
+    var m1El = document.getElementById('live1-min');
+    var m2El = document.getElementById('live2-min');
+    if (m1El) { m1El.textContent = live1Min + "'"; }
+    if (m2El) { m2El.textContent = live2Min + "'"; }
+
+    // Jitter
+    lo1h = jitter(lo1h, 1.5); lo1d = jitter(lo1d, 1.0); lo1a = jitter(lo1a, 2.0);
+    lo2h = jitter(lo2h, 1.2); lo2d = jitter(lo2d, 1.2); lo2a = jitter(lo2a, 1.2);
+    lo3h = jitter(lo3h, 2.0); lo3a = jitter(lo3a, 1.5);
+
+    var ids = ['live1-odd-h','live1-odd-d','live1-odd-a','live2-odd-h','live2-odd-d','live2-odd-a','live3-odd-h','live3-odd-a'];
+    var vals = [lo1h, lo1d, lo1a, lo2h, lo2d, lo2a, lo3h, lo3a];
+    ids.forEach(function (id, i) {
+      var el = document.getElementById(id);
+      if (el) { el.textContent = fmt(vals[i]); }
+    });
+
+    // Update score bar times
+    var sc1tEl = document.getElementById('sc1t');
+    var sc2tEl = document.getElementById('sc2t');
+    if (sc1tEl) { sc1tEl.textContent = live1Min + "'"; }
+    if (sc2tEl) { sc2tEl.textContent = live2Min + "'"; }
+
+    if (Object.keys(betSlip).length) { recalculate(); }
+  }
+
+  setInterval(setLiveOdds, 5000);
+
+  // ──────────────────────────────────────────────
+  // NBA live score ticks (every 30 s)
+  // ──────────────────────────────────────────────
+  var nbaHome = 98, nbaAway = 102;
+  setInterval(function () {
+    if (Math.random() > 0.5) { nbaHome += Math.floor(Math.random() * 3); }
+    else { nbaAway += Math.floor(Math.random() * 3); }
+    var sc4El    = document.getElementById('sc4');
+    var lh3El    = document.getElementById('live3-home');
+    var la3El    = document.getElementById('live3-away');
+    if (sc4El)  { sc4El.textContent  = nbaHome + ' x ' + nbaAway; }
+    if (lh3El)  { lh3El.textContent  = nbaHome; }
+    if (la3El)  { la3El.textContent  = nbaAway; }
+  }, 30000);
+
+  // ──────────────────────────────────────────────
+  // WebSocket indicator (simulated connect)
+  // ──────────────────────────────────────────────
+  setTimeout(function () {
+    var dot = document.getElementById('ws-dot');
+    var lbl = document.getElementById('ws-label');
+    if (dot) {
+      dot.style.background  = 'var(--green)';
+      dot.style.boxShadow   = '0 0 8px rgba(0,230,118,0.5)';
+      dot.style.animation   = 'pulse 2s infinite';
+    }
+    if (lbl) { lbl.textContent = 'Conectado'; }
+  }, 1200);
+
+}());
+</script>
+</body>
+</html>

@@ -1,0 +1,136 @@
+# Companion code for "The Backend of Luck" - Chapter 28d, Elastic Compute and Cluster Autoscaling on EKS.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# PodDisruptionBudgets — the workload half of the disruption contract.
+# ---------------------------------------------------------------------------
+# Karpenter's NodePool `budgets` bound how many NODES may be disrupted at once.
+# A PDB bounds how many REPLICAS of a given workload may go at once. You need
+# both, and they protect against different failures:
+#
+#   budget only   Karpenter takes one node at a time, but if both wallet
+#                 replicas happen to sit on that node, the money path is down
+#                 for the duration of the reschedule.
+#   PDB only      every eviction respects the replica floor, but Karpenter can
+#                 still drain ten nodes simultaneously and stall on all of them.
+#
+# Mechanically, a PDB makes Karpenter's voluntary disruption (consolidation,
+# drift, expiration) block on the API server's eviction call rather than
+# proceeding. Two consequences worth stating plainly:
+#
+#   - A PDB does NOT protect against involuntary disruption: spot interruption,
+#     node failure, or node repair. Nor does `karpenter.sh/do-not-disrupt`.
+#     Hard guarantees come from on-demand/reserved capacity, which is why the
+#     money path runs on the stateful-amd64 pool.
+#   - A PDB that can never be satisfied blocks drains forever. `minAvailable`
+#     equal to the replica count means no node holding that pod can ever be
+#     consolidated, drifted or upgraded, and the symptom is a node stuck
+#     draining for hours. Always leave one replica of headroom.
+#
+# Applies to: kube-system add-ons, plus the payments/kyc/casino workloads.
+#   kubectl apply -f pdb.yaml
+#   kubectl get pdb -A            # ALLOWED DISRUPTIONS must be >= 1
+---
+# CoreDNS. Losing all replicas at once does not merely slow things down: with
+# the default-deny egress policies in k8s/security/, DNS failure looks exactly
+# like a network-policy misconfiguration and sends the on-call down the wrong
+# path during a peak event.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: coredns
+  namespace: kube-system
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      k8s-app: kube-dns
+---
+# metrics-server. KEDA and the HPA read from it, so while it is down the
+# autoscalers are flying blind: replica counts freeze mid-spike.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: metrics-server
+  namespace: kube-system
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      k8s-app: metrics-server
+---
+# Wallet: the money path. Debits, credits and balance reads. Two replicas must
+# stay up through any voluntary disruption, which requires >= 3 replicas
+# deployed so the budget is satisfiable.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: wallet
+  namespace: payments
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: wallet
+---
+# PIX gateway: the acquirer egress path. A gap here is a failed deposit for a
+# player who has already authorised the transfer.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: pix-gateway
+  namespace: payments
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: pix-gateway
+---
+# KYC verification. Onboarding stalls without it, and a stalled verification is
+# a player who cannot deposit and does not come back.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: kyc-service
+  namespace: kyc
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: kyc-service
+---
+# The certified game engine. This is the one where an eviction mid-spin becomes
+# a player dispute and, potentially, a regulatory report. The PDB is the third
+# layer, after on-demand capacity (stateful-amd64) and the pool's own
+# `nodes: "1"` budget. Deploy at least 3 replicas.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: game-engine
+  namespace: casino
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: game-engine
+      workload-class: stateful
+---
+# Stateless API tier. Percentage form because this scales with traffic: at 40
+# replicas during a kickoff spike, `maxUnavailable: 1` would serialise a drain
+# into something slower than the event itself.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: casino-api
+  namespace: casino
+spec:
+  maxUnavailable: 25%
+  selector:
+    matchLabels:
+      app: casino-api

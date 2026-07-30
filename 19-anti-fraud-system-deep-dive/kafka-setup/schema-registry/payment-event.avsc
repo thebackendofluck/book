@@ -1,0 +1,304 @@
+{
+  "type": "record",
+  "name": "PaymentEvent",
+  "namespace": "com.acme.casino.fraud.events",
+  "doc": "Schema for payment and financial transaction events. Captures deposits, withdrawals, chargebacks, and payment method changes. Payment fraud is the highest-impact fraud vector in iGaming, representing 60-70% of direct financial losses.",
+  "fields": [
+    {
+      "name": "event_id",
+      "type": "string",
+      "doc": "Globally unique event identifier (UUIDv7)"
+    },
+    {
+      "name": "event_type",
+      "type": {
+        "type": "enum",
+        "name": "PaymentEventType",
+        "symbols": [
+          "DEPOSIT_INITIATED",
+          "DEPOSIT_COMPLETED",
+          "DEPOSIT_FAILED",
+          "DEPOSIT_REVERSED",
+          "WITHDRAWAL_REQUESTED",
+          "WITHDRAWAL_APPROVED",
+          "WITHDRAWAL_COMPLETED",
+          "WITHDRAWAL_CANCELLED",
+          "WITHDRAWAL_REVERSED",
+          "CHARGEBACK_RECEIVED",
+          "CHARGEBACK_DISPUTED",
+          "CHARGEBACK_RESOLVED",
+          "REFUND_ISSUED",
+          "PAYMENT_METHOD_ADDED",
+          "PAYMENT_METHOD_REMOVED",
+          "PAYMENT_METHOD_VERIFIED",
+          "CRYPTO_DEPOSIT",
+          "CRYPTO_WITHDRAWAL",
+          "P2P_TRANSFER"
+        ]
+      },
+      "doc": "Type of payment event. Chargeback patterns and rapid deposit-withdraw cycles are key fraud indicators."
+    },
+    {
+      "name": "timestamp",
+      "type": "long",
+      "logicalType": "timestamp-millis",
+      "doc": "Event timestamp in UTC milliseconds"
+    },
+    {
+      "name": "player_id",
+      "type": "string",
+      "doc": "Player who initiated the transaction"
+    },
+    {
+      "name": "transaction_id",
+      "type": "string",
+      "doc": "Unique transaction identifier. Used as Kafka key for exactly-once processing."
+    },
+    {
+      "name": "transaction_details",
+      "type": {
+        "type": "record",
+        "name": "TransactionDetails",
+        "fields": [
+          {
+            "name": "amount",
+            "type": "double",
+            "doc": "Transaction amount in original currency"
+          },
+          {
+            "name": "currency",
+            "type": "string",
+            "doc": "ISO 4217 currency code"
+          },
+          {
+            "name": "amount_eur",
+            "type": "double",
+            "doc": "Amount normalized to EUR for cross-currency analysis"
+          },
+          {
+            "name": "payment_method",
+            "type": {
+              "type": "enum",
+              "name": "PaymentMethod",
+              "symbols": [
+                "CREDIT_CARD",
+                "DEBIT_CARD",
+                "BANK_TRANSFER",
+                "E_WALLET",
+                "PREPAID_CARD",
+                "CRYPTO_BTC",
+                "CRYPTO_ETH",
+                "CRYPTO_USDT",
+                "PIX",
+                "APPLE_PAY",
+                "GOOGLE_PAY",
+                "MOBILE_MONEY",
+                "VOUCHER",
+                "OTHER"
+              ]
+            },
+            "doc": "Payment method used. Prepaid cards and crypto are higher risk for money laundering."
+          },
+          {
+            "name": "payment_provider",
+            "type": "string",
+            "doc": "PSP or payment provider name (e.g., 'Stripe', 'Adyen', 'Nuvei')"
+          },
+          {
+            "name": "card_bin",
+            "type": ["null", "string"],
+            "default": null,
+            "doc": "First 6-8 digits of card number. BIN analysis reveals card origin country and type."
+          },
+          {
+            "name": "card_last_four",
+            "type": ["null", "string"],
+            "default": null,
+            "doc": "Last 4 digits for cardholder identification"
+          },
+          {
+            "name": "card_issuer_country",
+            "type": ["null", "string"],
+            "default": null,
+            "doc": "ISO 3166-1 alpha-2 country of card issuer. Mismatch with player country is a red flag."
+          },
+          {
+            "name": "is_3ds_authenticated",
+            "type": ["null", "boolean"],
+            "default": null,
+            "doc": "Whether 3D Secure authentication was completed. Non-3DS transactions have higher chargeback risk."
+          },
+          {
+            "name": "crypto_wallet_address",
+            "type": ["null", "string"],
+            "default": null,
+            "doc": "Cryptocurrency wallet address for crypto transactions. Cross-reference with chain analysis."
+          },
+          {
+            "name": "crypto_tx_hash",
+            "type": ["null", "string"],
+            "default": null,
+            "doc": "Blockchain transaction hash for on-chain verification"
+          }
+        ]
+      }
+    },
+    {
+      "name": "risk_signals",
+      "type": {
+        "type": "record",
+        "name": "PaymentRiskSignals",
+        "doc": "Pre-computed risk signals from the payment processor",
+        "fields": [
+          {
+            "name": "psp_risk_score",
+            "type": ["null", "float"],
+            "default": null,
+            "doc": "Risk score from payment service provider (0.0-1.0)"
+          },
+          {
+            "name": "velocity_24h_count",
+            "type": ["null", "int"],
+            "default": null,
+            "doc": "Number of transactions in last 24h. High velocity = potential structuring."
+          },
+          {
+            "name": "velocity_24h_amount_eur",
+            "type": ["null", "double"],
+            "default": null,
+            "doc": "Total transaction volume in last 24h (EUR). Structuring stays below reporting thresholds."
+          },
+          {
+            "name": "is_first_deposit",
+            "type": "boolean",
+            "default": false,
+            "doc": "First deposit for this player. Combined with immediate large bet = high risk."
+          },
+          {
+            "name": "deposit_to_play_ratio",
+            "type": ["null", "float"],
+            "default": null,
+            "doc": "Ratio of deposits to actual gameplay. Near 1.0 with quick withdrawal = laundering indicator."
+          },
+          {
+            "name": "unique_payment_methods_30d",
+            "type": ["null", "int"],
+            "default": null,
+            "doc": "Distinct payment methods used in 30 days. Many methods = potential stolen card cycling."
+          },
+          {
+            "name": "chargeback_history_count",
+            "type": ["null", "int"],
+            "default": null,
+            "doc": "Historical chargeback count for this player. Repeat chargebacks = friendly fraud."
+          },
+          {
+            "name": "failed_deposit_count_1h",
+            "type": ["null", "int"],
+            "default": null,
+            "doc": "Failed deposits in last hour. Multiple failures = card testing behavior."
+          }
+        ]
+      }
+    },
+    {
+      "name": "geo_context",
+      "type": {
+        "type": "record",
+        "name": "PaymentGeoContext",
+        "fields": [
+          {
+            "name": "ip_address",
+            "type": "string",
+            "doc": "IP address at time of transaction"
+          },
+          {
+            "name": "ip_country",
+            "type": ["null", "string"],
+            "default": null,
+            "doc": "GeoIP country. Mismatch with card issuer country flags cross-border fraud."
+          },
+          {
+            "name": "ip_is_vpn",
+            "type": ["null", "boolean"],
+            "default": null,
+            "doc": "VPN/proxy detection. VPN usage during payment is a strong fraud signal."
+          },
+          {
+            "name": "ip_is_tor",
+            "type": ["null", "boolean"],
+            "default": null,
+            "doc": "Tor exit node detection"
+          },
+          {
+            "name": "ip_is_datacenter",
+            "type": ["null", "boolean"],
+            "default": null,
+            "doc": "Datacenter IP detection. Real players rarely use datacenter IPs."
+          },
+          {
+            "name": "billing_country",
+            "type": ["null", "string"],
+            "default": null,
+            "doc": "Billing address country from card details"
+          }
+        ]
+      }
+    },
+    {
+      "name": "kyc_status",
+      "type": {
+        "type": "record",
+        "name": "KYCStatus",
+        "fields": [
+          {
+            "name": "identity_verified",
+            "type": "boolean",
+            "default": false,
+            "doc": "Whether player has completed identity verification"
+          },
+          {
+            "name": "verification_level",
+            "type": {
+              "type": "enum",
+              "name": "VerificationLevel",
+              "symbols": ["NONE", "BASIC", "ENHANCED", "FULL"]
+            },
+            "default": "NONE",
+            "doc": "Current KYC verification level. Large transactions without full KYC = compliance risk."
+          },
+          {
+            "name": "pep_status",
+            "type": "boolean",
+            "default": false,
+            "doc": "Politically Exposed Person flag. PEPs require enhanced due diligence."
+          },
+          {
+            "name": "sanctions_clear",
+            "type": "boolean",
+            "default": true,
+            "doc": "Sanctions screening result"
+          }
+        ]
+      }
+    },
+    {
+      "name": "related_transaction_ids",
+      "type": {
+        "type": "array",
+        "items": "string"
+      },
+      "default": [],
+      "doc": "Related transaction IDs (e.g., original deposit for a chargeback, linked transfers)"
+    },
+    {
+      "name": "metadata",
+      "type": {
+        "type": "map",
+        "values": "string"
+      },
+      "default": {},
+      "doc": "Extensible metadata for provider-specific fields"
+    }
+  ]
+}

@@ -1,0 +1,170 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 27d, PostgreSQL Aegis.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# Alertmanager alert rules for postgres-aegis cluster.
+# Deploy to Prometheus at /etc/prometheus/rules/aegis_alerts.yml
+# (Prometheus must have --web.enable-lifecycle for hot-reload via POST /-/reload)
+#
+# Route all postgres-aegis alerts to the ops-dashboard webhook and to
+# PagerDuty oncall. See alertmanager.yml for receiver definitions.
+
+groups:
+  - name: postgres_aegis_availability
+    interval: 30s
+    rules:
+      - alert: AegisWriterDown
+        expr: |
+          absent(pg_up{job=~"postgres-aegis.*", role="primary"}) or
+          pg_up{job=~"postgres-aegis.*", role="primary"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          cluster: postgres-aegis
+          layer: postgresql
+        annotations:
+          summary: "postgres-aegis writer is unreachable"
+          description: "No healthy primary detected for {{ $labels.job }}. HAProxy will have no write backend."
+          runbook: "https://new.acmetocasino.com/dashboard.html → pgbackrest stanza-check + patronictl list"
+
+      - alert: AegisReplicaDown
+        expr: |
+          count(pg_up{job=~"postgres-aegis.*", role="replica"} == 1) == 0
+          or absent(pg_up{job=~"postgres-aegis.*", role="replica"} == 1)
+        for: 2m
+        labels:
+          severity: warning
+          cluster: postgres-aegis
+          layer: postgresql
+        annotations:
+          summary: "All replicas down for {{ $labels.job }}"
+          description: "No healthy replica found. Read traffic will fall back to writer."
+
+      - alert: AegisEtcdQuorumLost
+        expr: |
+          count(etcd_server_has_leader == 1) < (count(up{job=~"etcd.*"}) / 2 + 1)
+        for: 30s
+        labels:
+          severity: critical
+          cluster: postgres-aegis
+          layer: etcd
+        annotations:
+          summary: "etcd quorum at risk (fewer than 2 leaders visible)"
+          description: "Patroni DCS will lose write ability. Cluster may not be able to elect a new PG leader."
+
+  - name: postgres_aegis_replication
+    interval: 60s
+    rules:
+      - alert: AegisReplicaLagHigh
+        expr: |
+          pg_replication_lag{job=~"postgres-aegis.*"} > 30
+        for: 5m
+        labels:
+          severity: warning
+          cluster: postgres-aegis
+          layer: replication
+        annotations:
+          summary: "Replica lag > 30 s on {{ $labels.instance }}"
+          description: "Lag = {{ $value | humanizeDuration }}. If it grows, HAProxy /replica?lag=1048576 check will remove this replica."
+
+      - alert: AegisReplicaLagCritical
+        expr: |
+          pg_replication_lag{job=~"postgres-aegis.*"} > 300
+        for: 5m
+        labels:
+          severity: critical
+          cluster: postgres-aegis
+          layer: replication
+        annotations:
+          summary: "Replica lag > 5 min on {{ $labels.instance }}"
+          description: "Lag = {{ $value | humanizeDuration }}. Possible network partition or I/O storm on replica."
+
+  - name: postgres_aegis_tls
+    interval: 5m
+    rules:
+      - alert: AegisCertExpiringWeek
+        expr: |
+          (probe_ssl_earliest_cert_expiry{job="aegis-mtls"} - time()) / 86400 < 7
+        for: 1h
+        labels:
+          severity: warning
+          cluster: postgres-aegis
+          layer: tls
+        annotations:
+          summary: "mTLS cert expiring in < 7 days on {{ $labels.instance }}"
+          description: "Cert expires in {{ $value | humanizeDuration }}. Run: sudo /opt/aegis-monitoring/setup-mtls.sh rotate"
+
+      - alert: AegisCertExpired
+        expr: |
+          (probe_ssl_earliest_cert_expiry{job="aegis-mtls"} - time()) < 0
+        for: 0m
+        labels:
+          severity: critical
+          cluster: postgres-aegis
+          layer: tls
+        annotations:
+          summary: "mTLS cert EXPIRED on {{ $labels.instance }}"
+          description: "Certificate has expired. PG connections from apps will fail immediately."
+
+  - name: postgres_aegis_backup
+    interval: 5m
+    rules:
+      - alert: AegisBackupOverdue
+        expr: |
+          (time() - pgbackrest_last_full_backup_timestamp{stanza=~"casino-aegis.*"}) > 90000
+        for: 15m
+        labels:
+          severity: warning
+          cluster: postgres-aegis
+          layer: backup
+        annotations:
+          summary: "pgbackrest full backup overdue for {{ $labels.stanza }}"
+          description: "Last full backup was {{ $value | humanizeDuration }} ago. Expected: daily at 02:00 UTC."
+          runbook: "Run: sudo -u postgres pgbackrest --stanza={{ $labels.stanza }} --type=full backup"
+
+      - alert: AegisDiffBackupOverdue
+        expr: |
+          (time() - pgbackrest_last_diff_backup_timestamp{stanza=~"casino-aegis.*"}) > 7200
+        for: 15m
+        labels:
+          severity: warning
+          cluster: postgres-aegis
+          layer: backup
+        annotations:
+          summary: "pgbackrest diff backup overdue (> 2 h) for {{ $labels.stanza }}"
+          description: "RPO breach risk. Last diff: {{ $value | humanizeDuration }} ago."
+
+  - name: postgres_aegis_host
+    interval: 30s
+    rules:
+      - alert: AegisNodeHighLoad
+        expr: |
+          node_load1{job=~"aegis-node.*"} > 0.8 * on(instance) group_left count by (instance) (node_cpu_seconds_total{mode="idle",job=~"aegis-node.*"})
+        for: 5m
+        labels:
+          severity: warning
+          cluster: postgres-aegis
+          layer: host
+        annotations:
+          summary: "High load on {{ $labels.instance }}"
+          description: "load1 = {{ $value }}. autoscaler threshold: 1.6 (2 vCPU × 0.8). Autoscaler should have fired."
+
+      - alert: AegisLuksDiskUnmounted
+        expr: |
+          node_filesystem_avail_bytes{mountpoint="/var/lib/postgresql/16/main",job=~"aegis-node.*"} == 0
+          or absent(node_filesystem_avail_bytes{mountpoint="/var/lib/postgresql/16/main",job=~"aegis-node.*"})
+        for: 1m
+        labels:
+          severity: critical
+          cluster: postgres-aegis
+          layer: storage
+        annotations:
+          summary: "LUKS pgdata volume not mounted on {{ $labels.instance }}"
+          description: "The encrypted /dev/sdb volume is not mounted. PG will fail to start or is using tmpfs."

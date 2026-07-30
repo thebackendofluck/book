@@ -1,0 +1,433 @@
+%YAML 1.1
+---
+# suricata.yaml — Managed by Ansible
+# Generated for host: {{ inventory_hostname }}
+# Zone     : {{ sensor_zone | default('unset') }}
+# Mode     : {{ suricata_mode }}
+# Interface: {{ suricata_interfaces | join(', ') }}
+# Generated: {{ ansible_date_time.iso8601 }}
+# DO NOT EDIT MANUALLY — changes will be overwritten.
+
+##############################################################################
+# VARIABLE GROUPS
+##############################################################################
+
+vars:
+  address-groups:
+    HOME_NET: "{{ suricata_home_net }}"
+    EXTERNAL_NET: "{{ suricata_external_net }}"
+
+    # iGaming server segments — tune to match your actual topology
+    PAYMENT_SERVERS:  "[10.0.3.0/24]"
+    GAME_SERVERS:     "[10.0.1.0/24, 10.0.10.0/24]"
+    DB_SERVERS:       "[10.0.2.0/24]"
+    ADMIN_NETS:       "[10.0.100.0/24]"
+
+    # CDN / payment processor address ranges (suppress alert noise from these)
+    CDN_NETS:         "[104.16.0.0/12, 172.64.0.0/13, 198.41.128.0/17]"  # Cloudflare
+    PAYMENT_PROC:     "[3.0.0.0/8, 52.0.0.0/8]"                          # Stripe/AWS
+
+  port-groups:
+    HTTP_PORTS:   "{{ suricata_http_ports }}"
+    HTTPS_PORTS:  "{{ suricata_https_ports }}"
+    SSH_PORTS:    "{{ suricata_ssh_ports }}"
+    DNS_PORTS:    "{{ suricata_dns_ports }}"
+    SMTP_PORTS:   "{{ suricata_smtp_ports }}"
+
+    # iGaming API gateway ports
+    API_PORTS:      "8080, 8443, 3000, 4000"
+    WEBSOCKET_PORTS: "8080, 8443, 9000"
+
+##############################################################################
+# CAPTURE
+##############################################################################
+
+{% if suricata_mode == "ids" %}
+# IDS mode: passive capture via AF_PACKET (SPAN/TAP or promiscuous)
+af-packet:
+{% for iface in suricata_interfaces %}
+  - interface: {{ iface }}
+    # Number of receive threads — must match worker count
+    threads: {{ worker_count }}
+    # Packet distribution strategy
+    cluster-id: {{ loop.index + 98 }}
+    cluster-type: {{ afpacket_cluster_type }}
+    # Ring buffer: {{ afpacket_ring_size }} slots × ~1500 B ≈ {{ (afpacket_ring_size * 1500 / 1048576) | int }} MB
+    ring-size: {{ afpacket_ring_size }}
+    # Socket receive buffer (must be <= net.core.rmem_max)
+    buffer-size: {{ afpacket_buffer_size }}
+    # Zero-copy packet delivery via mmap
+    use-mmap: {{ afpacket_use_mmap | lower }}
+    # tpacket-v3: batch delivery, fewer syscalls at high pps
+    tpacket-v3: {{ afpacket_tpacket_v3 | lower }}
+    # Disable checksum offload so Suricata sees unverified checksums
+    checksum-checks: no
+    # Block mode: false keeps the ring non-blocking for better latency
+    block-size: 32768
+    block-timeout: 10
+{% endfor %}
+
+{% elif suricata_mode == "ips" %}
+# IPS mode: inline via AF_PACKET with copy-mode
+af-packet:
+{% for iface in suricata_interfaces %}
+  - interface: {{ iface }}
+    threads: {{ worker_count }}
+    cluster-id: {{ loop.index + 98 }}
+    cluster-type: {{ afpacket_cluster_type }}
+    ring-size: {{ afpacket_ring_size }}
+    buffer-size: {{ afpacket_buffer_size }}
+    use-mmap: {{ afpacket_use_mmap | lower }}
+    tpacket-v3: {{ afpacket_tpacket_v3 | lower }}
+    copy-mode: {{ afpacket_copy_mode }}
+    # copy-iface: the egress interface that mirrors to
+    copy-iface: {{ suricata_interfaces[1] | default(iface) }}
+    fail-open: {{ suricata_failopen | lower }}
+{% endfor %}
+{% endif %}
+
+##############################################################################
+# THREADING
+##############################################################################
+
+threading:
+  set-cpu-affinity: yes
+  cpu-affinity:
+    - management-cpu-set:
+        cpu: [ "{{ management_cpu }}" ]
+        prio:
+          default: low
+    - receive-cpu-set:
+        cpu: [ "{{ receive_cpu }}" ]
+        prio:
+          default: medium
+    - worker-cpu-set:
+        cpu: [ "{{ worker_cpu_set }}" ]
+        mode: "exclusive"
+        prio:
+          default: high
+          low:    []
+          medium: []
+          high:   [ "{{ worker_cpu_set }}" ]
+
+  # Detect engine and its tasks run on worker threads
+  detect-thread-ratio: 1.0
+
+##############################################################################
+# MEMORY LIMITS
+##############################################################################
+
+stream:
+  memcap: {{ stream_memcap }}
+  checksum-validation: {{ stream_checksum_validation | lower }}
+  inline: {{ stream_inline }}
+  reassembly:
+    memcap: {{ (stream_memcap | regex_replace('gb', '000mb') | regex_replace('mb', '') | int // 2) }}mb
+    depth: 1mb
+    toserver-chunk-size: 2560
+    toclient-chunk-size: 2560
+
+flow:
+  memcap: {{ flow_memcap }}
+  hash-size: {{ flow_hash_size }}
+  prealloc: {{ flow_prealloc }}
+  emergency-recovery: {{ flow_emergency_recovery }}
+
+defrag:
+  memcap: {{ defrag_memcap }}
+  hash-size: {{ defrag_hash_size }}
+  max-frags: {{ defrag_max_frags }}
+  timeout: 60
+
+flow-timeouts:
+  default:
+    new: 30
+    established: 300
+    closed: 0
+    bypassed: 100
+    emergency-new: 10
+    emergency-established: 100
+    emergency-closed: 0
+    emergency-bypassed: 50
+  tcp:
+    new: 60
+    established: 3600
+    closed: 120
+    bypassed: 100
+    emergency-new: 5
+    emergency-established: 100
+    emergency-closed: 10
+    emergency-bypassed: 50
+  udp:
+    new: 30
+    established: 300
+    bypassed: 100
+    emergency-new: 10
+    emergency-established: 100
+    emergency-bypassed: 50
+  icmp:
+    new: 30
+    established: 300
+
+##############################################################################
+# DETECTION ENGINE
+##############################################################################
+
+detect:
+  profile: {{ suricata_detection_profile }}
+  custom-values:
+    toclient-groups: 3
+    toserver-groups: 25
+  sgh-mpm-context: auto
+  inspection-recursion-limit: 3000
+  prefilter:
+    default: mpm
+
+  # Multi-Pattern Matcher
+  mpm-algo: {{ suricata_mpm_algo }}
+  spm-algo: auto
+
+##############################################################################
+# APP-LAYER PROTOCOLS
+##############################################################################
+
+app-layer:
+  protocols:
+    http:
+      enabled: {{ suricata_app_layer_http | lower }}
+      libhtp:
+        default-config:
+          personality: IDS
+          request-body-limit: 131072
+          response-body-limit: 524288
+          request-body-minimal-inspect-size: 32kb
+          request-body-inspect-window: 4kb
+          response-body-minimal-inspect-size: 40kb
+          response-body-inspect-window: 16kb
+          response-body-decompress-layer-limit: 2
+          http-body-inline: auto
+          swf-decompression:
+            enabled: yes
+            type: both
+            compress-depth: 0
+            decompress-depth: 0
+          # Double-decode URI for evasion resistance
+          double-decode-path: no
+          double-decode-query: no
+
+    http2:
+      enabled: {{ suricata_app_layer_http2 | lower }}
+
+    websocket:
+      enabled: {{ suricata_app_layer_websocket | lower }}
+
+    tls:
+      enabled: {{ suricata_app_layer_tls | lower }}
+      detection-ports:
+        dp: "{{ suricata_https_ports }}"
+      # JA3/JA4 TLS fingerprinting for threat hunting
+      ja3-fingerprints: {{ suricata_tls_ja3 | lower }}
+      ja4-fingerprints: {{ suricata_tls_ja4 | lower }}
+
+    dns:
+      # DNS over TCP and UDP
+      tcp:
+        enabled: {{ suricata_app_layer_dns | lower }}
+        detection-ports:
+          dp: "{{ suricata_dns_ports }}"
+      udp:
+        enabled: {{ suricata_app_layer_dns | lower }}
+        detection-ports:
+          dp: "{{ suricata_dns_ports }}"
+
+    smtp:
+      enabled: {{ suricata_app_layer_smtp | lower }}
+      mime:
+        decode-mime: yes
+        decode-base64: yes
+        decode-quoted-printable: yes
+        header-value-depth: 2000
+        extract-urls: yes
+        body-md5: no
+
+    ssh:
+      enabled: {{ suricata_app_layer_ssh | lower }}
+
+    ftp:
+      enabled: {{ suricata_app_layer_ftp | lower }}
+      memcap: 64mb
+
+    rdp:
+      enabled: yes
+
+    krb5:
+      enabled: yes
+
+    snmp:
+      enabled: yes
+
+    tftp:
+      enabled: yes
+
+    dcerpc:
+      enabled: yes
+
+    modbus:
+      enabled: no
+
+    dnp3:
+      enabled: no
+
+    enip:
+      enabled: no
+
+    nfs:
+      enabled: yes
+
+    ikev2:
+      enabled: yes
+
+    quic:
+      enabled: yes
+
+##############################################################################
+# EVE JSON LOGGING
+##############################################################################
+
+outputs:
+  - eve-log:
+      enabled: yes
+      filetype: regular
+      filename: eve.json
+      # Rotate every hour (logrotate handles compression/deletion)
+      rotate-interval: 1h
+
+      # Community ID: cross-tool flow correlation (Zeek, Elastic, Splunk)
+      community-id: {{ suricata_community_id | lower }}
+      community-id-seed: {{ suricata_community_id_seed }}
+
+      types:
+        - alert:
+            payload: {{ suricata_eve_payload | lower }}
+            payload-buffer-size: {{ suricata_eve_payload_buffer_size }}
+            payload-printable: {{ suricata_eve_payload_printable | lower }}
+            packet: yes
+            metadata: yes
+            http-body: yes
+            http-body-printable: yes
+            tagged-packets: yes
+
+        - anomaly:
+            enabled: {{ suricata_eve_anomaly | lower }}
+            types:
+              decode: yes
+              stream: yes
+              applayer: yes
+
+        - http:
+            enabled: {{ suricata_eve_http | lower }}
+            extended: {{ suricata_eve_http_extended | lower }}
+
+        - dns:
+            enabled: {{ suricata_eve_dns | lower }}
+            # Log both requests and responses
+            version: 2
+            requests: yes
+            responses: yes
+
+        - tls:
+            enabled: {{ suricata_eve_tls | lower }}
+            extended: yes
+            session-resumption: yes
+
+        - files:
+            enabled: {{ suricata_eve_files | lower }}
+            force-magic: no
+
+        - smtp:
+            enabled: {{ suricata_eve_smtp | lower }}
+            extended: yes
+
+        - ssh:
+            enabled: yes
+
+        - flow:
+            enabled: {{ suricata_eve_flow | lower }}
+
+        - netflow:
+            enabled: {{ suricata_eve_netflow | lower }}
+
+        - stats:
+            enabled: yes
+            totals: yes
+            threads: yes
+            deltas: no
+
+  # Fast log for rapid alert triage during incidents
+  - fast:
+      enabled: yes
+      filename: fast.log
+      append: yes
+
+  # Stats output for Prometheus textfile scraping
+  - stats:
+      enabled: yes
+      filename: stats.log
+      append: yes
+      totals: yes
+      threads: yes
+
+##############################################################################
+# LOGGING CONFIGURATION
+##############################################################################
+
+logging:
+  default-log-level: {{ suricata_log_level }}
+  outputs:
+    - console:
+        enabled: no
+    - file:
+        enabled: yes
+        level: {{ suricata_log_level }}
+        filename: suricata.log
+    - syslog:
+        enabled: yes
+        facility: local5
+        format: "[%i] <%d> -- "
+
+##############################################################################
+# RULES
+##############################################################################
+
+default-rule-path: {{ suricata_rules_dir }}
+
+rule-files:
+  # Main rule file built by suricata-update
+  - suricata.rules
+  # Custom iGaming rules
+{% for rule_file in suricata_custom_rule_files %}
+  - {{ rule_file }}
+{% endfor %}
+
+# Threshold / suppress configuration
+threshold-file: {{ suricata_config_dir }}/threshold.conf
+
+##############################################################################
+# STATS
+##############################################################################
+
+stats:
+  enabled: yes
+  interval: 8      # seconds between stats dumps
+
+##############################################################################
+# SENSOR NAME (appears in EVE JSON host field)
+##############################################################################
+
+sensor-name: "{{ inventory_hostname }}"
+
+##############################################################################
+# PID FILE
+##############################################################################
+
+pid-file: {{ suricata_run_dir }}/suricata.pid

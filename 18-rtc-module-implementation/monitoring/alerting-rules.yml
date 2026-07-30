@@ -1,0 +1,284 @@
+# Companion code for "The Backend of Luck" - Chapter 18, Real-Time Clock Module Implementation.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# =============================================================================
+# Prometheus Alerting Rules for RTC System
+# =============================================================================
+# Critical alerts for Real-Time Clock infrastructure
+# =============================================================================
+
+groups:
+  # ============================================
+  # RTC Latency Alerts
+  # ============================================
+  - name: rtc_latency
+    interval: 10s
+    rules:
+      - alert: RTCLatencyHigh
+        expr: histogram_quantile(0.99, rate(rtc_request_duration_seconds_bucket[5m])) > 0.002
+        for: 2m
+        labels:
+          severity: critical
+          compliance: gli-11
+        annotations:
+          summary: "RTC P99 latency exceeds 2ms threshold"
+          description: "RTC API P99 latency is {{ $value | humanizeDuration }} (threshold: 2ms)"
+          runbook_url: "https://wiki.igaming/runbooks/rtc-latency"
+
+      - alert: RTCLatencyWarning
+        expr: histogram_quantile(0.95, rate(rtc_request_duration_seconds_bucket[5m])) > 0.001
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RTC P95 latency exceeds 1ms threshold"
+          description: "RTC API P95 latency is {{ $value | humanizeDuration }}"
+
+  # ============================================
+  # Time Drift Alerts
+  # ============================================
+  - name: rtc_drift
+    interval: 10s
+    rules:
+      - alert: RTCDriftCritical
+        expr: abs(rtc_drift_milliseconds) > 100
+        for: 1m
+        labels:
+          severity: critical
+          compliance: gli-11
+          page: "true"
+        annotations:
+          summary: "CRITICAL: RTC drift exceeds 100ms - regulatory violation risk"
+          description: "RTC drift is {{ $value }}ms on {{ $labels.instance }}. GLI-11 compliance requires <100ms drift."
+          runbook_url: "https://wiki.igaming/runbooks/rtc-drift-critical"
+
+      - alert: RTCDriftWarning
+        expr: abs(rtc_drift_milliseconds) > 50
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RTC drift approaching threshold"
+          description: "RTC drift is {{ $value }}ms on {{ $labels.instance }}"
+
+      - alert: RTCClockDesync
+        expr: rtc_clock_sync_status != 1
+        for: 30s
+        labels:
+          severity: critical
+          page: "true"
+        annotations:
+          summary: "RTC clock synchronization lost"
+          description: "RTC module {{ $labels.instance }} lost clock synchronization"
+
+  # ============================================
+  # Consensus Alerts
+  # ============================================
+  - name: rtc_consensus
+    interval: 15s
+    rules:
+      - alert: RTCConsensusLost
+        expr: rtc_consensus_confidence < 0.5
+        for: 1m
+        labels:
+          severity: critical
+          page: "true"
+        annotations:
+          summary: "RTC consensus confidence below 50%"
+          description: "Consensus confidence is {{ $value | humanizePercentage }}. Investigate node failures."
+
+      - alert: RTCConsensusNodeDown
+        expr: rtc_consensus_nodes_healthy < 2
+        for: 30s
+        labels:
+          severity: critical
+          page: "true"
+        annotations:
+          summary: "RTC consensus quorum at risk - less than 2 healthy nodes"
+          description: "Only {{ $value }} consensus nodes are healthy. Minimum 2 required for quorum."
+
+      - alert: RTCConsensusNodeDegraded
+        expr: rtc_consensus_nodes_healthy < 3
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RTC consensus node degraded"
+          description: "{{ $value }} of 3 consensus nodes are healthy"
+
+  # ============================================
+  # Availability Alerts
+  # ============================================
+  - name: rtc_availability
+    interval: 15s
+    rules:
+      - alert: RTCServiceDown
+        expr: up{job="rtc-api"} == 0
+        for: 30s
+        labels:
+          severity: critical
+          page: "true"
+        annotations:
+          summary: "RTC API service is down"
+          description: "RTC API instance {{ $labels.instance }} is not responding"
+
+      - alert: RTCHighErrorRate
+        expr: rate(rtc_requests_total{status=~"5.."}[5m]) / rate(rtc_requests_total[5m]) > 0.01
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "RTC API error rate above 1%"
+          description: "Error rate is {{ $value | humanizePercentage }} on {{ $labels.instance }}"
+
+      - alert: RTCLowThroughput
+        expr: rate(rtc_requests_total[5m]) < 100
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RTC throughput unexpectedly low"
+          description: "Throughput is {{ $value }} req/s. Expected >100 req/s during normal operation."
+
+  # ============================================
+  # Cache Alerts
+  # ============================================
+  - name: rtc_cache
+    interval: 30s
+    rules:
+      - alert: RTCCacheHitRateLow
+        expr: rtc_cache_hit_rate < 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RTC cache hit rate below 90%"
+          description: "Cache hit rate is {{ $value | humanizePercentage }}. Check cache eviction policies."
+
+      - alert: RTCCacheConnectionFailed
+        expr: rtc_cache_connection_status != 1
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "RTC cache connection lost"
+          description: "Unable to connect to Redis cache from {{ $labels.instance }}"
+
+      - alert: RTCCacheLatencyHigh
+        expr: histogram_quantile(0.99, rate(rtc_cache_operation_duration_seconds_bucket[5m])) > 0.001
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RTC cache latency above 1ms"
+          description: "Cache P99 latency is {{ $value | humanizeDuration }}"
+
+  # ============================================
+  # Database Alerts
+  # ============================================
+  - name: rtc_database
+    interval: 30s
+    rules:
+      - alert: RTCDatabaseConnectionPoolExhausted
+        expr: rtc_db_pool_available_connections < 5
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "RTC database connection pool nearly exhausted"
+          description: "Only {{ $value }} connections available in pool"
+
+      - alert: RTCDatabaseSlowQueries
+        expr: histogram_quantile(0.99, rate(rtc_db_query_duration_seconds_bucket[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RTC database queries slow"
+          description: "P99 query latency is {{ $value | humanizeDuration }}"
+
+      - alert: RTCAuditLogBacklog
+        expr: rtc_audit_log_pending_count > 10000
+        for: 10m
+        labels:
+          severity: warning
+          compliance: gli-11
+        annotations:
+          summary: "RTC audit log backlog growing"
+          description: "{{ $value }} audit log entries pending write. May impact compliance."
+
+  # ============================================
+  # Security Alerts
+  # ============================================
+  - name: rtc_security
+    interval: 30s
+    rules:
+      - alert: RTCSignatureVerificationFailed
+        expr: rate(rtc_signature_verification_failures_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          security: "true"
+        annotations:
+          summary: "RTC timestamp signature verification failures detected"
+          description: "{{ $value }} signature verification failures per second. Possible tampering attempt."
+
+      - alert: RTCUnauthorizedAccess
+        expr: rate(rtc_auth_failures_total[5m]) > 10
+        for: 2m
+        labels:
+          severity: warning
+          security: "true"
+        annotations:
+          summary: "High rate of unauthorized access attempts to RTC API"
+          description: "{{ $value }} auth failures per second"
+
+      - alert: RTCKeyRotationOverdue
+        expr: (time() - rtc_signing_key_last_rotation_timestamp) > 7776000  # 90 days
+        for: 1h
+        labels:
+          severity: warning
+          compliance: pci-dss
+        annotations:
+          summary: "RTC signing key rotation overdue"
+          description: "Signing key has not been rotated in {{ $value | humanizeDuration }}"
+
+  # ============================================
+  # Resource Alerts
+  # ============================================
+  - name: rtc_resources
+    interval: 30s
+    rules:
+      - alert: RTCHighCPU
+        expr: rate(container_cpu_usage_seconds_total{pod=~"rtc-.*"}[5m]) * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RTC pod CPU usage high"
+          description: "Pod {{ $labels.pod }} CPU usage is {{ $value }}%"
+
+      - alert: RTCHighMemory
+        expr: container_memory_usage_bytes{pod=~"rtc-.*"} / container_spec_memory_limit_bytes{pod=~"rtc-.*"} * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RTC pod memory usage high"
+          description: "Pod {{ $labels.pod }} memory usage is {{ $value }}%"
+
+      - alert: RTCPodRestarts
+        expr: increase(kube_pod_container_status_restarts_total{pod=~"rtc-.*"}[1h]) > 3
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RTC pod restarting frequently"
+          description: "Pod {{ $labels.pod }} has restarted {{ $value }} times in the last hour"

@@ -1,0 +1,39 @@
+# =============================================================================
+# RTC Consensus Service - Production Dockerfile
+# =============================================================================
+# Raft-based consensus for distributed time synchronization
+# =============================================================================
+
+FROM golang:1.26-alpine AS builder
+
+RUN apk add --no-cache git ca-certificates
+
+WORKDIR /build
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+    -ldflags="-w -s" \
+    -o /build/rtc-consensus \
+    ./cmd/rtc-consensus
+
+FROM scratch
+
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=builder /build/rtc-consensus /rtc-consensus
+
+LABEL org.opencontainers.image.title="RTC Consensus Service" \
+      org.opencontainers.image.description="Raft consensus for RTC synchronization"
+
+USER 1000:1000
+
+EXPOSE 7000 9090
+
+HEALTHCHECK --interval=10s --timeout=3s --retries=3 \
+    CMD ["/rtc-consensus", "health"]
+
+ENTRYPOINT ["/rtc-consensus"]
+CMD ["serve"]

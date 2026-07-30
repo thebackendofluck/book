@@ -1,0 +1,45 @@
+{
+  "name": "acmetocasino-cloudflare-worker",
+  "version": "1.0.0",
+  "description": "AcmeToCasino Platform - Cloudflare Workers backend",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "build": "tsc",
+    "deploy": "wrangler deploy",
+    "deploy:staging": "wrangler deploy --env staging",
+    "deploy:production": "wrangler deploy --env production",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src --ext .ts",
+    "type-check": "tsc --noEmit",
+    "db:migrate:local": "wrangler d1 migrations apply acmetocasino-prod --local",
+    "db:migrate:remote": "wrangler d1 migrations apply acmetocasino-prod"
+  },
+  "keywords": [
+    "cloudflare",
+    "workers",
+    "casino",
+    "gaming",
+    "typescript"
+  ],
+  "license": "Apache-2.0",
+  "private": true,
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240208.0",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "eslint": "^8.57.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.0.8",
+    "wrangler": ">=4.59.1"
+  },
+  "overrides": {
+    "esbuild": ">=0.25.0",
+    "undici": ">=6.21.2",
+    "vite": ">=6.4.2",
+    "wrangler": ">=4.59.1",
+    "brace-expansion": ">=2.0.2",
+    "picomatch": ">=2.3.2"
+  }
+}

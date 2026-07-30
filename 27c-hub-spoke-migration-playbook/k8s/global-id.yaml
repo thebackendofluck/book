@@ -1,0 +1,114 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 27c, Migrating a Single-Jurisdiction Casino Platform to Hub & Spo.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# App source + requirements shipped via ConfigMap so the deploy works without a
+# private registry on ops-host. See README — the Dockerfile at
+# hub/global-id/Dockerfile is the documented build artifact.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: global-id-src
+  namespace: hub
+data:
+  requirements.txt: |
+    fastapi==0.115.0
+    uvicorn[standard]==0.30.6
+    psycopg2-binary==2.9.9
+    redis==5.0.8
+    pydantic==2.9.2
+  main.py: |
+    __MAIN_PY__
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: global-id
+  namespace: hub
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: global-id}}
+  template:
+    metadata: {labels: {app: global-id}}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: install-deps
+          image: python:3.14-slim
+          command: [sh, -c]
+          args:
+            - "pip install --no-cache-dir --target=/deps -r /src/requirements.txt && cp /src/main.py /deps/main.py"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - {name: src, mountPath: /src}
+            - {name: deps, mountPath: /deps}
+            - {name: tmp, mountPath: /tmp}
+          resources:
+            requests: {memory: 128Mi, cpu: 100m}
+            limits: {memory: 512Mi, cpu: 1000m}
+      containers:
+        - name: global-id
+          image: python:3.14-slim
+          command: [python, -m, uvicorn, main:app, --host, 0.0.0.0, --port, "8000"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          workingDir: /deps
+          env:
+            - {name: PYTHONPATH, value: /deps}
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef: {name: hub-postgres-credentials, key: password}
+            - {name: PG_DSN, value: "host=hub-postgres.hub.svc.cluster.local port=5432 dbname=hub user=hub password=$(PGPASSWORD)"}
+            - {name: REDIS_URL, value: "redis://hub-redis.hub.svc.cluster.local:6379/0"}
+          ports: [{containerPort: 8000, name: http}]
+          resources:
+            requests: {memory: 64Mi, cpu: 25m}
+            limits: {memory: 256Mi, cpu: 500m}
+          readinessProbe:
+            httpGet: {path: /v1/readyz, port: 8000}
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /v1/healthz, port: 8000}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          volumeMounts:
+            - {name: deps, mountPath: /deps}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: src
+          configMap: {name: global-id-src}
+        - name: deps
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: global-id
+  namespace: hub
+spec:
+  type: ClusterIP
+  selector: {app: global-id}
+  ports: [{port: 8000, targetPort: 8000, name: http}]

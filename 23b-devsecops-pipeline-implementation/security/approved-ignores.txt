@@ -1,0 +1,24 @@
+# Approved Trivy ignore allowlist
+#
+# Format: CVE-ID  expires      approver         ticket
+# ----------------------------------------------------------------
+# All entries REQUIRE: an expiration date, an approver, and a ticket.
+# Entries without a fix version in Trivy ("no fix available") are the
+# only acceptable long-lived ignores. Entries with available fixes
+# MUST NOT appear here — update the dependency instead.
+#
+# How to add an entry:
+#   1. Open a security ticket (prefix: SEC-)
+#   2. Document: severity, affected package, reason fix is not applied yet,
+#      planned remediation date, risk acceptance sign-off from CISO/TL
+#   3. Add the line below with expires ≤ 90 days from today
+#   4. Merge with SEC team as required reviewer
+#
+# Columns: CVE-ID  expires     approver        ticket
+# ----------------------------------------------------------------
+
+# Example — BASE IMAGE OS PACKAGE WITH NO FIX:
+# CVE-2023-3817   2025-06-01   sec-team   SEC-201   # libssl1.1 debian:bookworm, no fix, CVSS 5.3 LOW
+
+# ── Active approved ignores ──────────────────────────────────────────────────
+# (none — all suppressed findings must have an active entry here)

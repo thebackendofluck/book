@@ -1,0 +1,83 @@
+# Companion code for "The Backend of Luck" - Chapter 19, Anti-Fraud System Deep Dive.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  scrape_timeout: 10s
+
+rule_files:
+- "alert_rules.yml"
+- "igaming-alerts.yml"
+
+alerting:
+  alertmanagers:
+  - static_configs:
+    - targets:
+      - alertmanager:9093
+
+scrape_configs:
+# Fraud Detection Services
+- job_name: 'fraud-detection-ingestion'
+  static_configs:
+  - targets: [ 'data-ingestion-service:8080' ]
+  metrics_path: '/metrics'
+  scrape_interval: 10s
+  scrape_timeout: 5s
+
+- job_name: 'fraud-detection-features'
+  static_configs:
+  - targets: [ 'feature-engineering-service:8081' ]
+  metrics_path: '/metrics'
+  scrape_interval: 10s
+  scrape_timeout: 5s
+
+- job_name: 'fraud-detection-models'
+  static_configs:
+  - targets: [ 'model-serving-service:8082' ]
+  metrics_path: '/metrics'
+  scrape_interval: 10s
+  scrape_timeout: 5s
+
+- job_name: 'fraud-detection-alerts'
+  static_configs:
+  - targets: [ 'alert-management-service:8083' ]
+  metrics_path: '/metrics'
+  scrape_interval: 10s
+  scrape_timeout: 5s
+
+# Infrastructure Metrics
+- job_name: 'kafka'
+  static_configs:
+  - targets: [ 'kafka:9094' ]
+  scrape_interval: 30s
+
+- job_name: 'postgresql'
+  static_configs:
+  - targets: [ 'postgresql:9187' ]
+  scrape_interval: 30s
+
+- job_name: 'redis'
+  static_configs:
+  - targets: [ 'redis:9121' ]
+  scrape_interval: 30s
+
+# Node Exporter for container metrics
+- job_name: 'node-exporter'
+  static_configs:
+  - targets: [ 'node-exporter:9100' ]
+  scrape_interval: 30s
+
+# Custom business metrics
+- job_name: 'business-metrics'
+  static_configs:
+  - targets: [ 'data-ingestion-service:8080' ]
+  metrics_path: '/business-metrics'
+  scrape_interval: 60s

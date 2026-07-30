@@ -1,0 +1,289 @@
+# Companion code for "The Backend of Luck" - Chapter 21, Caching Strategies and Benefits.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# Chapter 38: Caching Strategies - Local Development Environment
+# Docker Compose for Redis, Memcached, and monitoring stack
+#
+# Usage:
+#   docker-compose up -d
+#   docker-compose logs -f redis
+#   docker-compose down -v
+#
+# Services:
+#   - redis: Redis 8 master (port 6379)
+#   - redis-replica: Redis replica (port 6380)
+#   - redis-sentinel: Redis Sentinel for HA (port 26379)
+#   - memcached: Memcached for static content (port 11211)
+#   - redis-commander: Redis GUI (port 8081)
+#   - prometheus: Metrics collection (port 9090)
+#   - grafana: Dashboards (port 3000)
+
+version: '3.8'
+
+services:
+  # -------------------------------------------------------------------------
+  # Redis Master
+  # -------------------------------------------------------------------------
+  redis:
+    image: redis:8-alpine
+    container_name: igaming-redis
+    hostname: redis-master
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD:?run ./setup.sh first to generate .env}
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory 1gb
+      --maxmemory-policy volatile-lru
+      --tcp-keepalive 300
+      --notify-keyspace-events Ex
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+      - ./config/redis.conf:/etc/redis/redis.conf:ro
+    networks:
+      - cache-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:?run ./setup.sh first to generate .env}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    restart: unless-stopped
+
+  # -------------------------------------------------------------------------
+  # Redis Replica
+  # -------------------------------------------------------------------------
+  redis-replica:
+    image: redis:8-alpine
+    container_name: igaming-redis-replica
+    hostname: redis-replica
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD:?run ./setup.sh first to generate .env}
+      --masterauth ${REDIS_PASSWORD:?run ./setup.sh first to generate .env}
+      --replicaof redis-master 6379
+      --appendonly yes
+      --maxmemory 1gb
+      --maxmemory-policy volatile-lru
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis-replica-data:/data
+    networks:
+      - cache-network
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:?run ./setup.sh first to generate .env}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+    restart: unless-stopped
+
+  # -------------------------------------------------------------------------
+  # Redis Sentinel (HA)
+  # -------------------------------------------------------------------------
+  redis-sentinel:
+    image: redis:8-alpine
+    container_name: igaming-redis-sentinel
+    hostname: redis-sentinel
+    command: >
+      redis-sentinel /etc/redis/sentinel.conf
+    ports:
+      - "26379:26379"
+    volumes:
+      - ./config/sentinel.conf:/etc/redis/sentinel.conf:ro
+    networks:
+      - cache-network
+    depends_on:
+      redis:
+        condition: service_healthy
+      redis-replica:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # -------------------------------------------------------------------------
+  # Memcached (for static content caching)
+  # -------------------------------------------------------------------------
+  memcached:
+    image: memcached:1.6-alpine
+    container_name: igaming-memcached
+    hostname: memcached
+    command: >
+      memcached
+      -m 512
+      -c 1024
+      -t 4
+      -I 10m
+    ports:
+      - "11211:11211"
+    networks:
+      - cache-network
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "11211"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 768M
+    restart: unless-stopped
+
+  # -------------------------------------------------------------------------
+  # Redis Commander (Web UI)
+  # -------------------------------------------------------------------------
+  redis-commander:
+    image: rediscommander/redis-commander:0.8.2
+    container_name: igaming-redis-commander
+    hostname: redis-commander
+    environment:
+      - REDIS_HOSTS=master:redis:6379:0:${REDIS_PASSWORD:?run ./setup.sh first to generate .env},replica:redis-replica:6379:0:${REDIS_PASSWORD:?run ./setup.sh first to generate .env}
+      - HTTP_USER=admin
+      - HTTP_PASSWORD=${REDIS_COMMANDER_PASSWORD:?REDIS_COMMANDER_PASSWORD must be set}
+    ports:
+      - "8081:8081"
+    networks:
+      - cache-network
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # -------------------------------------------------------------------------
+  # Redis Exporter (Prometheus metrics)
+  # -------------------------------------------------------------------------
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.55.0
+    container_name: igaming-redis-exporter
+    hostname: redis-exporter
+    environment:
+      - REDIS_ADDR=redis://redis:6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?run ./setup.sh first to generate .env}
+    ports:
+      - "9121:9121"
+    networks:
+      - cache-network
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # -------------------------------------------------------------------------
+  # Prometheus
+  # -------------------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:v2.47.0
+    container_name: igaming-prometheus
+    hostname: prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=7d'
+      - '--web.enable-lifecycle'
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - cache-network
+    restart: unless-stopped
+
+  # -------------------------------------------------------------------------
+  # Grafana
+  # -------------------------------------------------------------------------
+  grafana:
+    image: grafana/grafana:10.1.0
+    container_name: igaming-grafana
+    hostname: grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:?GRAFANA_PASSWORD must be set}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_INSTALL_PLUGINS=redis-datasource
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./config/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./config/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    networks:
+      - cache-network
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+  # -------------------------------------------------------------------------
+  # Cache Test Application
+  # -------------------------------------------------------------------------
+  cache-tester:
+    build:
+      context: .
+      dockerfile: Dockerfile.tester
+    container_name: igaming-cache-tester
+    hostname: cache-tester
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?run ./setup.sh first to generate .env}
+      - MEMCACHED_HOST=memcached
+      - MEMCACHED_PORT=11211
+    ports:
+      - "8080:8080"
+    networks:
+      - cache-network
+    depends_on:
+      redis:
+        condition: service_healthy
+      memcached:
+        condition: service_healthy
+    profiles:
+      - test
+    restart: unless-stopped
+
+# -----------------------------------------------------------------------------
+# Networks
+# -----------------------------------------------------------------------------
+networks:
+  cache-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.38.0.0/16
+
+# -----------------------------------------------------------------------------
+# Volumes
+# -----------------------------------------------------------------------------
+volumes:
+  redis-data:
+    driver: local
+  redis-replica-data:
+    driver: local
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local

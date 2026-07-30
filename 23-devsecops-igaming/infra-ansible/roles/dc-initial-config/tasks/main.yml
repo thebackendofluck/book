@@ -1,0 +1,86 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 23, DevSecOps for iGaming.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+- name: Configure network interface
+  template:
+    src: iface.j2
+    dest: "/etc/netplan/10-ansible-{{ item.interface }}.yaml"
+    owner: root
+    group: root
+    mode: 0644
+  with_items: "{{ interfaces }}"
+
+- name: apply network interface plan
+  become: true
+  shell: netplan apply
+
+- name: Set hostname
+  hostname:
+    name: "{{ server_hostname }}"
+
+- name: Set UTC timezone
+  timezone:
+    name: Etc/UTC
+
+- name: Update apt repo and cache
+  apt:
+    update_cache: true
+    force_apt_get: true
+
+- name: Upgrade all packages
+  apt:
+    upgrade: dist
+    force_apt_get: true
+
+- name: Net Tools
+  become: true
+  apt:
+    name: net-tools
+    update_cache: true
+  tags:
+    - net-tools
+
+- name: Base packages | Start Installation
+  include_tasks: "pkg_mgr/{{ ansible_pkg_mgr }}.yml"
+
+- name: Check if a reboot is needed
+  register: reboot_required_file
+  stat:
+    path: /var/run/reboot-required
+    get_md5: false
+
+- name: Reboot the box if kernel updated
+  reboot:
+    msg: "Reboot initiated by Ansible due to kernel updates"
+    connect_timeout: 5
+    reboot_timeout: 300
+    pre_reboot_delay: 0
+    post_reboot_delay: 30
+    test_command: uptime
+  when: reboot_required_file.stat.exists and c8_do_reboot|default(false)|bool
+
+- name: Reboot the box if kernel updated message
+  debug:
+    msg: "Reboot required file detected {{ reboot_required_file.stat.exists }} but 'c8_do_reboot' variable is not set!"
+  when: reboot_required_file.stat.exists and not c8_do_reboot|default(false)|bool
+
+- name: set ulimit value
+  community.general.pam_limits:
+    domain: "{{ item.domain }}"
+    limit_type: "{{ item.limit_type }}"
+    limit_item: "{{ item.limit_item }}"
+    value: "{{ item.value }}"
+    comment: "{{ item.comment | default(omit) }}"
+    dest: "{{ ulimit_dest }}"
+    backup: "{{ ulimit_backup }}"
+  loop: "{{ ulimit_items }}"
+  loop_control:
+    label: "{{ item.limit_item }}"

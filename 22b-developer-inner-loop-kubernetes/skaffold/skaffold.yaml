@@ -1,0 +1,151 @@
+# Companion code for "The Backend of Luck" - Chapter 22b, Developer Inner-Loop Experience in Containerized iGaming Pla.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# skaffold.yaml
+apiVersion: skaffold/v4beta11
+kind: Config
+
+metadata:
+  name: casino-platform
+
+build:
+  local:
+    push: false                  # Do not push during local dev — use local image cache
+  artifacts:
+    - image: casino/player-service
+      context: ./player-service
+      docker:
+        dockerfile: Dockerfile.dev
+      sync:
+        # File sync: push changed Python files directly into the container
+        # without rebuilding — same concept as Tilt live_update
+        manual:
+          - src: "app/**/*.py"
+            dest: /app/app
+          - src: "app/**/*.html"
+            dest: /app/app
+
+    - image: casino/wallet-service
+      context: ./wallet-service
+      docker:
+        dockerfile: Dockerfile.dev
+      sync:
+        manual:
+          - src: "app/**/*.py"
+            dest: /app/app
+
+    - image: casino/game-engine
+      context: ./game-engine
+      docker:
+        dockerfile: Dockerfile.dev
+      sync:
+        manual:
+          - src: "app/**/*.py"
+            dest: /app/app
+
+    - image: casino/bonus-engine
+      context: ./bonus-engine
+      docker:
+        dockerfile: Dockerfile.dev
+      sync:
+        manual:
+          - src: "app/**/*.py"
+            dest: /app/app
+
+manifests:
+  helm:
+    releases:
+      - name: casino-infra
+        chartPath: ./charts/casino-infra
+        namespace: casino-dev
+        setValues:
+          environment: development
+
+      - name: player-service
+        chartPath: ./charts/player-service
+        namespace: casino-dev
+        setValues:
+          image.repository: casino/player-service
+          image.tag: dev
+          environment: development
+          replicaCount: "1"
+
+      - name: wallet-service
+        chartPath: ./charts/wallet-service
+        namespace: casino-dev
+        setValues:
+          image.repository: casino/wallet-service
+          image.tag: dev
+          environment: development
+          replicaCount: "1"
+
+      - name: game-engine
+        chartPath: ./charts/game-engine
+        namespace: casino-dev
+        setValues:
+          image.repository: casino/game-engine
+          image.tag: dev
+          environment: development
+          replicaCount: "1"
+
+      - name: bonus-engine
+        chartPath: ./charts/bonus-engine
+        namespace: casino-dev
+        setValues:
+          image.repository: casino/bonus-engine
+          image.tag: dev
+          environment: development
+          replicaCount: "1"
+
+deploy:
+  kubectl: {}
+  statusCheckDeadlineSeconds: 120
+
+portForward:
+  - resourceType: deployment
+    resourceName: player-service
+    namespace: casino-dev
+    port: 8000
+    localPort: 8000
+  - resourceType: deployment
+    resourceName: wallet-service
+    namespace: casino-dev
+    port: 8001
+    localPort: 8001
+  - resourceType: deployment
+    resourceName: game-engine
+    namespace: casino-dev
+    port: 8002
+    localPort: 8002
+
+profiles:
+  # CI profile: no file sync, always full build, push to registry
+  - name: ci
+    build:
+      local:
+        push: true
+      artifacts:
+        - image: registry.ops-host.local:5000/casino/player-service
+          context: ./player-service
+          docker:
+            dockerfile: Dockerfile            # Production Dockerfile
+        - image: registry.ops-host.local:5000/casino/wallet-service
+          context: ./wallet-service
+          docker:
+            dockerfile: Dockerfile
+
+  # Integration test profile: runs against shared dev cluster with real payment sandbox
+  - name: integration
+    build:
+      local:
+        push: false
+    deploy:
+      kubectl:
+        defaultNamespace: casino-integration

@@ -1,0 +1,98 @@
+# Companion code for "The Backend of Luck" - Chapter 23, DevSecOps for iGaming.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# Checkov Configuration for iGaming Infrastructure Security
+# Scans Terraform, Dockerfiles, Kubernetes manifests, and CI/CD pipelines
+
+# Framework Configuration
+framework:
+  - terraform
+  - terraform_plan
+  - dockerfile
+  - kubernetes
+  - github_actions
+  - secrets
+  - openapi
+
+# Output Configuration
+output: cli
+output_format: json
+compact: false
+quiet: false
+summary-position: top
+
+# Directory and File Configuration
+directory:
+  - .
+
+# Skip paths not relevant for security scanning
+skip-path:
+  - .git/
+  - .terraform/
+  - .venv/
+  - venv/
+  - node_modules/
+  - __pycache__/
+  - "*.tfstate*"
+  - examples/
+  - test/
+  - tests/
+  - docs/
+  - tmp/
+
+# External Modules
+download-external-modules: true
+evaluate-variables: true
+
+# Policy Configuration
+use-enforcement-rules: true
+
+# Skip specific checks if needed
+skip-check: []
+
+# Compliance Configuration -- map checks to regulatory frameworks
+# relevant for iGaming (PCI DSS, SOC2, ISO 27001, GDPR)
+compliance:
+  - pci-dss
+  - soc2
+  - iso-27001
+  - gdpr
+  - nist
+  - cis
+
+# Secrets Scanning -- file types to scan for hardcoded secrets
+secrets-scan-file-type:
+  - .tf
+  - .yaml
+  - .yml
+  - .json
+  - .py
+  - .js
+  - .ts
+  - .java
+  - .go
+  - .dockerfile
+  - Dockerfile
+
+# Performance Configuration
+max-workers: 4
+parallelism: 4
+
+# Output File Configuration
+output-file-path: checkov-results
+output-file-format: json
+
+# Branch Protection (for CI/CD integration)
+branch: main
+repo-root-for-plan-enrichment: .
+
+# Logging
+logging-level: INFO
+log-file: checkov.log

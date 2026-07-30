@@ -1,0 +1,724 @@
+# Companion code for "The Backend of Luck" - Chapter 23, DevSecOps for iGaming.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# =============================================================================
+# GitLab CI/CD Pipeline for iGaming Platform
+# =============================================================================
+# Production-ready pipeline for on-premises iGaming deployment.
+# Covers linting, security scanning, testing, building, compliance validation,
+# and multi-stage deployment with casino-specific jobs (RTP, payment gateways,
+# licensing checks).
+#
+# Branch strategy:
+#   feature/* -> lint + security + test + build
+#   develop   -> lint + security + test + build + deploy-staging + compliance
+#   main      -> full pipeline including deploy-production + post-deploy
+# =============================================================================
+
+variables:
+  # -- Container registry --
+  REGISTRY: "${CI_REGISTRY}"
+  REGISTRY_IMAGE: "${CI_REGISTRY_IMAGE}"
+  IMAGE_TAG: "${CI_COMMIT_SHORT_SHA}"
+
+  # -- Environments --
+  STAGING_NAMESPACE: "igaming-staging"
+  PRODUCTION_NAMESPACE: "igaming-production"
+  KUBECONFIG_STAGING: "/etc/gitlab-runner/kubeconfig-staging"
+  KUBECONFIG_PRODUCTION: "/etc/gitlab-runner/kubeconfig-production"
+
+  # -- Approval --
+  PRODUCTION_APPROVERS: "release-managers"
+
+  # -- Cache paths --
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  NPM_CACHE_DIR: "$CI_PROJECT_DIR/.cache/npm"
+  MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.cache/maven"
+
+  # -- Compliance --
+  GLI_STANDARD: "GLI-11"
+  JURISDICTION: "mga"
+  RTP_TOLERANCE: "0.5"
+
+  # -- Service versions --
+  PYTHON_IMAGE: "python:3.12-slim"
+  NODE_IMAGE: "node:20-alpine"
+  DOCKER_IMAGE: "docker:24.0"
+  HELM_IMAGE: "alpine/helm:3.14"
+  TRIVY_IMAGE: "aquasec/trivy:0.50.0"
+
+stages:
+  - lint
+  - security
+  - test
+  - build
+  - deploy-staging
+  - compliance
+  - deploy-production
+  - post-deploy
+
+# =============================================================================
+# Cache configuration
+# =============================================================================
+cache:
+  key: "${CI_COMMIT_REF_SLUG}"
+  paths:
+    - .cache/pip
+    - .cache/npm
+    - .cache/maven
+    - node_modules/
+  policy: pull-push
+
+# =============================================================================
+# Stage: lint
+# =============================================================================
+shellcheck:
+  stage: lint
+  image: koalaman/shellcheck-alpine:stable
+  script:
+    - echo "Running ShellCheck on all shell scripts..."
+    - find . -name "*.sh" -not -path "./.git/*" -exec shellcheck -x {} +
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+ruff-lint:
+  stage: lint
+  image: "${PYTHON_IMAGE}"
+  before_script:
+    - pip install --quiet ruff
+  script:
+    - echo "Linting Python code with Ruff..."
+    - ruff check --output-format=gitlab .
+  artifacts:
+    reports:
+      codequality: gl-code-quality-report.json
+    when: always
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+terraform-fmt:
+  stage: lint
+  image: hashicorp/terraform:1.7
+  script:
+    - echo "Checking Terraform formatting..."
+    - terraform fmt -check -recursive -diff
+  allow_failure: false
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
+        - "**/*.tf"
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+hadolint:
+  stage: lint
+  image: hadolint/hadolint:latest-debian
+  script:
+    - echo "Linting Dockerfiles..."
+    - find . -name "Dockerfile*" -not -path "./.git/*" -exec hadolint {} +
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
+        - "**/Dockerfile*"
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+# =============================================================================
+# Stage: security
+# =============================================================================
+gitleaks:
+  stage: security
+  image: zricethezav/gitleaks:latest
+  script:
+    - echo "Scanning for secrets with Gitleaks..."
+    - gitleaks detect --source . --report-format sarif --report-path gitleaks-report.sarif
+  artifacts:
+    paths:
+      - gitleaks-report.sarif
+    reports:
+      sast: gitleaks-report.sarif
+    when: always
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+bandit:
+  stage: security
+  image: "${PYTHON_IMAGE}"
+  before_script:
+    - pip install --quiet bandit
+  script:
+    - echo "Running Bandit security analysis on Python code..."
+    - bandit -r . -f json -o bandit-report.json --exclude ./.git,./.cache || true
+    - bandit -r . --exclude ./.git,./.cache
+  artifacts:
+    paths:
+      - bandit-report.json
+    when: always
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+semgrep:
+  stage: security
+  image: semgrep/semgrep:latest
+  script:
+    - echo "Running Semgrep static analysis..."
+    - semgrep scan --config auto --json --output semgrep-report.json .
+  artifacts:
+    paths:
+      - semgrep-report.json
+    when: always
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+trivy-scan:
+  stage: security
+  image: "${TRIVY_IMAGE}"
+  script:
+    - echo "Scanning filesystem for vulnerabilities with Trivy..."
+    - trivy fs --severity HIGH,CRITICAL --format json --output trivy-fs-report.json .
+    - trivy fs --severity HIGH,CRITICAL --exit-code 1 .
+  artifacts:
+    paths:
+      - trivy-fs-report.json
+    when: always
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+checkov:
+  stage: security
+  image: bridgecrew/checkov:latest
+  script:
+    - echo "Running Checkov IaC security checks..."
+    - checkov -d . --output junitxml --output-file checkov-report.xml || true
+  artifacts:
+    reports:
+      junit: checkov-report.xml
+    when: always
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
+        - "**/*.tf"
+        - "**/Dockerfile*"
+        - "**/*.yml"
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+dependency-check:
+  stage: security
+  image: owasp/dependency-check:latest
+  script:
+    - echo "Running OWASP Dependency Check..."
+    - /usr/share/dependency-check/bin/dependency-check.sh
+        --project "igaming-platform"
+        --scan .
+        --format JSON
+        --out dependency-check-report.json
+        --failOnCVSS 7
+  artifacts:
+    paths:
+      - dependency-check-report.json
+    when: always
+  allow_failure: true
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+# =============================================================================
+# Stage: test
+# =============================================================================
+unit-tests:
+  stage: test
+  image: "${PYTHON_IMAGE}"
+  services:
+    - name: postgres:16-alpine
+      alias: test-db
+      variables:
+        POSTGRES_DB: igaming_test
+        POSTGRES_USER: test_user
+        POSTGRES_PASSWORD: test_password
+    - name: redis:7-alpine
+      alias: test-redis
+  variables:
+    DATABASE_URL: "postgresql://test_user:test_password@test-db:5432/igaming_test"
+    REDIS_URL: "redis://test-redis:6379/0"
+  before_script:
+    - pip install --quiet -r requirements.txt -r requirements-test.txt
+  script:
+    - echo "Running unit tests..."
+    - pytest tests/unit/
+        --junitxml=unit-test-report.xml
+        --cov=src
+        --cov-report=xml:coverage.xml
+        --cov-report=term-missing
+  artifacts:
+    reports:
+      junit: unit-test-report.xml
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
+    when: always
+  coverage: '/(?i)total.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+integration-tests:
+  stage: test
+  image: "${PYTHON_IMAGE}"
+  services:
+    - name: postgres:16-alpine
+      alias: test-db
+      variables:
+        POSTGRES_DB: igaming_test
+        POSTGRES_USER: test_user
+        POSTGRES_PASSWORD: test_password
+    - name: redis:7-alpine
+      alias: test-redis
+    - name: rabbitmq:3-management-alpine
+      alias: test-mq
+  variables:
+    DATABASE_URL: "postgresql://test_user:test_password@test-db:5432/igaming_test"
+    REDIS_URL: "redis://test-redis:6379/0"
+    RABBITMQ_URL: "amqp://guest:guest@test-mq:5672/"
+  before_script:
+    - pip install --quiet -r requirements.txt -r requirements-test.txt
+  script:
+    - echo "Running integration tests..."
+    - pytest tests/integration/
+        --junitxml=integration-test-report.xml
+        -v
+  artifacts:
+    reports:
+      junit: integration-test-report.xml
+    when: always
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+contract-tests:
+  stage: test
+  image: "${PYTHON_IMAGE}"
+  before_script:
+    - pip install --quiet -r requirements.txt -r requirements-test.txt
+  script:
+    - echo "Running contract tests for PAM, Wallet, GAL APIs..."
+    - pytest tests/contract/
+        --junitxml=contract-test-report.xml
+        -v
+  artifacts:
+    reports:
+      junit: contract-test-report.xml
+    when: always
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+# =============================================================================
+# Stage: build
+# =============================================================================
+build-docker-images:
+  stage: build
+  image: "${DOCKER_IMAGE}"
+  services:
+    - name: docker:24.0-dind
+      alias: docker
+      variables:
+        DOCKER_TLS_CERTDIR: "/certs"
+  variables:
+    DOCKER_HOST: "tcp://docker:2376"
+    DOCKER_TLS_VERIFY: "1"
+    DOCKER_CERT_PATH: "/certs/client"
+  before_script:
+    - echo "${CI_REGISTRY_PASSWORD}" | docker login "${CI_REGISTRY}" -u "${CI_REGISTRY_USER}" --password-stdin
+  script:
+    - echo "Building Docker images for iGaming platform services..."
+    - |
+      for service in pam wallet gal compliance responsible-gaming game-control; do
+        echo "Building ${service}..."
+        docker build \
+          --build-arg BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+          --build-arg VCS_REF="${CI_COMMIT_SHA}" \
+          --build-arg VERSION="${IMAGE_TAG}" \
+          --tag "${REGISTRY_IMAGE}/${service}:${IMAGE_TAG}" \
+          --tag "${REGISTRY_IMAGE}/${service}:latest" \
+          --file "services/${service}/Dockerfile" \
+          "services/${service}/"
+        docker push "${REGISTRY_IMAGE}/${service}:${IMAGE_TAG}"
+        docker push "${REGISTRY_IMAGE}/${service}:latest"
+      done
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+build-helm-charts:
+  stage: build
+  image: "${HELM_IMAGE}"
+  script:
+    - echo "Packaging Helm charts..."
+    - helm lint deploy/helm/igaming-platform/
+    - helm package deploy/helm/igaming-platform/ --version "0.1.0-${IMAGE_TAG}"
+    - |
+      if [ -n "${HELM_REPO_URL:-}" ]; then
+        helm push igaming-platform-*.tgz "${HELM_REPO_URL}"
+      fi
+  artifacts:
+    paths:
+      - "igaming-platform-*.tgz"
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+# =============================================================================
+# Stage: deploy-staging
+# =============================================================================
+deploy-staging:
+  stage: deploy-staging
+  image: "${HELM_IMAGE}"
+  environment:
+    name: staging
+    url: "https://staging.igaming.internal"
+    on_stop: stop-staging
+  before_script:
+    - export KUBECONFIG="${KUBECONFIG_STAGING}"
+  script:
+    - echo "Deploying to staging environment..."
+    - helm upgrade --install igaming-platform
+        deploy/helm/igaming-platform/
+        --namespace "${STAGING_NAMESPACE}"
+        --create-namespace
+        --set global.image.tag="${IMAGE_TAG}"
+        --set global.environment=staging
+        --values deploy/helm/igaming-platform/values-staging.yaml
+        --wait
+        --timeout 10m
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+smoke-tests-staging:
+  stage: deploy-staging
+  image: "${PYTHON_IMAGE}"
+  needs:
+    - deploy-staging
+  before_script:
+    - pip install --quiet requests
+  script:
+    - echo "Running smoke tests against staging..."
+    - python tests/smoke/run_smoke_tests.py
+        --env staging
+        --base-url "https://staging.igaming.internal"
+        --checks health,auth,wallet,games,payments
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+stop-staging:
+  stage: deploy-staging
+  image: "${HELM_IMAGE}"
+  environment:
+    name: staging
+    action: stop
+  before_script:
+    - export KUBECONFIG="${KUBECONFIG_STAGING}"
+  script:
+    - helm uninstall igaming-platform --namespace "${STAGING_NAMESPACE}" || true
+  when: manual
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+      when: manual
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      when: manual
+
+# =============================================================================
+# Stage: compliance — Casino-specific validation
+# =============================================================================
+gli-compliance-check:
+  stage: compliance
+  image: "${PYTHON_IMAGE}"
+  before_script:
+    - pip install --quiet -r requirements.txt -r requirements-test.txt
+  script:
+    - echo "Running GLI-11 compliance checks..."
+    - python tests/compliance/gli_compliance.py
+        --standard "${GLI_STANDARD}"
+        --jurisdiction "${JURISDICTION}"
+        --report gli-compliance-report.json
+  artifacts:
+    paths:
+      - gli-compliance-report.json
+    when: always
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+rng-validation:
+  stage: compliance
+  image: "${PYTHON_IMAGE}"
+  before_script:
+    - pip install --quiet -r requirements.txt scipy numpy
+  script:
+    - echo "Validating RNG output against statistical tests..."
+    - python tests/compliance/rng_validation.py
+        --sample-size 1000000
+        --tests chi-square,kolmogorov-smirnov,runs,serial
+        --confidence 0.99
+        --report rng-validation-report.json
+  artifacts:
+    paths:
+      - rng-validation-report.json
+    when: always
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+rtp-validation:
+  stage: compliance
+  image: "${PYTHON_IMAGE}"
+  before_script:
+    - pip install --quiet -r requirements.txt
+  script:
+    - echo "Validating Return-to-Player percentages..."
+    - python tests/compliance/rtp_validation.py
+        --env staging
+        --tolerance "${RTP_TOLERANCE}"
+        --min-rounds 100000
+        --report rtp-validation-report.json
+  artifacts:
+    paths:
+      - rtp-validation-report.json
+    when: always
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+audit-logging-verification:
+  stage: compliance
+  image: "${PYTHON_IMAGE}"
+  before_script:
+    - pip install --quiet -r requirements.txt
+  script:
+    - echo "Verifying audit logging completeness..."
+    - python tests/compliance/audit_logging.py
+        --env staging
+        --checks completeness,integrity,tamper-resistance,retention
+        --report audit-log-report.json
+  artifacts:
+    paths:
+      - audit-log-report.json
+    when: always
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+payment-gateway-connectivity:
+  stage: compliance
+  image: "${PYTHON_IMAGE}"
+  before_script:
+    - pip install --quiet -r requirements.txt
+  script:
+    - echo "Testing payment gateway connectivity..."
+    - python tests/compliance/payment_gateway.py
+        --env staging
+        --gateways stripe,adyen,nuvei,paysafe
+        --mode sandbox
+        --report payment-gateway-report.json
+  artifacts:
+    paths:
+      - payment-gateway-report.json
+    when: always
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+license-check:
+  stage: compliance
+  image: "${PYTHON_IMAGE}"
+  before_script:
+    - pip install --quiet pip-licenses
+  script:
+    - echo "Checking dependency licenses for gambling jurisdiction compliance..."
+    - pip-licenses --format=json --output-file=license-report.json
+    - python tests/compliance/license_check.py
+        --license-file license-report.json
+        --banned AGPL-3.0,SSPL-1.0,EUPL-1.2
+        --jurisdiction "${JURISDICTION}"
+  artifacts:
+    paths:
+      - license-report.json
+    when: always
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+# =============================================================================
+# Stage: deploy-production
+# =============================================================================
+production-approval:
+  stage: deploy-production
+  script:
+    - echo "Awaiting manual approval from ${PRODUCTION_APPROVERS}..."
+    - echo "Approval timestamp $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  environment:
+    name: production
+  when: manual
+  allow_failure: false
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+deploy-production-canary:
+  stage: deploy-production
+  image: "${HELM_IMAGE}"
+  needs:
+    - production-approval
+  environment:
+    name: production
+    url: "https://platform.igaming.internal"
+  before_script:
+    - export KUBECONFIG="${KUBECONFIG_PRODUCTION}"
+  script:
+    - echo "Deploying canary (10% traffic) to production..."
+    - helm upgrade --install igaming-platform-canary
+        deploy/helm/igaming-platform/
+        --namespace "${PRODUCTION_NAMESPACE}"
+        --set global.image.tag="${IMAGE_TAG}"
+        --set global.environment=production
+        --set canary.enabled=true
+        --set canary.weight=10
+        --values deploy/helm/igaming-platform/values-production.yaml
+        --wait
+        --timeout 10m
+    - echo "Canary deployed. Monitoring for 5 minutes..."
+    - sleep 300
+    - echo "Running canary health checks..."
+    - python tests/smoke/run_smoke_tests.py
+        --env production
+        --base-url "https://platform.igaming.internal"
+        --checks health,auth,wallet
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+deploy-production-full:
+  stage: deploy-production
+  image: "${HELM_IMAGE}"
+  needs:
+    - deploy-production-canary
+  environment:
+    name: production
+    url: "https://platform.igaming.internal"
+  before_script:
+    - export KUBECONFIG="${KUBECONFIG_PRODUCTION}"
+  script:
+    - echo "Promoting canary to full production deployment..."
+    - helm upgrade --install igaming-platform
+        deploy/helm/igaming-platform/
+        --namespace "${PRODUCTION_NAMESPACE}"
+        --set global.image.tag="${IMAGE_TAG}"
+        --set global.environment=production
+        --set canary.enabled=false
+        --values deploy/helm/igaming-platform/values-production.yaml
+        --wait
+        --timeout 15m
+    - echo "Cleaning up canary release..."
+    - helm uninstall igaming-platform-canary --namespace "${PRODUCTION_NAMESPACE}" || true
+    - echo "Production deployment complete at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+production-health-check:
+  stage: deploy-production
+  image: "${PYTHON_IMAGE}"
+  needs:
+    - deploy-production-full
+  before_script:
+    - pip install --quiet requests
+  script:
+    - echo "Running post-deployment health checks..."
+    - python tests/smoke/run_smoke_tests.py
+        --env production
+        --base-url "https://platform.igaming.internal"
+        --checks health,auth,wallet,games,payments,compliance
+        --retries 3
+        --retry-delay 30
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+# =============================================================================
+# Stage: post-deploy
+# =============================================================================
+dast-scan:
+  stage: post-deploy
+  image: zaproxy/zap-stable:latest
+  needs:
+    - production-health-check
+  script:
+    - echo "Running DAST scan against production..."
+    - zap-baseline.py
+        -t "https://platform.igaming.internal"
+        -g gen.conf
+        -r dast-report.html
+        -J dast-report.json
+        -I
+  artifacts:
+    paths:
+      - dast-report.html
+      - dast-report.json
+    when: always
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+performance-baseline:
+  stage: post-deploy
+  image: grafana/k6:latest
+  needs:
+    - production-health-check
+  script:
+    - echo "Running performance baseline tests..."
+    - k6 run
+        --out json=performance-results.json
+        --env BASE_URL="https://platform.igaming.internal"
+        tests/performance/baseline.js
+  artifacts:
+    paths:
+      - performance-results.json
+    when: always
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+monitoring-verification:
+  stage: post-deploy
+  image: "${PYTHON_IMAGE}"
+  needs:
+    - production-health-check
+  before_script:
+    - pip install --quiet requests
+  script:
+    - echo "Verifying monitoring and alerting..."
+    - python tests/monitoring/verify_monitoring.py
+        --prometheus-url "https://prometheus.igaming.internal"
+        --grafana-url "https://grafana.igaming.internal"
+        --checks dashboards,alerts,scrape-targets,recording-rules
+        --required-dashboards platform-overview,wallet-transactions,game-sessions,compliance
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'

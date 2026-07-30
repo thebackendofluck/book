@@ -1,0 +1,547 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "datasource": "Prometheus",
+        "enable": true,
+        "expr": "ALERTS{alertstate=\"firing\",severity=~\"critical|high\"}",
+        "name": "Active Alerts",
+        "iconColor": "red",
+        "step": "60s"
+      },
+      {
+        "datasource": "Prometheus",
+        "enable": true,
+        "expr": "changes(kube_deployment_status_observed_generation{namespace=\"casino-platform\"}[5m]) > 0",
+        "name": "Deployments",
+        "iconColor": "blue",
+        "step": "60s"
+      }
+    ]
+  },
+  "description": "Casino Platform Performance Dashboard — API, Games, Payments, Database, Cache, WebSocket",
+  "editable": true,
+  "gnetId": null,
+  "graphTooltip": 1,
+  "id": null,
+  "iteration": 1710000000000,
+  "links": [],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "title": "Overview — Key Performance Indicators",
+      "type": "row"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 95 },
+              { "color": "green", "value": 99 }
+            ]
+          },
+          "unit": "percentunit",
+          "decimals": 3
+        }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
+      "id": 1,
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "orientation": "auto",
+        "textMode": "value_and_name"
+      },
+      "targets": [
+        {
+          "expr": "casino:api:availability_5m",
+          "legendFormat": "API Availability"
+        }
+      ],
+      "title": "API Availability",
+      "type": "stat"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 200 },
+              { "color": "red", "value": 500 }
+            ]
+          },
+          "unit": "ms",
+          "decimals": 1
+        }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
+      "id": 2,
+      "targets": [
+        {
+          "expr": "casino:api:latency_p95 * 1000",
+          "legendFormat": "API P95"
+        }
+      ],
+      "title": "API P95 Latency",
+      "type": "stat"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "decimals": 0
+        }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
+      "id": 3,
+      "targets": [
+        {
+          "expr": "sum(casino:api:request_rate_5m)",
+          "legendFormat": "Requests/sec"
+        }
+      ],
+      "title": "API Request Rate",
+      "type": "stat"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0
+        }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
+      "id": 4,
+      "targets": [
+        {
+          "expr": "casino:business:active_players",
+          "legendFormat": "Active Players"
+        }
+      ],
+      "title": "Active Players",
+      "type": "stat"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "decimals": 1
+        }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
+      "id": 5,
+      "targets": [
+        {
+          "expr": "casino:business:bets_per_second",
+          "legendFormat": "Bets/sec"
+        }
+      ],
+      "title": "Bets Per Second",
+      "type": "stat"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 85 },
+              { "color": "green", "value": 95 }
+            ]
+          },
+          "unit": "percentunit",
+          "decimals": 1
+        }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 1 },
+      "id": 6,
+      "targets": [
+        {
+          "expr": "casino:cache:hit_rate",
+          "legendFormat": "Cache Hit Rate"
+        }
+      ],
+      "title": "Cache Hit Rate",
+      "type": "stat"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "id": 101,
+      "title": "API Gateway Performance",
+      "type": "row"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10 } }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "id": 10,
+      "targets": [
+        { "expr": "casino:api:latency_p50", "legendFormat": "P50 {{ path }}" },
+        { "expr": "casino:api:latency_p95", "legendFormat": "P95 {{ path }}" },
+        { "expr": "casino:api:latency_p99", "legendFormat": "P99 {{ path }}" }
+      ],
+      "title": "API Response Time (P50/P95/P99)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": { "unit": "ops", "custom": { "drawStyle": "bars", "fillOpacity": 80 } }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "id": 11,
+      "targets": [
+        { "expr": "sum(casino:api:request_rate_5m) by (path)", "legendFormat": "{{ path }}" }
+      ],
+      "title": "Request Rate by Endpoint",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": { "unit": "percentunit", "custom": { "drawStyle": "line", "fillOpacity": 20 } }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+      "id": 12,
+      "targets": [
+        { "expr": "casino:api:error_rate_5m", "legendFormat": "{{ method }} {{ path }}" }
+      ],
+      "title": "API Error Rate by Endpoint",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": { "unit": "percentunit" }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
+      "id": 13,
+      "targets": [
+        { "expr": "casino:api:slo_error_budget_1h", "legendFormat": "1h window" },
+        { "expr": "casino:api:slo_error_budget_6h", "legendFormat": "6h window" }
+      ],
+      "title": "SLO Error Budget Remaining",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 22 },
+      "id": 102,
+      "title": "Game Server Performance",
+      "type": "row"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10 } }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 23 },
+      "id": 20,
+      "targets": [
+        { "expr": "casino:game:round_duration_p95", "legendFormat": "P95 {{ game_type }}" },
+        { "expr": "casino:game:round_duration_p99", "legendFormat": "P99 {{ game_type }}" }
+      ],
+      "title": "Game Round Duration (P95/P99)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": { "unit": "ops" }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 23 },
+      "id": 21,
+      "targets": [
+        { "expr": "casino:game:rounds_per_second", "legendFormat": "{{ game_type }}" }
+      ],
+      "title": "Game Rounds Per Second",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": { "unit": "s" }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 31 },
+      "id": 22,
+      "targets": [
+        { "expr": "casino:rng:latency_p95", "legendFormat": "RNG P95" },
+        { "expr": "casino:rng:latency_p99", "legendFormat": "RNG P99" }
+      ],
+      "title": "RNG Service Latency",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": { "unit": "short" }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 31 },
+      "id": 23,
+      "targets": [
+        { "expr": "casino:game:active_sessions", "legendFormat": "{{ game_type }}" }
+      ],
+      "title": "Active Game Sessions by Type",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 39 },
+      "id": 103,
+      "title": "Payment & Wallet Performance",
+      "type": "row"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": { "unit": "s" }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 40 },
+      "id": 30,
+      "targets": [
+        { "expr": "casino:payment:deposit_duration_p95", "legendFormat": "Deposit P95 {{ provider }}" },
+        { "expr": "casino:payment:withdrawal_duration_p95", "legendFormat": "Withdrawal P95 {{ provider }}" }
+      ],
+      "title": "Payment Processing Time P95 by Provider",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": { "unit": "percentunit" }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 40 },
+      "id": 31,
+      "targets": [
+        { "expr": "casino:payment:success_rate_5m", "legendFormat": "{{ type }} - {{ provider }}" }
+      ],
+      "title": "Payment Success Rate by Provider",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 48 },
+      "id": 104,
+      "title": "Database Performance",
+      "type": "row"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": { "unit": "s" }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 49 },
+      "id": 40,
+      "targets": [
+        { "expr": "casino:db:query_duration_p95", "legendFormat": "P95 {{ datname }}" }
+      ],
+      "title": "Query Duration P95",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": { "unit": "short" }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 49 },
+      "id": 41,
+      "targets": [
+        { "expr": "casino:db:tps", "legendFormat": "TPS" },
+        { "expr": "casino:db:active_connections", "legendFormat": "Active Conns {{ datname }}" }
+      ],
+      "title": "Database TPS & Connections",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": { "unit": "percentunit" }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 49 },
+      "id": 42,
+      "targets": [
+        { "expr": "casino:db:cache_hit_ratio", "legendFormat": "Buffer Cache Hit Ratio" },
+        { "expr": "casino:db:connection_utilization", "legendFormat": "Connection Pool Usage" }
+      ],
+      "title": "Database Cache & Connection Utilization",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 57 },
+      "id": 105,
+      "title": "Cache (Redis) Performance",
+      "type": "row"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": { "unit": "percentunit" }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 58 },
+      "id": 50,
+      "targets": [
+        { "expr": "casino:cache:hit_rate", "legendFormat": "Hit Rate" }
+      ],
+      "title": "Cache Hit Rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": { "unit": "ops" }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 58 },
+      "id": 51,
+      "targets": [
+        { "expr": "casino:cache:ops_per_second", "legendFormat": "Ops/sec" },
+        { "expr": "casino:cache:eviction_rate", "legendFormat": "Evictions/sec" }
+      ],
+      "title": "Cache Operations & Evictions",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": { "unit": "percentunit" }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 58 },
+      "id": 52,
+      "targets": [
+        { "expr": "casino:cache:memory_usage_pct", "legendFormat": "Memory Usage %" }
+      ],
+      "title": "Cache Memory Usage",
+      "type": "gauge"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 66 },
+      "id": 106,
+      "title": "WebSocket Performance",
+      "type": "row"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": { "unit": "short" }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 67 },
+      "id": 60,
+      "targets": [
+        { "expr": "casino:ws:active_connections", "legendFormat": "Active Connections" }
+      ],
+      "title": "WebSocket Active Connections",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": { "unit": "s" }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 67 },
+      "id": 61,
+      "targets": [
+        { "expr": "casino:ws:message_latency_p95", "legendFormat": "P95 {{ message_type }}" }
+      ],
+      "title": "WebSocket Message Latency P95",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": { "unit": "ops" }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 67 },
+      "id": 62,
+      "targets": [
+        { "expr": "casino:ws:messages_per_second", "legendFormat": "{{ direction }}" }
+      ],
+      "title": "WebSocket Message Throughput",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 75 },
+      "id": 107,
+      "title": "Business KPIs",
+      "type": "row"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": { "unit": "currencyEUR" }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 76 },
+      "id": 70,
+      "targets": [
+        { "expr": "casino:business:ggr_rate_per_minute / 100", "legendFormat": "GGR/min" }
+      ],
+      "title": "Gross Gaming Revenue Rate (EUR/min)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": { "unit": "currencyEUR" }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 76 },
+      "id": 71,
+      "targets": [
+        { "expr": "casino:business:avg_bet_size_cents / 100", "legendFormat": "Avg Bet Size" },
+        { "expr": "casino:business:deposits_per_minute", "legendFormat": "Deposits/min" }
+      ],
+      "title": "Average Bet Size & Deposit Rate",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["casino", "performance", "slo"],
+  "templating": {
+    "list": [
+      {
+        "current": { "text": "All", "value": "$__all" },
+        "datasource": "Prometheus",
+        "definition": "label_values(casino:api:request_rate_5m, path)",
+        "name": "api_endpoint",
+        "type": "query",
+        "includeAll": true,
+        "multi": true
+      },
+      {
+        "current": { "text": "All", "value": "$__all" },
+        "datasource": "Prometheus",
+        "definition": "label_values(casino:game:rounds_per_second, game_type)",
+        "name": "game_type",
+        "type": "query",
+        "includeAll": true,
+        "multi": true
+      }
+    ]
+  },
+  "time": { "from": "now-6h", "to": "now" },
+  "timepicker": {
+    "refresh_intervals": ["10s", "30s", "1m", "5m"],
+    "time_options": ["5m", "15m", "1h", "6h", "12h", "24h", "7d"]
+  },
+  "timezone": "browser",
+  "title": "Casino Platform Performance",
+  "uid": "casino-perf-overview",
+  "version": 1
+}

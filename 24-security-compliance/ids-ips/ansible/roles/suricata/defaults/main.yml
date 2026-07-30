@@ -1,0 +1,160 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 24, Security and Compliance.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# roles/suricata/defaults/main.yml
+# Safe default values for all role variables.
+# These are intentionally conservative — sized for a small operator
+# (8 GB RAM, 4-core server) running IDS mode.
+# Override in group_vars/suricata_sensors.yml or per-host inventory.
+
+# ── Version ───────────────────────────────────────────────────────────────────
+suricata_version: "7.0.7"
+suricata_mode: "ids"
+suricata_failopen: true
+
+# ── Directories ───────────────────────────────────────────────────────────────
+suricata_config_dir: "/etc/suricata"
+suricata_rules_dir: "/etc/suricata/rules"
+suricata_log_dir: "/var/log/suricata"
+suricata_lib_dir: "/var/lib/suricata"
+suricata_run_dir: "/var/run/suricata"
+
+# ── System user ───────────────────────────────────────────────────────────────
+suricata_user: "suricata"
+suricata_group: "suricata"
+
+# ── Network ───────────────────────────────────────────────────────────────────
+suricata_home_net: "[10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16]"
+suricata_external_net: "!$HOME_NET"
+suricata_http_ports: "80"
+suricata_https_ports: "443"
+suricata_ssh_ports: "22"
+suricata_dns_ports: "53"
+suricata_smtp_ports: "25, 465, 587"
+suricata_interfaces:
+  - eth0
+
+# ── Memory (small-operator defaults: 8 GB server) ────────────────────────────
+stream_memcap: "256mb"
+flow_memcap: "128mb"
+defrag_memcap: "64mb"
+flow_hash_size: 65536
+flow_prealloc: 10000
+flow_emergency_recovery: 30
+defrag_hash_size: 65536
+defrag_max_frags: 65535
+stream_checksum_validation: true
+stream_inline: "auto"
+
+# ── Threading ─────────────────────────────────────────────────────────────────
+worker_count: 2
+worker_cpu_set: "0-1"
+management_cpu: "0"
+receive_cpu: "0"
+
+# ── AF_PACKET ─────────────────────────────────────────────────────────────────
+afpacket_cluster_type: cluster_flow
+afpacket_ring_size: 65536
+afpacket_buffer_size: 67108864
+afpacket_use_mmap: true
+afpacket_tpacket_v3: true
+afpacket_copy_mode: "ips"
+
+# ── Rules ─────────────────────────────────────────────────────────────────────
+et_open_enabled: true
+et_pro_enabled: false
+et_pro_oinkcode: ""
+extra_rule_sources: []
+suricata_custom_rule_files:
+  - igaming-custom.rules
+disabled_rule_categories:
+  - "et/info"
+  - "et/p2p"
+
+# ── Detection ─────────────────────────────────────────────────────────────────
+suricata_detection_profile: "medium"
+suricata_mpm_algo: "auto"
+
+# ── App-layer ─────────────────────────────────────────────────────────────────
+suricata_app_layer_http: true
+suricata_app_layer_http2: true
+suricata_app_layer_tls: true
+suricata_app_layer_dns: true
+suricata_app_layer_ssh: true
+suricata_app_layer_smtp: true
+suricata_app_layer_ftp: true
+suricata_app_layer_websocket: true
+
+# ── EVE JSON ──────────────────────────────────────────────────────────────────
+suricata_community_id: true
+suricata_community_id_seed: 0
+suricata_eve_alerts: true
+suricata_eve_anomaly: true
+suricata_eve_dns: true
+suricata_eve_http: true
+suricata_eve_tls: true
+suricata_eve_files: false
+suricata_eve_smtp: true
+suricata_eve_flow: true
+suricata_eve_netflow: false
+suricata_eve_payload: false
+suricata_eve_payload_printable: false
+suricata_eve_payload_buffer_size: "4kb"
+suricata_eve_http_extended: true
+suricata_tls_ja3: true
+suricata_tls_ja4: true
+
+# ── Monitoring ────────────────────────────────────────────────────────────────
+prometheus_exporter_enabled: true
+prometheus_exporter_port: 9917
+health_check_interval_minutes: 5
+kernel_drops_warn_pct: 0.01
+kernel_drops_crit_pct: 0.05
+flow_memcap_alert_pct: 80
+stream_memcap_alert_pct: 80
+defrag_memcap_alert_pct: 80
+
+# ── Logging ───────────────────────────────────────────────────────────────────
+log_retention_days: 30
+suricata_log_level: "notice"
+logrotate_frequency: hourly
+logrotate_compress: true
+logrotate_missingok: true
+logrotate_sharedscripts: true
+
+# ── Syslog forwarding ─────────────────────────────────────────────────────────
+syslog_server: "syslog.igaming.internal"
+syslog_port: 514
+syslog_protocol: udp
+logstash_host: "logstash.igaming.internal"
+logstash_port: 5044
+
+# ── Alerting ──────────────────────────────────────────────────────────────────
+slack_webhook_url: ""
+slack_channel: "#security-alerts"
+slack_username: "Suricata-Bot"
+pagerduty_integration_key: ""
+
+# ── Hugepages (disabled by default; enable for DPDK/high-throughput) ─────────
+hugepages_enabled: false
+hugepages_count: 1024           # 2 MB pages = 2 GB reserved
+
+# ── NIC tuning ────────────────────────────────────────────────────────────────
+nic_ring_rx: 4096
+nic_ring_tx: 4096
+nic_coalescing_rx_usecs: 50
+
+# ── CPU governor ──────────────────────────────────────────────────────────────
+cpu_governor: "performance"
+disable_cstates: true
+
+# ── NUMA ──────────────────────────────────────────────────────────────────────
+numa_node: 0

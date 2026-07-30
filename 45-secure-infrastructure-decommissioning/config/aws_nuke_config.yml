@@ -1,0 +1,327 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 45, Secure Infrastructure Decommissioning.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# AWS Nuke Configuration with HSM Awareness
+# This configuration ensures complete destruction while preserving HSM-related resources initially
+
+accounts:
+  "AWS_ACCOUNT_ID":
+    # dev account
+    presets:
+    - "destructive"
+    filters:
+      # Preserve YubiHSM-related resources initially (will be destroyed by dedicated module)
+      KMSKey:
+      - property: "Description"
+        type: "contains"
+        value: "YubiHSM"
+        invert: true
+      CloudHSMCluster:
+      - property: "State"
+        type: "exact"
+        value: "ACTIVE"
+        invert: true
+
+  "AWS_ACCOUNT_ID":
+    # prod account
+    presets:
+    - "destructive"
+    filters:
+      KMSKey:
+      - property: "Description"
+        type: "contains"
+        value: "YubiHSM"
+        invert: true
+      CloudHSMCluster:
+      - property: "State"
+        type: "exact"
+        value: "ACTIVE"
+        invert: true
+
+  "AWS_ACCOUNT_ID":
+    # shared account
+    presets:
+    - "destructive"
+    filters:
+      KMSKey:
+      - property: "Description"
+        type: "contains"
+        value: "YubiHSM"
+        invert: true
+      CloudHSMCluster:
+      - property: "State"
+        type: "exact"
+        value: "ACTIVE"
+        invert: true
+
+  "AWS_ACCOUNT_ID":
+    # security account
+    presets:
+    - "destructive"
+    filters:
+      # Security account may have HSM resources - preserve initially
+      KMSKey:
+      - property: "Description"
+        type: "contains"
+        value: "YubiHSM"
+        invert: true
+      CloudHSMCluster:
+      - property: "State"
+        type: "exact"
+        value: "ACTIVE"
+        invert: true
+
+  "AWS_ACCOUNT_ID":
+    # logs account
+    presets:
+    - "destructive"
+    filters:
+      # Logs account typically doesn't have HSM resources
+      KMSKey:
+      - property: "Description"
+        type: "contains"
+        value: "YubiHSM"
+        invert: true
+
+  "AWS_ACCOUNT_ID":
+    # stage account
+    presets:
+    - "destructive"
+    filters:
+      KMSKey:
+      - property: "Description"
+        type: "contains"
+        value: "YubiHSM"
+        invert: true
+      CloudHSMCluster:
+      - property: "State"
+        type: "exact"
+        value: "ACTIVE"
+        invert: true
+
+# Resource types to target for destruction
+resource-types:
+  targets:
+  # Compute Resources
+  - AWS::EC2::Instance
+  - AWS::EC2::Volume
+  - AWS::EC2::Snapshot
+  - AWS::EC2::AMI
+  - AWS::EC2::LaunchTemplate
+  - AWS::EC2::SecurityGroup
+  - AWS::EC2::NetworkACL
+  - AWS::EC2::Subnet
+  - AWS::EC2::VPC
+  - AWS::EC2::InternetGateway
+  - AWS::EC2::NatGateway
+  - AWS::EC2::RouteTable
+  - AWS::EC2::NetworkInterface
+  - AWS::EC2::EIP
+  - AWS::EC2::KeyPair
+  - AWS::EC2::PlacementGroup
+
+  # Load Balancers
+  - AWS::ELBv2::LoadBalancer
+  - AWS::ELBv2::TargetGroup
+  - AWS::ELB::LoadBalancer
+
+  # Auto Scaling
+  - AWS::AutoScaling::AutoScalingGroup
+  - AWS::AutoScaling::LaunchConfiguration
+
+  # Lambda
+  - AWS::Lambda::Function
+  - AWS::Lambda::Layer
+  - AWS::Lambda::EventSourceMapping
+
+  # API Gateway
+  - AWS::ApiGateway::RestApi
+  - AWS::ApiGateway::DomainName
+  - AWS::ApiGateway::BasePathMapping
+  - AWS::ApiGateway::UsagePlan
+
+  # DynamoDB
+  - AWS::DynamoDB::Table
+
+  # RDS
+  - AWS::RDS::DBInstance
+  - AWS::RDS::DBCluster
+  - AWS::RDS::DBSnapshot
+  - AWS::RDS::DBClusterSnapshot
+  - AWS::RDS::DBSubnetGroup
+  - AWS::RDS::OptionGroup
+  - AWS::RDS::ParameterGroup
+  - AWS::RDS::EventSubscription
+
+  # ElastiCache
+  - AWS::ElastiCache::Cluster
+  - AWS::ElastiCache::SubnetGroup
+  - AWS::ElastiCache::Snapshot
+
+  # EFS
+  - AWS::EFS::FileSystem
+
+  # S3 (with caution - may contain backups)
+  - AWS::S3::Bucket
+
+  # CloudFormation
+  - AWS::CloudFormation::Stack
+
+  # CloudWatch
+  - AWS::CloudWatch::Alarm
+  - AWS::CloudWatch::Dashboard
+
+  # IAM (selective - preserve some roles initially)
+  - AWS::IAM::User
+  - AWS::IAM::Group
+  - AWS::IAM::Role
+  - AWS::IAM::Policy
+  - AWS::IAM::InstanceProfile
+
+  # Route53 (domains may need preservation)
+  - AWS::Route53::HostedZone
+  - AWS::Route53::RecordSet
+
+  # Certificate Manager
+  - AWS::ACM::Certificate
+
+  # Secrets Manager
+  - AWS::SecretsManager::Secret
+
+  # Parameter Store (SSM)
+  - AWS::SSM::Parameter
+
+  # KMS Keys (filtered above to preserve HSM-related)
+  - AWS::KMS::Key
+
+  # CloudHSM (filtered above)
+  - AWS::CloudHSM::Cluster
+  - AWS::CloudHSM::HSM
+
+  # ECS/Fargate
+  - AWS::ECS::Cluster
+  - AWS::ECS::Service
+  - AWS::ECS::TaskDefinition
+
+  # EKS
+  - AWS::EKS::Cluster
+  - AWS::EKS::Nodegroup
+
+  # CloudTrail
+  - AWS::CloudTrail::Trail
+
+  # Config
+  - AWS::Config::ConfigurationRecorder
+  - AWS::Config::DeliveryChannel
+
+  # GuardDuty
+  - AWS::GuardDuty::Detector
+
+  # VPC Flow Logs
+  - AWS::EC2::FlowLog
+
+# Presets define common filter sets
+presets:
+  destructive:
+    filters:
+      # General destruction filters
+      EC2Instance:
+      - property: "State.Name"
+        type: "exact"
+        value: "terminated"
+        invert: true
+      EC2Volume:
+      - property: "State"
+        type: "exact"
+        value: "available"
+      EBSVolume:
+      - property: "State"
+        type: "exact"
+        value: "available"
+
+      # Preserve critical infrastructure initially
+      EC2VPC:
+      - property: "IsDefault"
+        type: "exact"
+        value: "true"
+        invert: true
+
+      # IAM filters - be careful with these
+      IAMRole:
+      - property: "RoleName"
+        type: "regex"
+        value: "^AWS.*"
+        invert: true # Don't delete AWS managed roles
+
+      # S3 filters - be very careful
+      S3Bucket:
+      - property: "Name"
+        type: "regex"
+        value: "^.*terraform.*state.*$"
+        invert: true # Don't delete Terraform state buckets initially
+
+      # Route53 filters
+      Route53HostedZone:
+      - property: "Name"
+        type: "regex"
+        value: "^.*acmetocasino.*$"
+        invert: true # Preserve company domains initially
+
+  security-destructive:
+    filters:
+      # Security account specific filters
+      IAMRole:
+      - property: "RoleName"
+        type: "regex"
+        value: "^AWS.*"
+        invert: true
+
+# Account-specific overrides
+account-overrides:
+  # Security account may need special handling
+  "AWS_ACCOUNT_ID":
+    presets:
+    - "security-destructive"
+
+  # Logs account - preserve CloudTrail initially
+  "AWS_ACCOUNT_ID":
+    filters:
+      CloudTrail:
+      - property: "Name"
+        type: "regex"
+        value: "^.*acmetocasino.*$"
+        invert: true
+
+# Global settings
+settings:
+  # Maximum number of retries for failed deletions
+  MaxRetries: 3
+
+  # Delay between retries in seconds
+  RetryDelay: 30
+
+  # Dry run mode (set to false for actual destruction)
+  DryRun: true
+
+  # Log level
+  LogLevel: "info"
+
+  # Regions to target (empty means all regions)
+  Regions: []
+
+  # Account aliases for better logging
+  AccountAliases:
+    "AWS_ACCOUNT_ID": "dev"
+    "AWS_ACCOUNT_ID": "prod"
+    "AWS_ACCOUNT_ID": "shared"
+    "AWS_ACCOUNT_ID": "security"
+    "AWS_ACCOUNT_ID": "logs"
+    "AWS_ACCOUNT_ID": "stage"

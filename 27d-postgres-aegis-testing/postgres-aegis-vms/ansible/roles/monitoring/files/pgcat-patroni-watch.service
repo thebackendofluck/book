@@ -1,0 +1,16 @@
+[Unit]
+Description=PgCat Patroni failover watcher — reloads PgCat on leader changes
+After=pgcat.service
+Requires=pgcat.service
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/local/sbin/pgcat-patroni-watch.sh
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

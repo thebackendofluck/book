@@ -1,0 +1,30 @@
+{
+  "AlarmName": "openbao-nlb-healthy-hosts-below-quorum",
+  "AlarmDescription": "OpenBao NLB healthy host count is below the minimum quorum (3 nodes required for Raft). This indicates CloudHSM auto-unseal may be failing or OpenBao nodes are unhealthy. Immediate investigation required — key management service degraded.",
+  "Namespace": "AWS/NetworkELB",
+  "MetricName": "HealthyHostCount",
+  "Dimensions": [
+    {
+      "Name": "LoadBalancer",
+      "Value": "${NLB_ARN_SUFFIX}"
+    },
+    {
+      "Name": "TargetGroup",
+      "Value": "${TG_ARN_SUFFIX}"
+    }
+  ],
+  "Statistic": "Average",
+  "Period": 60,
+  "EvaluationPeriods": 2,
+  "DatapointsToAlarm": 2,
+  "Threshold": 3.0,
+  "ComparisonOperator": "LessThanThreshold",
+  "TreatMissingData": "breaching",
+  "AlarmActions": ["${SNS_TOPIC_ARN}"],
+  "OKActions": ["${SNS_TOPIC_ARN}"],
+  "Tags": [
+    {"Key": "Environment", "Value": "${ENV}"},
+    {"Key": "Compliance", "Value": "pci-dss-4.0.1"},
+    {"Key": "Severity", "Value": "critical"}
+  ]
+}

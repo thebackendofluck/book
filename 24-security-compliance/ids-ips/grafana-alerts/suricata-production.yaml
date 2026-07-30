@@ -1,0 +1,218 @@
+# Companion code for "The Backend of Luck" - Chapter 24, Security and Compliance.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# suricata-production.yaml
+#
+# Prometheus alerting rules for Suricata IDS in an iGaming production environment.
+# Load this file into Prometheus (or Grafana Managed Alerts) via the rule_files
+# directive in prometheus.yml or by importing into the Grafana Alerting UI.
+#
+# Metrics are produced by suricata-health-check.sh writing to the
+# node_exporter textfile directory (/var/lib/node_exporter/suricata.prom).
+# Additional metrics may come from a Prometheus scrape of the Suricata
+# stats socket or a custom exporter.
+#
+# Runbook base URL: https://wiki.internal/runbooks/ids-ips/
+
+groups:
+  - name: suricata.production
+    interval: 60s   # evaluate every 60 s
+    rules:
+
+      # -----------------------------------------------------------------------
+      # SuricataKernelDropsExceedThreshold
+      # Fires when the kernel-level packet drop percentage exceeds 0.01 % for
+      # more than 2 minutes.  This indicates the capture interface is falling
+      # behind traffic volume and rules may be evaluated against an incomplete
+      # packet stream.
+      # -----------------------------------------------------------------------
+      - alert: SuricataKernelDropsExceedThreshold
+        expr: suricata_kernel_drop_pct > 0.01
+        for: 2m
+        labels:
+          severity: critical
+          team: security-ops
+          environment: "{{ $labels.environment }}"
+          service: suricata-ids
+        annotations:
+          summary: >-
+            Suricata kernel drops exceed 0.01 % on {{ $labels.instance }}
+          description: >-
+            Suricata on {{ $labels.instance }} is dropping
+            {{ printf "%.4f" $value }}% of packets at the kernel capture
+            interface.  Drops above 0.01 % indicate the inspection pipeline
+            cannot keep pace with traffic; IDS visibility is degraded.
+            Sustained drops above 0.1 % are a regulatory compliance risk.
+          runbook: https://wiki.internal/runbooks/ids-ips/suricata-kernel-drops
+          dashboard: https://grafana.internal/d/suricata-overview
+
+      # -----------------------------------------------------------------------
+      # SuricataFlowMemcapException
+      # Any non-zero value for flow memory cap exceptions is an immediate
+      # critical condition.  Suricata will start dropping flow tracking state,
+      # causing missed detections for multi-packet attacks.
+      # -----------------------------------------------------------------------
+      - alert: SuricataFlowMemcapException
+        expr: suricata_flow_memcap_total > 0
+        for: 0m
+        labels:
+          severity: critical
+          team: security-ops
+          environment: "{{ $labels.environment }}"
+          service: suricata-ids
+        annotations:
+          summary: >-
+            Suricata flow memory cap exceeded on {{ $labels.instance }}
+          description: >-
+            Suricata on {{ $labels.instance }} has recorded
+            {{ $value }} flow.memcap exception(s).  The flow table memory
+            limit has been reached; Suricata will drop new flow tracking
+            entries, creating blind spots for stateful detection rules
+            (payment fraud, AML, session abuse).
+            Increase flow-memcap in suricata.yaml or scale the host.
+          runbook: https://wiki.internal/runbooks/ids-ips/suricata-memcap
+          dashboard: https://grafana.internal/d/suricata-overview
+
+      # -----------------------------------------------------------------------
+      # SuricataStreamMemcapException
+      # Any non-zero value for TCP stream reassembly memory cap exceptions is
+      # critical.  Missed stream reassembly causes HTTP rule misses.
+      # -----------------------------------------------------------------------
+      - alert: SuricataStreamMemcapException
+        expr: suricata_stream_memcap_total > 0
+        for: 0m
+        labels:
+          severity: critical
+          team: security-ops
+          environment: "{{ $labels.environment }}"
+          service: suricata-ids
+        annotations:
+          summary: >-
+            Suricata stream reassembly memory cap exceeded on {{ $labels.instance }}
+          description: >-
+            Suricata on {{ $labels.instance }} has recorded
+            {{ $value }} stream.memcap exception(s).  TCP stream reassembly
+            is being truncated due to memory pressure.  HTTP content matching
+            rules for API abuse, payment fraud (SID 9000001-9000099), and
+            AML detection (SID 9000300-9000399) may be producing false
+            negatives.  Increase stream.memcap or reduce tracked connections.
+          runbook: https://wiki.internal/runbooks/ids-ips/suricata-memcap
+          dashboard: https://grafana.internal/d/suricata-overview
+
+      # -----------------------------------------------------------------------
+      # SuricataAlertRateSpike
+      # Fires when the 5-minute alert rate is more than 3× the 1-hour baseline.
+      # Indicates either an active attack campaign or a noisy rule regression.
+      # -----------------------------------------------------------------------
+      - alert: SuricataAlertRateSpike
+        expr: >-
+          (
+            rate(suricata_alerts_total[5m])
+            /
+            rate(suricata_alerts_total[1h])
+          ) > 3
+        for: 5m
+        labels:
+          severity: warning
+          team: security-ops
+          environment: "{{ $labels.environment }}"
+          service: suricata-ids
+        annotations:
+          summary: >-
+            Suricata alert rate is {{ printf "%.1f" $value }}× baseline on
+            {{ $labels.instance }}
+          description: >-
+            The 5-minute Suricata alert rate on {{ $labels.instance }} is
+            {{ printf "%.1f" $value }}× above the 1-hour rolling baseline.
+            This pattern may indicate an active attack campaign, a DDoS
+            precursor, or a recently deployed rule generating false positives.
+            Investigate the top-firing SIDs in Kibana or Grafana before
+            escalating.
+          runbook: https://wiki.internal/runbooks/ids-ips/suricata-alert-rate-spike
+          dashboard: https://grafana.internal/d/suricata-alerts
+
+      # -----------------------------------------------------------------------
+      # SuricataCPUHighUtilization
+      # Fires when Suricata's reported CPU utilisation exceeds 90 % for 5 min.
+      # High CPU risks packet drops and delayed detection.
+      # -----------------------------------------------------------------------
+      - alert: SuricataCPUHighUtilization
+        expr: suricata_cpu_utilization_pct > 90
+        for: 5m
+        labels:
+          severity: warning
+          team: security-ops
+          environment: "{{ $labels.environment }}"
+          service: suricata-ids
+        annotations:
+          summary: >-
+            Suricata CPU utilisation at {{ printf "%.1f" $value }}% on
+            {{ $labels.instance }}
+          description: >-
+            Suricata on {{ $labels.instance }} has sustained CPU utilisation
+            above 90 % for 5 minutes (current: {{ printf "%.1f" $value }}%).
+            Sustained high CPU leads to kernel packet drops and increases
+            detection latency.  Consider horizontal scaling, rule tuning, or
+            enabling af-packet workers.
+          runbook: https://wiki.internal/runbooks/ids-ips/suricata-high-cpu
+          dashboard: https://grafana.internal/d/suricata-overview
+
+      # -----------------------------------------------------------------------
+      # CARPFailoverDetected
+      # Fires on any CARP/VRRP state transition.  In a redundant IDS cluster,
+      # an unexpected failover may leave a gap in coverage until the standby
+      # engine fully resumes.
+      # -----------------------------------------------------------------------
+      - alert: CARPFailoverDetected
+        expr: changes(suricata_carp_state[5m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+          team: security-ops
+          environment: "{{ $labels.environment }}"
+          service: suricata-ids
+        annotations:
+          summary: >-
+            CARP/VRRP failover detected on {{ $labels.instance }}
+          description: >-
+            A CARP or VRRP state transition was detected on
+            {{ $labels.instance }} within the last 5 minutes.
+            The standby IDS node may be processing traffic that the primary
+            was handling.  Verify that the newly active node has full
+            rule coverage and that no alerts were missed during the transition
+            window.
+          runbook: https://wiki.internal/runbooks/ids-ips/carp-failover
+          dashboard: https://grafana.internal/d/suricata-ha
+
+      # -----------------------------------------------------------------------
+      # SuricataRuleReloadFailed
+      # Fires immediately when suricata-rule-update.sh records a failed reload.
+      # A failed reload means the engine is running stale rules.
+      # -----------------------------------------------------------------------
+      - alert: SuricataRuleReloadFailed
+        expr: suricata_rule_reload_success == 0
+        for: 0m
+        labels:
+          severity: critical
+          team: security-ops
+          environment: "{{ $labels.environment }}"
+          service: suricata-ids
+        annotations:
+          summary: >-
+            Suricata rule reload failed on {{ $labels.instance }}
+          description: >-
+            The last Suricata rule update/reload on {{ $labels.instance }}
+            did not complete successfully (suricata_rule_reload_success=0).
+            The engine is running the previous rule set and may be missing
+            newly published Emerging Threats signatures.  Check
+            /var/log/suricata/rule-update.log for validation errors and
+            re-run suricata-rule-update.sh manually after diagnosis.
+          runbook: https://wiki.internal/runbooks/ids-ips/suricata-rule-reload-failed
+          dashboard: https://grafana.internal/d/suricata-ops

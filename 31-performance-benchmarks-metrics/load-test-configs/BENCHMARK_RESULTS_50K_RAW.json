@@ -1,0 +1,58 @@
+[
+  {
+    "users": 15000,
+    "avg_response_time": 143,
+    "avg_error_rate": 0.0273497606301385,
+    "success": 2942548,
+    "status": "ready"
+  },
+  {
+    "users": 20000,
+    "avg_response_time": 209,
+    "avg_error_rate": 0.0104403214739829,
+    "success": 2729516,
+    "status": "ready"
+  },
+  {
+    "users": 25000,
+    "avg_response_time": 302,
+    "avg_error_rate": 0.0567084670037977,
+    "success": 2349286,
+    "status": "ready"
+  },
+  {
+    "users": 30000,
+    "avg_response_time": 384,
+    "avg_error_rate": 0.148165241218448,
+    "success": 2241465,
+    "status": "ready"
+  },
+  {
+    "users": 35000,
+    "avg_response_time": 440,
+    "avg_error_rate": 0.0653300912969675,
+    "success": 2178276,
+    "status": "ready"
+  },
+  {
+    "users": 40000,
+    "avg_response_time": 523,
+    "avg_error_rate": 0.157918070450439,
+    "success": 2051618,
+    "status": "ready"
+  },
+  {
+    "users": 45000,
+    "avg_response_time": 600,
+    "avg_error_rate": 0.312881097362278,
+    "success": 1911980,
+    "status": "ready"
+  },
+  {
+    "users": 50000,
+    "avg_response_time": 662,
+    "avg_error_rate": 0.608975730856482,
+    "success": 1857658,
+    "status": "ready"
+  }
+]

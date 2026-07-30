@@ -1,0 +1,248 @@
+# Companion code for "The Backend of Luck" - Chapter 18, Real-Time Clock Module Implementation.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# =============================================================================
+# RTC System - Local Development Stack
+# =============================================================================
+# docker-compose up -d
+# Access: http://localhost:8080/api/v1/timestamp
+# =============================================================================
+
+version: '3.8'
+
+services:
+  # ============================================
+  # RTC API Service
+  # ============================================
+  rtc-api:
+    build:
+      context: ../
+      dockerfile: docker/Dockerfile.rtc-api
+    container_name: rtc-api
+    ports:
+      - "8080:8080"   # HTTP API
+      - "50051:50051" # gRPC
+      - "9090:9090"   # Metrics
+      - "8081:8081"   # Health
+    environment:
+      - CONFIG_PATH=/etc/rtc/config.yaml
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=rtc_admin
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      - POSTGRES_DB=rtc_timestamps
+      - LOG_LEVEL=debug
+      - ENVIRONMENT=development
+    volumes:
+      - ./config:/etc/rtc:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - rtc-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8081/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+  # ============================================
+  # RTC Consensus Nodes (3 for quorum)
+  # ============================================
+  rtc-consensus-1:
+    build:
+      context: ../
+      dockerfile: docker/Dockerfile.rtc-consensus
+    container_name: rtc-consensus-1
+    environment:
+      - NODE_ID=1
+      - PEERS=rtc-consensus-2:7000,rtc-consensus-3:7000
+      - RAFT_PORT=7000
+    networks:
+      - rtc-network
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "7000"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  rtc-consensus-2:
+    build:
+      context: ../
+      dockerfile: docker/Dockerfile.rtc-consensus
+    container_name: rtc-consensus-2
+    environment:
+      - NODE_ID=2
+      - PEERS=rtc-consensus-1:7000,rtc-consensus-3:7000
+      - RAFT_PORT=7000
+    networks:
+      - rtc-network
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "7000"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  rtc-consensus-3:
+    build:
+      context: ../
+      dockerfile: docker/Dockerfile.rtc-consensus
+    container_name: rtc-consensus-3
+    environment:
+      - NODE_ID=3
+      - PEERS=rtc-consensus-1:7000,rtc-consensus-2:7000
+      - RAFT_PORT=7000
+    networks:
+      - rtc-network
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "7000"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ============================================
+  # Redis - Timestamp Caching
+  # ============================================
+  redis:
+    image: redis:8-alpine
+    container_name: rtc-redis
+    ports:
+      - "6379:6379"
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy volatile-lru
+      --tcp-keepalive 60
+      --timeout 0
+    volumes:
+      - redis-data:/data
+    networks:
+      - rtc-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+
+  # ============================================
+  # PostgreSQL - Timestamp Storage & Audit
+  # ============================================
+  postgres:
+    image: postgres:18-alpine
+    container_name: rtc-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=rtc_admin
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      - POSTGRES_DB=rtc_timestamps
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - rtc-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rtc_admin -d rtc_timestamps"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+
+  # ============================================
+  # Prometheus - Metrics Collection
+  # ============================================
+  prometheus:
+    image: prom/prometheus:v2.47.0
+    container_name: rtc-prometheus
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
+    networks:
+      - rtc-network
+
+  # ============================================
+  # Grafana - Visualization
+  # ============================================
+  grafana:
+    image: grafana/grafana:10.1.0
+    container_name: rtc-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:?GRAFANA_PASSWORD must be set}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+    networks:
+      - rtc-network
+
+  # ============================================
+  # Jaeger - Distributed Tracing
+  # ============================================
+  jaeger:
+    image: jaegertracing/all-in-one:1.50
+    container_name: rtc-jaeger
+    ports:
+      - "16686:16686" # UI
+      - "6831:6831/udp" # Thrift compact
+      - "14268:14268" # HTTP collector
+    environment:
+      - COLLECTOR_ZIPKIN_HOST_PORT=:9411
+    networks:
+      - rtc-network
+
+networks:
+  rtc-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.40.0.0/16
+
+volumes:
+  redis-data:
+  postgres-data:
+  prometheus-data:
+  grafana-data:

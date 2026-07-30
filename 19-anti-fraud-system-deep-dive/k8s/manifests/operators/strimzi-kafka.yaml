@@ -1,0 +1,119 @@
+# Companion code for "The Backend of Luck" - Chapter 19, Anti-Fraud System Deep Dive.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# -----------------------------------------------------------------------------
+# STRIMZI KAFKA CLUSTER (KRaft mode, single node)
+# -----------------------------------------------------------------------------
+# Requires: Strimzi Kafka Operator installed cluster-wide (via Helm) with
+#   --set watchAnyNamespace=true  (or --set watchNamespaces="{fraud-detection}")
+# Apply order:
+#   1) KafkaNodePool (KRaft combined role)
+#   2) Kafka CR referencing the pool
+# -----------------------------------------------------------------------------
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaNodePool
+metadata:
+  name: combined
+  namespace: fraud-detection
+  labels:
+    strimzi.io/cluster: fraud-kafka
+spec:
+  replicas: 1
+  roles:
+    - controller
+    - broker
+  storage:
+    type: persistent-claim
+    size: 20Gi
+    class: local-path
+    deleteClaim: false
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+    limits:
+      cpu: "2"
+      memory: "4Gi"
+---
+apiVersion: kafka.strimzi.io/v1
+kind: Kafka
+metadata:
+  name: fraud-kafka
+  namespace: fraud-detection
+  annotations:
+    strimzi.io/node-pools: enabled
+    strimzi.io/kraft: enabled
+spec:
+  kafka:
+    version: 3.7.0
+    metadataVersion: 3.7-IV4
+    listeners:
+      - name: plain
+        port: 9092
+        type: internal
+        tls: false
+      - name: tls
+        port: 9093
+        type: internal
+        tls: true
+    config:
+      offsets.topic.replication.factor: 1
+      transaction.state.log.replication.factor: 1
+      transaction.state.log.min.isr: 1
+      default.replication.factor: 1
+      min.insync.replicas: 1
+      auto.create.topics.enable: "true"
+    # The Kafka spec.kafka.storage block is required when the KafkaNodePool feature
+    # gate is enabled - Strimzi reads storage from the pool. Left empty on purpose.
+  entityOperator:
+    topicOperator: {}
+    userOperator: {}
+---
+# Pre-create the topics the fraud-detection services expect. Optional; auto.create
+# is enabled above, but explicit KafkaTopic gives us partition/replica control.
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: transactions
+  namespace: fraud-detection
+  labels:
+    strimzi.io/cluster: fraud-kafka
+spec:
+  partitions: 3
+  replicas: 1
+  config:
+    retention.ms: 604800000  # 7 days
+    segment.bytes: 1073741824
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: fraud-alerts
+  namespace: fraud-detection
+  labels:
+    strimzi.io/cluster: fraud-kafka
+spec:
+  partitions: 3
+  replicas: 1
+  config:
+    retention.ms: 2592000000  # 30 days
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: features
+  namespace: fraud-detection
+  labels:
+    strimzi.io/cluster: fraud-kafka
+spec:
+  partitions: 3
+  replicas: 1
+  config:
+    retention.ms: 604800000

@@ -1,0 +1,114 @@
+# /etc/suricata/rules/ip-reputation.rules
+#
+# IP Reputation Rules for iGaming Platform
+# These rules use the iprep keyword to match against the reputation database.
+#
+# Convention: SID range 9100000-9199999 reserved for iprep rules.
+# Alert threshold tuning: adjust score thresholds based on your environment.
+#
+# EVERY category referenced here must have a writer in iprep_update.py, and
+# the threshold must sit below the score that writer assigns. A rule whose
+# category is never written, or whose threshold no feed can reach, loads
+# cleanly and then never matches. Cross-check both when editing:
+#
+#   category         feed (score)                                threshold
+#   DataShield       datashield_recommended (75)                  > 50
+#                    datashield_aggressive (45)                    21-50
+#   CredStuffing     blocklist_de_bruteforce (70)                 > 30
+#   Botnet           feodo_c2 (95)                                > 40
+#   ProxyVPN         firehol_sslproxies, firehol_socks_proxy (65) > 40, > 60
+#   TorExit          tor_exit_nodes (60)                          > 1
+#   Scanner          blocklist_de_bots (70), firehol_dshield (75) > 60
+#   EmergingThreats  emerging_threats (80)                        > 70
+#   Spamhaus         spamhaus_drop (90)                           > 60
+#   FireHOL          firehol_level1 (85)                          > 70
+#   AbuseIPDB        abuseipdb_blacklist (70), key required        > 60
+#   Whitelist        whitelist.txt -> whitelist.list (100)        > 1
+#
+# Note on protocol selection: rules that use HTTP sticky buffers (http_method,
+# http_uri) must be declared on tcp, not ip. Suricata rejects an app-layer
+# keyword on proto ip, so those rules never enter the ruleset at all.
+
+# --- BLOCKLIST: Drop traffic from Data-Shield RECOMMENDED (score >= 50 = high confidence) ---
+drop ip $EXTERNAL_NET any -> $HTTP_SERVERS any (msg:"IPREP DataShield high-confidence block - inbound to HTTP"; iprep:src,DataShield,>,50; sid:9100001; rev:3; metadata: affected_product Web_Server, attack_target HTTP_Server, deployment Perimeter, tag Reputation; classtype:policy-violation;)
+
+drop ip $EXTERNAL_NET any -> $HTTP_SERVERS any (msg:"IPREP DataShield high-confidence block - inbound to HTTPS"; iprep:src,DataShield,>,50; flow:to_server; sid:9100002; rev:3; metadata: affected_product Web_Server, tag Reputation; classtype:policy-violation;)
+
+# Alert (not drop) for medium-confidence Data-Shield entries (score 20-50) - investigate
+# The band is reachable because datashield_aggressive scores 45: an address on
+# the critical list only lands here, while an address on both lists reaches 75
+# and is dropped by 9100001/9100002 instead.
+alert ip $EXTERNAL_NET any -> $HTTP_SERVERS any (msg:"IPREP DataShield medium-confidence flagged IP"; iprep:src,DataShield,>,20; iprep:src,DataShield,<,51; sid:9100003; rev:3; classtype:policy-violation;)
+
+# --- BLOCKLIST: Credential stuffing infrastructure ---
+# Populated from blocklist.de's bruteforcelogin list: addresses reported for
+# brute-force attempts against web login forms.
+drop tcp $EXTERNAL_NET any -> $HTTP_SERVERS [80,443,8080,8443] (msg:"IPREP Credential stuffing infrastructure - login attempt"; iprep:src,CredStuffing,>,30; content:"POST"; http_method; content:"/login"; http_uri; nocase; sid:9100010; rev:4; classtype:attempted-user;)
+
+drop tcp $EXTERNAL_NET any -> $HTTP_SERVERS [80,443,8080,8443] (msg:"IPREP Credential stuffing - account API"; iprep:src,CredStuffing,>,30; content:"POST"; http_method; content:"/api/auth"; http_uri; nocase; sid:9100011; rev:3; classtype:attempted-user;)
+
+drop tcp $EXTERNAL_NET any -> $HTTP_SERVERS [80,443,8080,8443] (msg:"IPREP Credential stuffing - player authentication"; iprep:src,CredStuffing,>,30; content:"POST"; http_method; content:"/player/signin"; http_uri; nocase; sid:9100012; rev:2; classtype:attempted-user;)
+
+# --- BLOCKLIST: Botnet C2 --- drop inbound and outbound ---
+# Populated from abuse.ch Feodo Tracker. This feed is small on purpose: it
+# lists only C2 servers currently observed as live, so a few dozen entries is
+# normal and an empty feed is possible. Add a commercial C2 feed if you have
+# one; the category and this rule need no change.
+drop ip any any <> $HOME_NET any (msg:"IPREP Botnet C2 communication detected"; iprep:any,Botnet,>,40; sid:9100020; rev:3; classtype:trojan-activity;)
+
+# --- BLOCKLIST: Commercial proxy/VPN - geo-evasion attempts ---
+# Populated from FireHOL's sslproxies and socks_proxy ipsets. These cover
+# open and commercial proxies, not consumer VPN egress, which no public feed
+# enumerates reliably. Treat the coverage as partial when writing policy.
+# Alert for now — requires policy decision per jurisdiction
+alert tcp $EXTERNAL_NET any -> $HTTP_SERVERS [80,443] (msg:"IPREP Commercial VPN/proxy - potential geo-evasion"; iprep:src,ProxyVPN,>,40; content:"GET"; http_method; sid:9100030; rev:2; classtype:policy-violation;)
+
+# Drop VPN traffic to payment endpoints - higher risk in regulated markets
+drop tcp $EXTERNAL_NET any -> $HTTP_SERVERS [443] (msg:"IPREP Commercial VPN/proxy blocked on payment endpoint"; iprep:src,ProxyVPN,>,60; content:"/api/payment"; http_uri; nocase; sid:9100031; rev:3; classtype:policy-violation;)
+drop tcp $EXTERNAL_NET any -> $HTTP_SERVERS [443] (msg:"IPREP Commercial VPN/proxy blocked on withdrawal endpoint"; iprep:src,ProxyVPN,>,60; content:"/api/withdrawal"; http_uri; nocase; sid:9100032; rev:2; classtype:policy-violation;)
+
+# --- BLOCKLIST: DDoS sources ---
+# NOT SHIPPED. There was a rule here on category DDoS (8) at sid 9100040.
+# Nothing populates that category and nothing can: volumetric attacks arrive
+# from spoofed source addresses and from reflectors that are themselves
+# victims, so a public "DDoS source" list is mostly collateral. The rule
+# loaded without complaint and matched nothing, which is worse than an
+# obvious gap. Volumetric defence belongs at the scrubbing layer.
+
+# --- BLOCKLIST: Tor exit nodes ---
+# Populated from the Tor Project's own bulk exit list, so coverage is
+# authoritative rather than inferred. Score is 60, hence the >1 threshold:
+# presence in the list is the signal, there is no confidence gradient.
+alert tcp $EXTERNAL_NET any -> $HTTP_SERVERS any (msg:"IPREP Tor exit node - registration/deposit flow monitoring"; iprep:src,TorExit,>,1; content:"POST"; http_method; content:"/register"; http_uri; nocase; sid:9100050; rev:3; classtype:policy-violation;)
+
+drop tcp $EXTERNAL_NET any -> $HTTP_SERVERS any (msg:"IPREP Tor exit node - blocked on payment flow"; iprep:src,TorExit,>,1; content:"POST"; http_method; content:"/api/payment"; http_uri; nocase; sid:9100051; rev:4; classtype:policy-violation;)
+
+# --- BLOCKLIST: Scanners --- drop scanning activity ---
+# Populated from blocklist.de's bots list and FireHOL's dshield ipset (the
+# DShield top attacking subnets).
+drop ip $EXTERNAL_NET any -> $HOME_NET any (msg:"IPREP Known scanner attempting access"; iprep:src,Scanner,>,60; sid:9100060; rev:2; classtype:network-scan;)
+
+# --- AGGREGATE: Multi-source high-confidence block ---
+# Suricata doesn't support boolean OR between iprep categories in one rule —
+# use separate rules. These only work because iprep_update.py emits one line
+# per (IP, category) pair: an address on several feeds keeps every category it
+# was seen in, instead of collapsing to the highest-scoring one.
+drop ip $EXTERNAL_NET any -> $HTTP_SERVERS any (msg:"IPREP Multi-source: EmergingThreats high confidence"; iprep:src,EmergingThreats,>,70; sid:9100070; rev:2; classtype:policy-violation;)
+drop ip $EXTERNAL_NET any -> $HTTP_SERVERS any (msg:"IPREP Multi-source: Spamhaus DROP match"; iprep:src,Spamhaus,>,60; sid:9100071; rev:2; classtype:policy-violation;)
+drop ip $EXTERNAL_NET any -> $HTTP_SERVERS any (msg:"IPREP Multi-source: FireHOL level 1 match"; iprep:src,FireHOL,>,70; sid:9100072; rev:1; classtype:policy-violation;)
+
+# --- BLOCKLIST: AbuseIPDB high-confidence reports ---
+# Inert unless ABUSEIPDB_API_KEY is set: the bulk blacklist endpoint requires
+# a key, so iprep_update.py disables that feed when none is configured and
+# nothing writes category 12. That is a deployment choice, not a broken rule.
+drop ip $EXTERNAL_NET any -> $HTTP_SERVERS any (msg:"IPREP AbuseIPDB high-confidence block"; iprep:src,AbuseIPDB,>,60; sid:9100080; rev:1; classtype:policy-violation;)
+
+# --- WHITELIST: Explicitly allow trusted sources even if they appear in a reputation list ---
+# iprep_update.py already drops whitelisted addresses while building
+# reputation.list, so this is the second layer: it also writes whitelist.txt
+# out as category 15 in whitelist.list, which lets a pass rule override any
+# drop rule above. Suricata's default action-order is pass, drop, reject,
+# alert, so this wins regardless of file order. The old version of this rule
+# matched on $WHITELIST_NETS, a variable no Suricata config here defines,
+# which made the whole rule fail to load.
+pass ip $EXTERNAL_NET any -> $HOME_NET any (msg:"IPREP Whitelisted source - pass"; iprep:src,Whitelist,>,1; sid:9100090; rev:3;)

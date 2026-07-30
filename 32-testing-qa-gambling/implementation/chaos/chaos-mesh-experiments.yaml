@@ -1,0 +1,473 @@
+# Companion code for "The Backend of Luck" - Chapter 32, Testing and QA in Gambling.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# =============================================================================
+# Chaos Mesh Experiments for iGaming Casino Platform
+# =============================================================================
+# Production-grade chaos engineering experiments for validating platform
+# resilience against real-world failure scenarios.
+#
+# Prerequisites:
+#   kubectl apply -f https://mirrors.chaos-mesh.org/v2.6.0/crd.yaml
+#   helm install chaos-mesh chaos-mesh/chaos-mesh --namespace=chaos-testing --create-namespace
+#
+# Usage:
+#   kubectl apply -f chaos-mesh-experiments.yaml
+#   kubectl get chaosexperiments -n casino-platform
+#   kubectl describe networkchaos rng-network-partition -n casino-platform
+#
+# Cleanup:
+#   kubectl delete -f chaos-mesh-experiments.yaml
+# =============================================================================
+
+---
+# =============================================================================
+# 1. RNG Service Network Partition
+# Validates: Game servers gracefully handle RNG service unavailability
+# Expected: Games pause, no bets accepted, players see maintenance message
+# =============================================================================
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: rng-service-network-partition
+  namespace: casino-platform
+  labels:
+    experiment-type: network
+    target-service: rng
+    severity: critical
+  annotations:
+    description: "Isolate RNG service from game servers to verify graceful degradation"
+    expected-behavior: "Games stop accepting bets, display maintenance notice"
+    rollback-time: "30s"
+spec:
+  action: partition
+  mode: all
+  selector:
+    namespaces:
+      - casino-platform
+    labelSelectors:
+      app: rng-service
+  direction: both
+  target:
+    selector:
+      namespaces:
+        - casino-platform
+      labelSelectors:
+        app.kubernetes.io/component: game-server
+    mode: all
+  duration: "60s"
+  scheduler:
+    cron: "@every 24h"
+
+---
+# =============================================================================
+# 2. Payment Gateway Latency Injection
+# Validates: Payment processing handles slow downstream responses
+# Expected: Timeouts trigger retry with exponential backoff, no double charges
+# =============================================================================
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: payment-gateway-latency
+  namespace: casino-platform
+  labels:
+    experiment-type: network
+    target-service: payment-gateway
+    severity: high
+spec:
+  action: delay
+  mode: all
+  selector:
+    namespaces:
+      - casino-platform
+    labelSelectors:
+      app: payment-service
+  delay:
+    latency: "5s"
+    correlation: "80"
+    jitter: "2s"
+  direction: to
+  target:
+    selector:
+      namespaces:
+        - casino-platform
+      labelSelectors:
+        app: payment-gateway
+    mode: all
+  duration: "120s"
+
+---
+# =============================================================================
+# 3. Database Pod Kill (Primary PostgreSQL)
+# Validates: Automatic failover to replica, zero data loss
+# Expected: Patroni/Stolon promotes replica within 30s, no transaction loss
+# =============================================================================
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: database-primary-kill
+  namespace: casino-platform
+  labels:
+    experiment-type: pod
+    target-service: database
+    severity: critical
+spec:
+  action: pod-kill
+  mode: one
+  selector:
+    namespaces:
+      - casino-platform
+    labelSelectors:
+      app: postgresql
+      role: primary
+  gracePeriod: 0
+  duration: "30s"
+
+---
+# =============================================================================
+# 4. Redis Cache Failure (Session Store)
+# Validates: Platform handles session cache loss
+# Expected: Players re-authenticate, game state restored from DB
+# =============================================================================
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: redis-session-kill
+  namespace: casino-platform
+  labels:
+    experiment-type: pod
+    target-service: redis
+    severity: high
+spec:
+  action: pod-kill
+  mode: all
+  selector:
+    namespaces:
+      - casino-platform
+    labelSelectors:
+      app: redis
+      component: session-store
+  duration: "60s"
+
+---
+# =============================================================================
+# 5. Game Server CPU Stress
+# Validates: Auto-scaling triggers, game performance under resource pressure
+# Expected: HPA scales up, latency stays within SLA
+# =============================================================================
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: game-server-cpu-stress
+  namespace: casino-platform
+  labels:
+    experiment-type: stress
+    target-service: game-server
+    severity: medium
+spec:
+  mode: all
+  selector:
+    namespaces:
+      - casino-platform
+    labelSelectors:
+      app: game-server
+  stressors:
+    cpu:
+      workers: 4
+      load: 90
+  duration: "180s"
+
+---
+# =============================================================================
+# 6. Sportsbook Odds Feed Network Loss
+# Validates: Sportsbook handles feed disconnection
+# Expected: Markets suspended, existing bets honored, no stale odds
+# =============================================================================
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: odds-feed-network-loss
+  namespace: casino-platform
+  labels:
+    experiment-type: network
+    target-service: sportsbook
+    severity: critical
+spec:
+  action: loss
+  mode: all
+  selector:
+    namespaces:
+      - casino-platform
+    labelSelectors:
+      app: sportsbook-service
+  loss:
+    loss: "100"
+    correlation: "100"
+  direction: to
+  target:
+    selector:
+      namespaces:
+        - casino-platform
+      labelSelectors:
+        app: odds-feed-adapter
+    mode: all
+  duration: "120s"
+
+---
+# =============================================================================
+# 7. DNS Failure for External Services
+# Validates: Platform resilience when external DNS fails
+# Expected: Cached DNS used, circuit breakers activate
+# =============================================================================
+apiVersion: chaos-mesh.org/v1alpha1
+kind: DNSChaos
+metadata:
+  name: external-dns-failure
+  namespace: casino-platform
+  labels:
+    experiment-type: dns
+    severity: high
+spec:
+  action: error
+  mode: all
+  selector:
+    namespaces:
+      - casino-platform
+    labelSelectors:
+      app.kubernetes.io/part-of: casino-platform
+  patterns:
+    - "*.payment-provider.com"
+    - "*.kyc-service.com"
+    - "*.geo-location.com"
+  duration: "60s"
+
+---
+# =============================================================================
+# 8. Kafka Broker Failure (Event Bus)
+# Validates: Message queue resilience, no event loss
+# Expected: Producers buffer, consumers rebalance, no duplicate processing
+# =============================================================================
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: kafka-broker-failure
+  namespace: casino-platform
+  labels:
+    experiment-type: pod
+    target-service: kafka
+    severity: critical
+spec:
+  action: pod-kill
+  mode: fixed
+  value: "1"
+  selector:
+    namespaces:
+      - casino-platform
+    labelSelectors:
+      app: kafka
+      strimzi.io/kind: Kafka
+  duration: "120s"
+
+---
+# =============================================================================
+# 9. Game Server Memory Pressure
+# Validates: OOM handling, graceful degradation under memory pressure
+# Expected: Low-priority processes shed, no data corruption
+# =============================================================================
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: game-server-memory-pressure
+  namespace: casino-platform
+  labels:
+    experiment-type: stress
+    target-service: game-server
+    severity: high
+spec:
+  mode: one
+  selector:
+    namespaces:
+      - casino-platform
+    labelSelectors:
+      app: game-server
+  stressors:
+    memory:
+      workers: 2
+      size: "512MB"
+  duration: "120s"
+
+---
+# =============================================================================
+# 10. Multi-AZ Network Partition
+# Validates: Cross-AZ resilience (simulates AZ failure)
+# Expected: Traffic routes to healthy AZ, no split-brain
+# =============================================================================
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: multi-az-partition
+  namespace: casino-platform
+  labels:
+    experiment-type: network
+    severity: critical
+spec:
+  action: partition
+  mode: all
+  selector:
+    namespaces:
+      - casino-platform
+    fieldSelectors:
+      "spec.nodeName": "node-az-b-*"
+  direction: both
+  target:
+    selector:
+      namespaces:
+        - casino-platform
+      fieldSelectors:
+        "spec.nodeName": "node-az-a-*"
+    mode: all
+  duration: "180s"
+
+---
+# =============================================================================
+# 11. Disk I/O Latency on Game State Storage
+# Validates: Game state persistence under slow I/O
+# Expected: Write-ahead logs buffer, no game state loss
+# =============================================================================
+apiVersion: chaos-mesh.org/v1alpha1
+kind: IOChaos
+metadata:
+  name: game-state-io-latency
+  namespace: casino-platform
+  labels:
+    experiment-type: io
+    target-service: game-state
+    severity: medium
+spec:
+  action: latency
+  mode: all
+  selector:
+    namespaces:
+      - casino-platform
+    labelSelectors:
+      app: game-state-service
+  volumePath: /data
+  path: "*"
+  delay: "500ms"
+  percent: 80
+  duration: "120s"
+
+---
+# =============================================================================
+# 12. Live Dealer Video Stream Disruption
+# Validates: Video stream reconnection and state recovery
+# Expected: Players see reconnecting indicator, game state preserved
+# =============================================================================
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: live-dealer-stream-disruption
+  namespace: casino-platform
+  labels:
+    experiment-type: network
+    target-service: live-dealer
+    severity: high
+spec:
+  action: loss
+  mode: all
+  selector:
+    namespaces:
+      - casino-platform
+    labelSelectors:
+      app: live-dealer-gateway
+  loss:
+    loss: "50"
+    correlation: "75"
+  direction: both
+  duration: "60s"
+
+---
+# =============================================================================
+# Workflow: Full Resilience Test (runs all experiments in sequence)
+# =============================================================================
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Workflow
+metadata:
+  name: full-resilience-test
+  namespace: casino-platform
+  labels:
+    experiment-type: workflow
+    severity: critical
+spec:
+  entry: full-test
+  templates:
+    - name: full-test
+      templateType: Serial
+      children:
+        - phase-1-network
+        - phase-2-pods
+        - phase-3-stress
+    - name: phase-1-network
+      templateType: Parallel
+      children:
+        - rng-partition
+        - payment-latency
+    - name: rng-partition
+      templateType: NetworkChaos
+      networkChaos:
+        action: partition
+        mode: all
+        selector:
+          namespaces: [casino-platform]
+          labelSelectors:
+            app: rng-service
+        direction: both
+        target:
+          selector:
+            namespaces: [casino-platform]
+            labelSelectors:
+              app: game-server
+          mode: all
+        duration: "30s"
+    - name: payment-latency
+      templateType: NetworkChaos
+      networkChaos:
+        action: delay
+        mode: all
+        selector:
+          namespaces: [casino-platform]
+          labelSelectors:
+            app: payment-service
+        delay:
+          latency: "3s"
+          jitter: "1s"
+        duration: "30s"
+    - name: phase-2-pods
+      templateType: PodChaos
+      podChaos:
+        action: pod-kill
+        mode: one
+        selector:
+          namespaces: [casino-platform]
+          labelSelectors:
+            app: game-server
+    - name: phase-3-stress
+      templateType: StressChaos
+      stressChaos:
+        mode: all
+        selector:
+          namespaces: [casino-platform]
+          labelSelectors:
+            app: game-server
+        stressors:
+          cpu:
+            workers: 2
+            load: 80
+        duration: "60s"

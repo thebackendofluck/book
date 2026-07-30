@@ -1,0 +1,94 @@
+[package]
+name    = "rust-hsm-platform"
+version = "0.1.0"
+edition = "2021"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Dependency rationale
+#
+# cryptoki  — PKCS#11 binding for YubiHSM 2. The HSM is the root of trust;
+#             all key material that must never leave hardware goes through this
+#             crate. Required by PCI DSS Req. 3.6/3.7 and FIPS 140-2 Level 3.
+#
+# chacha20  — ChaCha20 stream cipher primitives. Used alongside rand_chacha
+#             for explicit block-level control when building the NIST test
+#             harness. GLI-19 Section 5.2 mandates CSPRNG auditable at the
+#             algorithm level.
+#
+# hkdf/sha2 — HKDF-SHA256 (RFC 5869) for key derivation hierarchy. One HSM
+#             call at startup produces 64 bytes of TRNG; HKDF fans it out into
+#             cryptographically independent sub-keys. Zero HSM calls on the hot
+#             path for HMAC operations.
+#
+# ed25519-dalek — Ed25519 for session signing keys. Keys are seeded from HSM
+#                 TRNG and endorsed (ECDSA P-256) by the HSM before use. JWTs
+#                 sign at ~50 µs/op in software. ZeroizeOnDrop on all secrets.
+#
+# zeroize   — Mandatory memory hygiene: secret keys are zeroed on drop.
+#             PCI DSS Req. 3.5.1 prohibits retaining cryptographic key material
+#             beyond its operational lifetime.
+#
+# tokio     — Async runtime. HSM operations involve I/O (USB/yubihsm-connector)
+#             and must not block the Tokio thread pool.
+#
+# axum      — HTTP service layer for health endpoints and RNG/wallet APIs.
+#
+# serde     — Structured serialisation for audit records, JWT claims, and API
+#             request/response types.
+#
+# sqlx      — Async PostgreSQL driver with compile-time query checking. ACID
+#             transaction support with advisory locks for wallet idempotency.
+#
+# thiserror — Structured error types with full compliance context (player_id,
+#             jurisdiction, limit values) forwarded to the audit trail.
+# ─────────────────────────────────────────────────────────────────────────────
+
+[dependencies]
+# HSM / Cryptography
+cryptoki       = "0.12"
+chacha20       = "0.10"
+hkdf           = "0.13"
+sha2           = "0.11"
+hmac           = "0.13"
+ed25519-dalek  = { version = "3", features = ["rand_core"] }
+zeroize        = { version = "1", features = ["derive"] }
+subtle         = "2"
+
+# Async runtime & HTTP
+tokio  = { version = "1", features = ["full"] }
+axum   = { version = "0.8", features = ["ws"] }
+tower  = "0.5"
+tower-http = { version = "0.7", features = ["trace", "timeout", "cors"] }
+
+# Serialisation
+serde       = { version = "1", features = ["derive"] }
+serde_json  = "1"
+
+# Database
+sqlx = { version = "0.8.1", features = ["postgres", "uuid", "chrono", "runtime-tokio-rustls", "rust_decimal"] }
+
+# Utilities
+uuid         = { version = "1", features = ["v4", "serde"] }
+chrono       = { version = "0.4", features = ["serde"] }
+hex          = "0.4"
+base64       = "0.22"
+rust_decimal = { version = "1", features = ["serde-with-str"] }
+thiserror    = "2"
+anyhow       = "1"
+rand         = "0.10"
+rand_chacha  = "0.10"
+
+# Observability
+tracing            = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json"] }
+
+[profile.release]
+# LTO and single codegen unit maximise inlining of crypto hot paths.
+# panic = "abort" prevents unwinding from exposing partial key state.
+# strip = "symbols" reduces attack surface by removing debug info from
+# the production binary.
+opt-level     = 3
+lto           = "thin"
+codegen-units = 1
+panic         = "abort"
+strip         = "symbols"

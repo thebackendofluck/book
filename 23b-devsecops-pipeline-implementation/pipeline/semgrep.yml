@@ -1,0 +1,96 @@
+# Companion code for "The Backend of Luck" - Chapter 23b, DevSecOps Pipeline Implementation.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+rules:
+  # ---------------------------------------------------------------------------
+  # Rule 1: Detect hardcoded bet amounts in Python
+  # iGaming risk: hardcoded amounts bypass dynamic configuration and can
+  # expose incorrect odds or payout values in production.
+  # ---------------------------------------------------------------------------
+  - id: igaming-hardcoded-bet-amount
+    languages: [python]
+    severity: WARNING
+    message: |
+      Hardcoded bet amount detected: '$AMOUNT'.
+      Bet limits and amounts should come from configuration or database,
+      not be hardcoded. This can cause payout errors and compliance issues.
+    patterns:
+      - pattern: $AMOUNT = $N
+      - metavariable-regex:
+          metavariable: $AMOUNT
+          regex: ".*(bet_amount|min_bet|max_bet|bet_limit|stake|wager|payout|jackpot_amount|prize_amount).*"
+      - metavariable-regex:
+          metavariable: $N
+          regex: "^[0-9]+(\\.?[0-9]+)?$"
+    paths:
+      include:
+        - "new-platform/**/*.py"
+        - "dev-platform/**/*.py"
+        - "scripts/**/*.py"
+
+  # ---------------------------------------------------------------------------
+  # Rule 2: Detect API endpoints missing rate limiting decorators (Flask/FastAPI)
+  # iGaming risk: unprotected endpoints can be abused for bonus farming,
+  # credential stuffing, or denial-of-service against betting APIs.
+  # ---------------------------------------------------------------------------
+  - id: igaming-missing-rate-limit-flask
+    languages: [python]
+    severity: ERROR
+    message: |
+      Flask route '$FUNC' appears to lack a rate-limiting decorator
+      (@limiter.limit or @ratelimit). All betting and authentication endpoints
+      must be rate-limited to prevent abuse and comply with AML requirements.
+    patterns:
+      - pattern: |
+          @$APP.route(...)
+          def $FUNC(...):
+              ...
+      - pattern-not: |
+          @$LIMITER.limit(...)
+          @$APP.route(...)
+          def $FUNC(...):
+              ...
+      - pattern-not: |
+          @$APP.route(...)
+          @$LIMITER.limit(...)
+          def $FUNC(...):
+              ...
+      - pattern-not: |
+          @ratelimit(...)
+          @$APP.route(...)
+          def $FUNC(...):
+              ...
+    paths:
+      include:
+        - "new-platform/app/**/*.py"
+        - "dev-platform/app/**/*.py"
+
+  # ---------------------------------------------------------------------------
+  # Rule 3: Detect SQL string concatenation in Python (SQL injection risk)
+  # iGaming risk: player data, transaction records, and bet history queries
+  # built via string concatenation are vulnerable to injection attacks.
+  # ---------------------------------------------------------------------------
+  - id: igaming-sql-string-concat
+    languages: [python]
+    severity: ERROR
+    message: |
+      Potential SQL injection: query built via string concatenation or f-string.
+      Use parameterised queries (cursor.execute(sql, params)) or an ORM instead.
+      Player financial data and bet records must be protected against injection.
+    patterns:
+      - pattern: $CUR.execute($SQL + ...)
+      - pattern: $CUR.execute(f"...{$VAR}...")
+      - pattern: $CUR.execute("..." % (...))
+      - pattern: $CUR.execute("..." .format(...))
+    paths:
+      include:
+        - "new-platform/**/*.py"
+        - "dev-platform/**/*.py"
+        - "scripts/**/*.py"

@@ -1,0 +1,43 @@
+[
+  {
+    "_comment": "MikroTik RouterOS device inventory. Each entry defines one device to factory-reset. Username/password should reference vault secrets in production. Chapter 45: Secure Infrastructure Decommissioning.",
+    "hostname": "router-core-01.internal.example.com",
+    "ip": "192.168.1.1",
+    "port": 8728,
+    "username": "admin",
+    "password_env": "MIKROTIK_ROUTER_CORE_01_PASSWORD",
+    "model": "CCR2004-16G-2S+",
+    "role": "core-router",
+    "location": "DC-PRIMARY-RACK-A1"
+  },
+  {
+    "hostname": "router-core-02.internal.example.com",
+    "ip": "192.168.1.2",
+    "port": 8728,
+    "username": "admin",
+    "password_env": "MIKROTIK_ROUTER_CORE_02_PASSWORD",
+    "model": "CCR2004-16G-2S+",
+    "role": "core-router",
+    "location": "DC-PRIMARY-RACK-A2"
+  },
+  {
+    "hostname": "router-edge-01.internal.example.com",
+    "ip": "10.0.0.1",
+    "port": 8728,
+    "username": "admin",
+    "password_env": "MIKROTIK_ROUTER_EDGE_01_PASSWORD",
+    "model": "RB4011iGS+5HacQ2HnD",
+    "role": "edge-router",
+    "location": "DC-DMZ-RACK-B1"
+  },
+  {
+    "hostname": "switch-access-01.internal.example.com",
+    "ip": "192.168.2.1",
+    "port": 8728,
+    "username": "admin",
+    "password_env": "MIKROTIK_SWITCH_ACCESS_01_PASSWORD",
+    "model": "CRS326-24G-2S+RM",
+    "role": "access-switch",
+    "location": "DC-PRIMARY-RACK-C1"
+  }
+]

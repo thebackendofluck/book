@@ -1,0 +1,44 @@
+# Companion code for "The Backend of Luck" - Chapter 01, The Online Casino Ecosystem.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+version: "3.8"
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: coupon-test-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD must be set}
+      MYSQL_DATABASE: acmetocasino_platform
+      MYSQL_USER: platform_admin
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD must be set}
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/01-init.sql
+    ports:
+      - "13306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  coupon-generator:
+    image: php:8.2-cli
+    container_name: coupon-test-php
+    depends_on:
+      mysql:
+        condition: service_healthy
+    volumes:
+      - ../coupon_generator.php:/app/coupon_generator.php:ro
+      - ./test_runner.php:/app/test_runner.php:ro
+    environment:
+      DB_HOST: mysql
+    working_dir: /app
+    entrypoint: ["sh", "-c", "docker-php-ext-install mysqli > /dev/null 2>&1 && php /app/test_runner.php"]

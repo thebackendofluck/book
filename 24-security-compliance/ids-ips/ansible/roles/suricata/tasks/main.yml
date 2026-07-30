@@ -1,0 +1,37 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 24, Security and Compliance.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# roles/suricata/tasks/main.yml
+# Orchestration entry point — includes task files in dependency order.
+
+- name: Include installation tasks
+  ansible.builtin.include_tasks: install.yml
+  tags: [suricata, install]
+
+- name: Include configuration tasks
+  ansible.builtin.include_tasks: configure.yml
+  tags: [suricata, configure]
+
+- name: Include performance tuning tasks
+  ansible.builtin.include_tasks: tuning.yml
+  tags: [suricata, tuning]
+
+- name: Include rule management tasks
+  ansible.builtin.include_tasks: rules.yml
+  tags: [suricata, rules]
+
+- name: Include monitoring and health check tasks
+  ansible.builtin.include_tasks: monitoring.yml
+  tags: [suricata, monitoring]
+
+- name: Include hardening tasks
+  ansible.builtin.include_tasks: hardening.yml
+  tags: [suricata, hardening]

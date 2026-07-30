@@ -1,0 +1,197 @@
+# Companion code for "The Backend of Luck" - Chapter 24, Security and Compliance.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# docker-compose.coraza.yml — Coraza WAF with nginx for iGaming deployments
+#
+# Deploys a hardened nginx reverse proxy with Coraza WAF (OWASP Core Rule Set)
+# in front of the iGaming platform API.
+#
+# Architecture:
+#   Internet
+#     → nginx-coraza (:443)     — TLS termination + Coraza WAF inline
+#         → casino-api (:8080)  — FastAPI/uvicorn application
+#         → metrics (:9113)     — nginx Prometheus exporter
+#
+# The WAF enforces:
+#   - OWASP CRS 4.x: SQL injection, XSS, command injection, LFI/RFI
+#   - Custom iGaming rules: bonus abuse patterns, API scraping detection
+#   - Geo-blocking headers: passed downstream from CDN layer
+#   - Request body inspection with 10MB limit (game asset uploads)
+#
+# Usage:
+#   docker compose -f docker-compose.coraza.yml up -d
+#   docker compose -f docker-compose.coraza.yml exec nginx-coraza \
+#       tail -f /var/log/coraza/audit.log
+#
+# Reference: Chapter 24 — Security and Compliance / Coraza WAF
+
+services:
+  # ---------------------------------------------------------------------------
+  # nginx + Coraza WAF (inline, single process)
+  # ---------------------------------------------------------------------------
+  nginx-coraza:
+    image: nginx-coraza:1.27.4
+    build:
+      context: ./coraza-waf
+      dockerfile: Dockerfile.nginx-coraza
+    container_name: nginx-coraza
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # nginx configuration
+      - ./coraza-waf/nginx-coraza.conf:/etc/nginx/nginx.conf:ro
+      # Coraza core configuration
+      - ./coraza-waf/coraza.conf:/etc/coraza/coraza.conf:ro
+      # OWASP CRS rules (downloaded by download-crs-rules.sh)
+      - ./coraza-waf/crs-setup.conf:/etc/coraza/crs-setup.conf:ro
+      - ./coraza-waf/crs-rules:/etc/coraza/crs-rules:ro
+      # TLS certificates (mount from cert-manager output or Let's Encrypt)
+      - ./certs:/etc/nginx/certs:ro
+      # Audit log volume (writable, managed separately for retention)
+      - coraza-audit-logs:/var/log/coraza
+    environment:
+      CASINO_API_UPSTREAM: "casino-api:8080"
+      CORAZA_AUDIT_LOG: "/var/log/coraza/audit.log"
+      CORAZA_RULE_ENGINE: "On"
+      # Set to DetectionOnly during initial WAF tuning; switch to On for production
+      CORAZA_DETECTION_ONLY: "Off"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE      # required to bind port 443
+      - SETUID
+      - SETGID
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=64m
+      - /var/cache/nginx:noexec,nosuid,size=128m
+      - /var/run:noexec,nosuid,size=8m
+    networks:
+      - waf-frontend
+      - waf-backend
+    depends_on:
+      casino-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+        labels: "com.acmetocasino.service,com.acmetocasino.component"
+    labels:
+      com.acmetocasino.service: "nginx-coraza"
+      com.acmetocasino.component: "waf"
+      com.acmetocasino.env: "${DEPLOY_ENV:-production}"
+
+  # ---------------------------------------------------------------------------
+  # Casino API — upstream application
+  # ---------------------------------------------------------------------------
+  casino-api:
+    image: ${CASINO_API_IMAGE:-acmetocasino/casino-api:latest}
+    container_name: casino-api
+    restart: unless-stopped
+    expose:
+      - "8080"
+    environment:
+      DATABASE_URL: "${DATABASE_URL}"
+      REDIS_URL: "${REDIS_URL}"
+      VAULT_ADDR: "${VAULT_ADDR}"
+      ENVIRONMENT: "${DEPLOY_ENV:-production}"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    user: "1000:1000"
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=64m
+    networks:
+      - waf-backend
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # ---------------------------------------------------------------------------
+  # nginx Prometheus exporter (WAF metrics)
+  # ---------------------------------------------------------------------------
+  nginx-exporter:
+    image: nginx/nginx-prometheus-exporter:1.3.0
+    container_name: nginx-exporter
+    restart: unless-stopped
+    command:
+      - -nginx.scrape-uri=http://nginx-coraza/nginx_status
+    expose:
+      - "9113"
+    networks:
+      - waf-backend
+      - monitoring
+    depends_on:
+      - nginx-coraza
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    user: "nobody"
+
+# ---------------------------------------------------------------------------
+# Volumes
+# ---------------------------------------------------------------------------
+volumes:
+  coraza-audit-logs:
+    driver: local
+    driver_opts:
+      type: none
+      device: /var/lib/igaming/coraza-audit
+      o: bind
+    labels:
+      com.acmetocasino.data-classification: "security-audit"
+      com.acmetocasino.retention: "5-years"
+
+# ---------------------------------------------------------------------------
+# Networks
+# ---------------------------------------------------------------------------
+networks:
+  # Public-facing: nginx-coraza only
+  waf-frontend:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
+
+  # Internal: WAF to API communication
+  waf-backend:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.20.1.0/24
+
+  # Monitoring: Prometheus scrape access
+  monitoring:
+    external: true
+    name: monitoring_default

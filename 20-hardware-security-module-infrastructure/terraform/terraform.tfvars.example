@@ -1,0 +1,72 @@
+# Project Configuration
+project_name = "yubihsm"
+environment  = "dev"
+owner        = "security-team"
+cost_center  = "security"
+
+# AWS Configuration
+aws_region = "us-east-1"
+availability_zones = ["us-east-1a", "us-east-1b", "us-east-1c"]
+
+# Networking
+vpc_cidr_block = "10.0.0.0/16"
+public_subnet_cidrs  = ["10.0.10.0/24", "10.0.11.0/24", "10.0.12.0/24"]
+private_subnet_cidrs = ["10.0.20.0/24", "10.0.21.0/24", "10.0.22.0/24"]
+database_subnet_cidrs = ["10.0.30.0/24", "10.0.31.0/24", "10.0.32.0/24"]
+enable_nat_gateway = true
+single_nat_gateway = false
+
+# YubiHSM Configuration (REPLACE WITH ACTUAL VALUES)
+yubihsm_auth_key_id = 1
+yubihsm_password    = "CHANGE_THIS_STRONG_PASSWORD"
+
+# Security Configuration
+enable_key_rotation = true
+key_rotation_days   = 90
+
+# Compute Configuration
+app_server_instance_type    = "t3.medium"
+nitro_enclave_instance_type = "c5.xlarge"
+app_server_ami_id    = ""  # Will use latest Amazon Linux 2
+nitro_enclave_ami_id = ""  # Will use latest Amazon Linux 2
+key_pair_name = "yubihsm-keypair"  # Create this keypair first
+
+# Storage Configuration
+ebs_volume_size = 100
+ebs_encrypted   = true
+enable_efs      = true
+efs_encrypted   = true
+s3_bucket_name  = "yubihsm-dev-backups-123456789012"  # Must be globally unique
+s3_versioning   = true
+
+# Database Configuration
+db_instance_class = "db.t3.medium"
+db_engine_version = "16.1"
+db_allocated_storage = 100
+db_max_allocated_storage = 1000
+db_name     = "yubihsm_db"
+db_username = "yubihsm_admin"
+db_password = "CHANGE_THIS_DB_PASSWORD"  # Must be strong
+db_multi_az = true
+db_backup_retention_period = 30
+enable_tde = true
+
+# Container Configuration
+ecs_cluster_name = "yubihsm-cluster"
+vaultwarden_image = "vaultwarden/server:latest"
+vaultwarden_cpu   = 512
+vaultwarden_memory = 1024
+yubihsm_connector_image = "yubico/yubihsm-connector:latest"
+yubihsm_connector_cpu   = 256
+yubihsm_connector_memory = 512
+
+# Application Configuration
+vaultwarden_domain = "vault.yourdomain.com"  # Optional
+
+# Monitoring and Alerting
+alert_email = "security-alerts@yourdomain.com"  # Optional
+
+# Terraform Backend Configuration
+terraform_state_bucket = "yubihsm-terraform-state-123456789012"  # Must be globally unique
+terraform_state_key    = "yubihsm-infrastructure/terraform.tfstate"
+terraform_state_region  = "us-east-1"

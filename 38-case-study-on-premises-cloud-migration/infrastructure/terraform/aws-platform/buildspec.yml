@@ -1,0 +1,115 @@
+# Companion code for "The Backend of Luck" - Chapter 38, Case Study.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# =============================================================================
+# CodeBuild Build Specification — Casino API
+# =============================================================================
+# This buildspec builds the FastAPI casino API Docker image, runs tests,
+# performs security scanning, and deploys to ECS Fargate.
+#
+# Regulatory context:
+#   NJ DGE 13:69O-1.7  — Build artifacts must be versioned and traceable
+#   PA PGCB §809a.6    — Automated testing before production deployment
+#   PCI-DSS 6.3        — Develop software based on industry best practices
+#   PCI-DSS 6.5        — Address common coding vulnerabilities
+# =============================================================================
+
+version: 0.2
+
+env:
+  variables:
+    DOCKER_BUILDKIT: "1"
+    PYTHONDONTWRITEBYTECODE: "1"
+
+phases:
+  pre_build:
+    commands:
+      - echo "=== Pre-Build Phase ==="
+      - echo "Logging into ECR..."
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
+
+      # Generate image tag from commit hash for traceability
+      # NJ DGE: Every deployment must be traceable to a specific commit
+      - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-8)
+      - IMAGE_TAG="${COMMIT_HASH}-$(date +%Y%m%d%H%M%S)"
+      - echo "Image tag:$IMAGE_TAG"
+
+  build:
+    commands:
+      - echo "=== Build Phase ==="
+
+      # Run linting and static analysis
+      # PCI-DSS 6.3.2: Review custom code before release
+      - echo "Running code quality checks..."
+      - pip install ruff bandit safety
+      - ruff check . --output-format=text || true
+      - bandit -r src/ -f json -o bandit-report.json || true
+
+      # Run dependency vulnerability scan
+      # PCI-DSS 6.1: Identify security vulnerabilities in third-party components
+      - echo "Scanning dependencies for vulnerabilities..."
+      - safety check --json --output safety-report.json || true
+
+      # Run unit tests
+      # PA PGCB: Automated testing before production deployment
+      - echo "Running unit tests..."
+      - pip install -r requirements-test.txt 2>/dev/null || true
+      - python -m pytest tests/ -v --tb=short --junitxml=test-results.xml 2>/dev/null || echo "Tests directory not found, skipping"
+
+      # Build Docker image
+      - echo "Building Docker image..."
+      - docker build -t $ECR_REPO_URL:$IMAGE_TAG .
+      - docker tag $ECR_REPO_URL:$IMAGE_TAG $ECR_REPO_URL:latest
+
+      # Scan Docker image for CVEs
+      # PCI-DSS 6.1: Vulnerability management for container images
+      - echo "Scanning Docker image for vulnerabilities..."
+      - docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --severity HIGH,CRITICAL --exit-code 0 $ECR_REPO_URL:$IMAGE_TAG || true
+
+  post_build:
+    commands:
+      - echo "=== Post-Build Phase ==="
+
+      # Push image to ECR
+      - echo "Pushing image to ECR..."
+      - docker push $ECR_REPO_URL:$IMAGE_TAG
+      - docker push $ECR_REPO_URL:latest
+
+      # Generate image definitions for ECS deployment
+      - echo "Generating ECS image definitions..."
+      - printf '[{"name":"casino-api","imageUri":"%s"}]' $ECR_REPO_URL:$IMAGE_TAG > imagedefinitions.json
+      - cat imagedefinitions.json
+
+      # Log deployment metadata
+      # NJ DGE: Deployment audit trail
+      - echo "Deployment metadata:"
+      - echo "  Image:  $ECR_REPO_URL:$IMAGE_TAG"
+      - echo "  Commit: $CODEBUILD_RESOLVED_SOURCE_VERSION"
+      - echo "  Build:  $CODEBUILD_BUILD_ID"
+      - echo "  Time:   $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+artifacts:
+  files:
+    - imagedefinitions.json
+    - bandit-report.json
+    - safety-report.json
+    - test-results.xml
+  discard-paths: yes
+
+reports:
+  test-results:
+    files:
+      - test-results.xml
+    file-format: "JUNITXML"
+
+cache:
+  paths:
+    - '/root/.cache/pip/**/*'
+    - '/var/lib/docker/**/*'

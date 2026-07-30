@@ -1,0 +1,129 @@
+# Tiltfile
+# Place at repo root alongside docker-compose.dev.yml
+# Usage: tilt up
+
+# ─── Configuration ─────────────────────────────────────────────────────────────
+
+# Allow Tilt to connect to the ops-host K3s cluster
+# Set KUBECONFIG or tilt connects to current context
+# On ops-host: export KUBECONFIG=~/.kube/ops-host-config
+allow_k8s_contexts([
+    "k3s-ops-host",     # Local K3s — primary dev target
+    "minikube",        # Local fallback
+])
+
+# Default container registry for development images
+# Chapter 22 covers the internal registry setup at registry.ops-host.local:5000
+default_registry("registry.ops-host.local:5000")
+
+# ─── Infrastructure Resources ───────────────────────────────────────────────────
+
+# Use Helm for infrastructure — we do not want Tilt rebuilding Postgres on every run
+helm_resource(
+    "casino-infra",
+    "./charts/casino-infra",
+    namespace="casino-dev",
+    flags=["--create-namespace"],
+)
+
+# ─── Service Definitions ────────────────────────────────────────────────────────
+
+# Helper: build + live_update for a FastAPI service
+def casino_service(name, port, debug_port, depends_on=None):
+    deps = depends_on or ["casino-infra"]
+
+    # Build the dev image
+    docker_build(
+        "casino/" + name,
+        "./" + name,
+        dockerfile="./" + name + "/Dockerfile.dev",
+        # live_update: sync changed .py files and restart uvicorn
+        # This is the key — avoids full image rebuild for code changes
+        live_update=[
+            sync("./" + name + "/app", "/app/app"),
+            # NOTE: SIGHUP does NOT work on multi-worker uvicorn/gunicorn.
+            # Kill the worker PID instead — gunicorn respawns it with updated code.
+            # See Section 7.2 Finding 2 for details.
+            run(
+                "kill $(pgrep -f 'uvicorn.*worker' | head -1) 2>/dev/null || true",
+                trigger=["./" + name + "/app/**/*.py"],
+            ),
+        ],
+        # Ignore these — they do not affect the running container
+        ignore=[
+            ".venv",
+            "__pycache__",
+            "*.pyc",
+            ".pytest_cache",
+            "*.egg-info",
+            "tests/",
+        ],
+    )
+
+    # Apply the K8s manifests for this service
+    k8s_yaml(
+        helm(
+            "./charts/" + name,
+            name=name,
+            namespace="casino-dev",
+            set=[
+                "image.repository=casino/" + name,
+                "image.tag=dev",
+                "image.pullPolicy=IfNotPresent",
+                "environment=development",
+                "replicaCount=1",
+            ],
+        )
+    )
+
+    # Port forward so we can reach the service locally
+    k8s_resource(
+        name,
+        port_forwards=[
+            port_forward(port, port, name=name + "-api"),
+            port_forward(debug_port, 5678, name=name + "-debugger"),
+        ],
+        resource_deps=deps,
+    )
+
+# ─── Register Services ──────────────────────────────────────────────────────────
+
+casino_service("player-service",      port=8000, debug_port=5678)
+casino_service("wallet-service",      port=8001, debug_port=5679, depends_on=["player-service"])
+casino_service("game-engine",         port=8002, debug_port=5680, depends_on=["wallet-service"])
+casino_service("bonus-engine",        port=8003, debug_port=5681, depends_on=["player-service", "wallet-service"])
+casino_service("compliance-reporter", port=8004, debug_port=5682, depends_on=["wallet-service"])
+
+# ─── Mocks ─────────────────────────────────────────────────────────────────────
+
+# WireMock containers for game provider and payment gateway
+k8s_yaml("./infra/k8s/dev/wiremock-game-provider.yaml")
+k8s_yaml("./infra/k8s/dev/wiremock-payment.yaml")
+
+k8s_resource("wiremock-game-provider", port_forwards=[port_forward(8089, 8080)])
+k8s_resource("wiremock-payment",       port_forwards=[port_forward(8090, 8080)])
+
+# ─── Convenience Buttons in Tilt UI ────────────────────────────────────────────
+
+local_resource(
+    "db-migrate",
+    cmd="kubectl exec -n casino-dev deployment/player-service -- alembic upgrade head",
+    resource_deps=["player-service"],
+    trigger_mode=TRIGGER_MODE_MANUAL,
+    labels=["tools"],
+)
+
+local_resource(
+    "seed-test-players",
+    cmd="kubectl exec -n casino-dev deployment/player-service -- python scripts/seed_dev_data.py",
+    resource_deps=["player-service"],
+    trigger_mode=TRIGGER_MODE_MANUAL,
+    labels=["tools"],
+)
+
+local_resource(
+    "tail-wallet-logs",
+    serve_cmd="kubectl logs -f -n casino-dev deployment/wallet-service",
+    resource_deps=["wallet-service"],
+    labels=["logs"],
+)

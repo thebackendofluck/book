@@ -1,0 +1,805 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 23, DevSecOps for iGaming.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# security-scan-pipeline.yml
+# GitHub Actions workflow: comprehensive security scanning for iGaming platforms.
+# Runs on every PR and on pushes to main/develop, with a full weekly scan schedule.
+#
+# Gate logic:
+#   - PRs:   SAST + secrets + dependency scan + IaC -- blocks merge on any CRITICAL/HIGH finding
+#   - Push:  All gates + container scan -- blocks deploy on failure
+#   - Weekly: Full suite including DAST (OWASP ZAP) and Nuclei
+
+name: Security Scan Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - "release/**"
+  pull_request:
+    types: [opened, synchronize, reopened]
+  schedule:
+    # Full security scan every Monday at 02:00 UTC
+    - cron: "0 2 * * 1"
+  workflow_dispatch:
+    inputs:
+      scan_level:
+        description: "Scan depth: standard | comprehensive | maximum"
+        required: false
+        default: "standard"
+        type: choice
+        options: [standard, comprehensive, maximum]
+
+permissions:
+  contents: read
+  security-events: write   # required for SARIF upload to GitHub Security tab
+  pull-requests: write     # required for PR comments
+
+concurrency:
+  group: "${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: true
+
+env:
+  SEVERITY_THRESHOLD: "high"
+  REPORT_RETENTION_DAYS: 90
+
+# ---------------------------------------------------------------------------
+# Job: Secret Detection
+# Runs first (fastest gate) to catch leaked credentials before any build
+# ---------------------------------------------------------------------------
+jobs:
+  secret-detection:
+    name: Secret Detection
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout (full history for gitleaks)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Gitleaks -- scan git history
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          config-path: .gitleaks.toml
+
+      - name: TruffleHog -- entropy + pattern scan
+        uses: trufflesecurity/trufflehog@v3
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          extra_args: --only-verified --json
+
+      - name: Upload secret scan results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: secret-scan-results
+          path: |
+            gitleaks-report.json
+            trufflehog-report.json
+          retention-days: ${{ env.REPORT_RETENTION_DAYS }}
+
+  # ---------------------------------------------------------------------------
+  # Job: SAST -- Static Application Security Testing
+  # ---------------------------------------------------------------------------
+  sast:
+    name: SAST
+    runs-on: ubuntu-24.04
+    needs: [secret-detection]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Semgrep: cross-language SAST with iGaming-specific rules
+      - name: Semgrep -- OWASP Top 10 + iGaming rules
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: |
+            p/owasp-top-ten
+            p/ci
+            p/secrets
+            p/python
+            p/javascript
+            p/typescript
+          generateSarif: "1"
+        env:
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+
+      - name: Semgrep -- iGaming-specific gambling rules
+        if: hashFiles('semgrep-rules/gambling-rules.yml') != ''
+        run: |
+          pip install semgrep --quiet
+          semgrep scan \
+            --config semgrep-rules/gambling-rules.yml \
+            --severity ERROR \
+            --json \
+            --output semgrep-gambling.json \
+            . || true
+          # Fail if any ERROR-level findings involving payment or RNG code
+          python3 - <<'PYEOF'
+          import json, sys
+          try:
+              with open("semgrep-gambling.json") as f:
+                  data = json.load(f)
+              errors = [r for r in data.get("results", [])
+                        if r.get("extra", {}).get("severity") == "ERROR"]
+              if errors:
+                  print(f"::error::semgrep gambling rules: {len(errors)} ERROR-level findings")
+                  for e in errors:
+                      print(f"  {e['path']}:{e['start']['line']} -- {e['check_id']}")
+                  sys.exit(1)
+          except FileNotFoundError:
+              pass  # No results file means no findings
+          PYEOF
+
+      - name: Bandit -- Python security analysis
+        if: hashFiles('**/*.py') != ''
+        run: |
+          pip install bandit[toml] --quiet
+          bandit \
+            --recursive . \
+            --severity-level medium \
+            --confidence-level medium \
+            --format sarif \
+            --output bandit.sarif \
+            --exclude "./.venv,./tests,./node_modules" \
+          || true
+
+      - name: Upload SARIF to GitHub Security tab
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: |
+            semgrep.sarif
+            bandit.sarif
+          category: sast
+
+      - name: Upload SAST artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sast-results
+          path: |
+            semgrep.sarif
+            semgrep-gambling.json
+            bandit.sarif
+          retention-days: ${{ env.REPORT_RETENTION_DAYS }}
+
+  # ---------------------------------------------------------------------------
+  # Job: Dependency Scanning (SCA)
+  # ---------------------------------------------------------------------------
+  dependency-scan:
+    name: Dependency Scanning
+    runs-on: ubuntu-24.04
+    needs: [secret-detection]
+    strategy:
+      fail-fast: false
+      matrix:
+        ecosystem: [npm, python, go]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # npm audit
+      - name: npm audit
+        if: matrix.ecosystem == 'npm' && hashFiles('package-lock.json') != ''
+        run: |
+          npm audit --audit-level=high --json > npm-audit.json 2>&1
+          # Parse and report critical findings
+          python3 - <<'PYEOF'
+          import json, sys
+          with open("npm-audit.json") as f:
+              data = json.load(f)
+          vulns = data.get("vulnerabilities", {})
+          critical = {k: v for k, v in vulns.items() if v.get("severity") == "critical"}
+          high     = {k: v for k, v in vulns.items() if v.get("severity") == "high"}
+          print(f"npm audit: {len(critical)} critical, {len(high)} high vulnerabilities")
+          if critical or high:
+              for name, v in {**critical, **high}.items():
+                  print(f"  {v['severity'].upper():8} {name}: {v.get('title', 'N/A')}")
+              sys.exit(1)
+          PYEOF
+
+      # pip-audit
+      - name: pip-audit
+        if: >
+          matrix.ecosystem == 'python' &&
+          (hashFiles('requirements*.txt') != '' || hashFiles('pyproject.toml') != '')
+        run: |
+          pip install pip-audit --quiet
+          if [ -f requirements.txt ]; then
+            pip-audit -r requirements.txt --format json --output pip-audit.json || true
+          elif [ -f pyproject.toml ]; then
+            pip-audit --project . --format json --output pip-audit.json || true
+          fi
+          python3 - <<'PYEOF'
+          import json, sys, os
+          if not os.path.exists("pip-audit.json"):
+              sys.exit(0)
+          with open("pip-audit.json") as f:
+              data = json.load(f)
+          vulns = data.get("dependencies", [])
+          vuln_list = [v for dep in vulns for v in dep.get("vulns", [])]
+          if vuln_list:
+              print(f"::error::pip-audit: {len(vuln_list)} vulnerable packages")
+              for v in vuln_list[:20]:  # Show first 20
+                  print(f"  {v.get('id', 'N/A')}: {v.get('description', 'N/A')[:80]}")
+              sys.exit(1)
+          PYEOF
+
+      # Trivy filesystem: catches OS packages AND language dependencies
+      - name: Trivy filesystem scan
+        if: matrix.ecosystem == 'npm' || matrix.ecosystem == 'python'
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: "fs"
+          scan-ref: "."
+          severity: "CRITICAL,HIGH"
+          ignore-unfixed: true
+          format: sarif
+          output: trivy-fs.sarif
+          exit-code: "1"
+
+      - name: Upload Trivy SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-fs.sarif
+          category: dependency-scan
+
+      - name: Upload dependency scan artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-scan-${{ matrix.ecosystem }}
+          path: |
+            npm-audit.json
+            pip-audit.json
+            trivy-fs.sarif
+          retention-days: ${{ env.REPORT_RETENTION_DAYS }}
+
+  # ---------------------------------------------------------------------------
+  # Job: Infrastructure as Code Security
+  # ---------------------------------------------------------------------------
+  iac-security:
+    name: IaC Security
+    runs-on: ubuntu-24.04
+    needs: [secret-detection]
+    if: hashFiles('**/*.tf', '**/Dockerfile', '**/*.yaml', '**/*.yml') != ''
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Checkov: PCI DSS, SOC2, ISO 27001, GDPR compliance checks
+      - name: Checkov -- compliance scanning
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: .
+          framework: terraform,dockerfile,kubernetes,github_actions
+          check: "CKV_AWS_*,CKV_GCP_*,CKV_AZURE_*,CKV_K8S_*,CKV_DOCKER_*"
+          soft_fail: false
+          output_format: sarif
+          output_file_path: checkov.sarif
+          # iGaming-relevant compliance frameworks
+          bc_api_key: ${{ secrets.BRIDGECREW_API_KEY }}
+
+      # tfsec: Terraform-specific security scanner
+      - name: tfsec
+        uses: aquasecurity/tfsec-action@v1.0.3
+        with:
+          soft_fail: false
+          format: sarif
+          sarif_file: tfsec.sarif
+
+      # hadolint: Dockerfile best practices
+      - name: hadolint -- Dockerfile linting
+        uses: hadolint/hadolint-action@v3.1.0
+        if: hashFiles('**/Dockerfile', '**/*.dockerfile') != ''
+        with:
+          dockerfile: Dockerfile
+          format: sarif
+          output-file: hadolint.sarif
+          failure-threshold: warning
+
+      - name: Upload IaC SARIF results
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: |
+            checkov.sarif
+            tfsec.sarif
+            hadolint.sarif
+          category: iac-security
+
+  # ---------------------------------------------------------------------------
+  # Job: Container Security (runs only on push to main/develop, not PRs)
+  # ---------------------------------------------------------------------------
+  container-security:
+    name: Container Security
+    runs-on: ubuntu-24.04
+    needs: [sast, dependency-scan, iac-security]
+    if: github.event_name == 'push' || github.event_name == 'schedule'
+    env:
+      IMAGE_NAME: ${{ github.repository }}
+      IMAGE_TAG: ${{ github.sha }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build container image
+        run: |
+          docker build \
+            --tag "${IMAGE_NAME}:${IMAGE_TAG}" \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            --label "org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            .
+
+      # Trivy image scan
+      - name: Trivy -- container image scan
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: "${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+          severity: "CRITICAL,HIGH"
+          ignore-unfixed: true
+          format: sarif
+          output: trivy-image.sarif
+          exit-code: "1"
+
+      # Grype: alternative scanner with different vulnerability database
+      - name: Grype -- container image scan
+        uses: anchore/scan-action@v4
+        id: grype-scan
+        with:
+          image: "${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+          fail-build: true
+          severity-cutoff: high
+          output-format: sarif
+
+      # Syft: generate SBOM for compliance records
+      - name: Syft -- generate CycloneDX SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: "${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+          format: cyclonedx-json
+          output-file: sbom.cyclonedx.json
+          artifact-name: sbom-${{ github.sha }}
+
+      - name: Upload container scan artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: container-security-${{ github.sha }}
+          path: |
+            trivy-image.sarif
+            sbom.cyclonedx.json
+          retention-days: ${{ env.REPORT_RETENTION_DAYS }}
+
+  # ---------------------------------------------------------------------------
+  # Job: DAST -- Dynamic Application Security Testing
+  # Runs on schedule and manual trigger only (requires running application)
+  # ---------------------------------------------------------------------------
+  dast:
+    name: DAST (ZAP + Nuclei)
+    runs-on: ubuntu-24.04
+    needs: [container-security]
+    if: >
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' &&
+       contains(fromJson('["comprehensive","maximum"]'), inputs.scan_level))
+    env:
+      TARGET_URL: ${{ vars.STAGING_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # OWASP ZAP: baseline scan against staging
+      - name: OWASP ZAP -- baseline scan
+        uses: zaproxy/action-baseline@v0.13.0
+        with:
+          target: ${{ env.TARGET_URL }}
+          rules_file_name: .zap/rules.tsv
+          cmd_options: >
+            -z "-config scanner.maxDepth=5
+                -config scanner.maxChildren=20"
+          issue_title: ZAP Baseline Report
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fail_action: false   # Report only -- don't block; ZAP baselines have noise
+
+      # OWASP ZAP: full scan on main branch only
+      - name: OWASP ZAP -- full active scan
+        if: github.ref == 'refs/heads/main'
+        uses: zaproxy/action-full-scan@v0.11.0
+        with:
+          target: ${{ env.TARGET_URL }}
+          rules_file_name: .zap/rules.tsv
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fail_action: true
+
+      # Nuclei: template-based vulnerability scanning
+      - name: Nuclei -- CVE and misconfiguration scan
+        run: |
+          docker run --rm \
+            -v "${PWD}/nuclei-results:/output" \
+            projectdiscovery/nuclei:latest \
+              -u "${TARGET_URL}" \
+              -t cves/ -t misconfigurations/ -t exposures/ \
+              -severity critical,high \
+              -jsonl \
+              -output /output/nuclei.jsonl \
+              -stats \
+              -no-color
+
+      - name: Parse Nuclei results
+        run: |
+          python3 - <<'PYEOF'
+          import json, sys, os
+
+          report_file = "nuclei-results/nuclei.jsonl"
+          if not os.path.exists(report_file):
+              print("No Nuclei results file found")
+              sys.exit(0)
+
+          critical = []
+          high = []
+
+          with open(report_file) as f:
+              for line in f:
+                  line = line.strip()
+                  if not line:
+                      continue
+                  try:
+                      finding = json.loads(line)
+                      severity = finding.get("info", {}).get("severity", "").lower()
+                      if severity == "critical":
+                          critical.append(finding)
+                      elif severity == "high":
+                          high.append(finding)
+                  except json.JSONDecodeError:
+                      pass
+
+          print(f"Nuclei scan: {len(critical)} critical, {len(high)} high findings")
+          for f in critical + high:
+              name = f.get("info", {}).get("name", "unknown")
+              sev  = f.get("info", {}).get("severity", "unknown")
+              host = f.get("host", "unknown")
+              print(f"  [{sev.upper()}] {name} @ {host}")
+
+          if critical:
+              print("::error::Nuclei: critical vulnerabilities found")
+              sys.exit(1)
+          PYEOF
+
+      - name: Upload DAST results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dast-results-${{ github.run_id }}
+          path: |
+            nuclei-results/
+            report_html.html
+            report_json.json
+          retention-days: ${{ env.REPORT_RETENTION_DAYS }}
+
+  # ---------------------------------------------------------------------------
+  # Job: iGaming-Specific Security Gates
+  # Checks specific to gambling platform integrity
+  # ---------------------------------------------------------------------------
+  igaming-gates:
+    name: iGaming Security Gates
+    runs-on: ubuntu-24.04
+    needs: [sast, dependency-scan]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Gate -- RNG implementation check
+        run: |
+          python3 - <<'PYEOF'
+          """
+          Scan game code for insecure RNG usage.
+          GLI-11 requires that RNG seeding and generation use certified
+          cryptographically secure algorithms. Math.random() or random.random()
+          in game logic paths violates this requirement.
+          """
+          import os, re, sys
+
+          # Patterns that indicate insecure RNG in game logic
+          INSECURE_RNG_PATTERNS = [
+              (r"\bMath\.random\(\)", "JavaScript Math.random() -- use crypto.getRandomValues()"),
+              (r"\brandom\.random\(\)", "Python random.random() -- use secrets module"),
+              (r"\brandom\.randint\(", "Python random.randint() -- use secrets.randbelow()"),
+              (r"\bnew Random\(\)", "Java new Random() -- use SecureRandom"),
+              (r"\bstd::rand\(\)", "C++ std::rand() -- use <random> with std::mt19937"),
+          ]
+
+          GAME_CODE_PATHS = [
+              "services/game-engine/",
+              "services/rng/",
+              "packages/game-core/",
+              "game-logic/",
+          ]
+
+          findings = []
+          for root, dirs, files in os.walk("."):
+              # Skip vendor, node_modules, test files
+              dirs[:] = [d for d in dirs if d not in
+                        ["node_modules", ".git", "vendor", "__pycache__", ".venv"]]
+
+              is_game_path = any(root.startswith(f"./{p}") for p in GAME_CODE_PATHS)
+              if not is_game_path:
+                  continue
+
+              for fname in files:
+                  if not fname.endswith((".py", ".js", ".ts", ".java", ".go", ".cpp", ".cs")):
+                      continue
+                  if "test" in fname.lower() or "spec" in fname.lower():
+                      continue
+
+                  fpath = os.path.join(root, fname)
+                  try:
+                      with open(fpath) as f:
+                          for lineno, line in enumerate(f, 1):
+                              for pattern, msg in INSECURE_RNG_PATTERNS:
+                                  if re.search(pattern, line):
+                                      findings.append(
+                                          f"{fpath}:{lineno}: {msg}"
+                                      )
+                  except (UnicodeDecodeError, PermissionError):
+                      pass
+
+          if findings:
+              print(f"::error::GLI-11 violation: Insecure RNG in game code ({len(findings)} findings)")
+              for f in findings:
+                  print(f"  {f}")
+              sys.exit(1)
+          else:
+              print("RNG check passed: no insecure RNG in game code paths")
+          PYEOF
+
+      - name: Gate -- wallet balance manipulation check
+        run: |
+          python3 - <<'PYEOF'
+          """
+          Verify that wallet balance operations are protected by:
+          1. Optimistic locking (version field or SELECT FOR UPDATE)
+          2. Transaction boundaries
+          3. Audit logging
+
+          Missing any of these in payment/wallet code is a financial integrity risk.
+          """
+          import os, re, sys
+
+          WALLET_FILES_PATTERN = re.compile(
+              r"(wallet|balance|deposit|withdraw|transaction|payout)",
+              re.IGNORECASE
+          )
+          LOCKING_PATTERNS = [
+              r"FOR UPDATE",
+              r"optimistic.lock",
+              r"@Version",
+              r"version_field",
+              r"select_for_update",
+          ]
+          AUDIT_PATTERNS = [
+              r"audit.log",
+              r"logger\.(info|warning|error)",
+              r"AuditLog\.",
+              r"audit_trail",
+          ]
+
+          warnings = []
+          for root, dirs, files in os.walk("."):
+              dirs[:] = [d for d in dirs if d not in
+                        ["node_modules", ".git", "vendor", "__pycache__", ".venv", "tests"]]
+              for fname in files:
+                  if not WALLET_FILES_PATTERN.search(fname):
+                      continue
+                  if not fname.endswith((".py", ".js", ".ts", ".java", ".go", ".php")):
+                      continue
+                  if "test" in fname.lower() or "spec" in fname.lower():
+                      continue
+
+                  fpath = os.path.join(root, fname)
+                  try:
+                      with open(fpath) as f:
+                          content = f.read()
+                  except (UnicodeDecodeError, PermissionError):
+                      continue
+
+                  has_locking = any(re.search(p, content, re.IGNORECASE)
+                                   for p in LOCKING_PATTERNS)
+                  has_audit   = any(re.search(p, content, re.IGNORECASE)
+                                   for p in AUDIT_PATTERNS)
+
+                  if not has_locking:
+                      warnings.append(f"{fpath}: no locking mechanism detected")
+                  if not has_audit:
+                      warnings.append(f"{fpath}: no audit logging detected")
+
+          if warnings:
+              for w in warnings:
+                  print(f"::warning::{w}")
+              # Warnings only -- don't block, but flag for review
+              print(f"Wallet integrity: {len(warnings)} warnings (non-blocking)")
+          else:
+              print("Wallet integrity check passed")
+          PYEOF
+
+      - name: Gate -- PCI DSS PAN exposure check
+        run: |
+          # Scan for unmasked PAN (Primary Account Number) patterns in source code.
+          # PCI DSS Requirement 3.3: PANs must be masked when displayed.
+          python3 - <<'PYEOF'
+          import os, re, sys
+
+          # Luhn-passable card number pattern (loose -- checks for 13-16 digit sequences)
+          PAN_PATTERN = re.compile(r"\b(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|3[47][0-9]{13}|6(?:011|5[0-9]{2})[0-9]{12})\b")
+          MASKED_PAN   = re.compile(r"\*{4,}|X{4,}|[0-9]{4}\s*\*+\s*[0-9]{4}")
+
+          findings = []
+          for root, dirs, files in os.walk("."):
+              dirs[:] = [d for d in dirs if d not in
+                        ["node_modules", ".git", "vendor", "__pycache__", ".venv"]]
+              for fname in files:
+                  if not fname.endswith((".py", ".js", ".ts", ".java", ".go",
+                                         ".php", ".rb", ".cs", ".json", ".yml", ".yaml")):
+                      continue
+                  fpath = os.path.join(root, fname)
+                  try:
+                      with open(fpath) as f:
+                          for lineno, line in enumerate(f, 1):
+                              if PAN_PATTERN.search(line) and not MASKED_PAN.search(line):
+                                  # Skip obvious test/example data
+                                  if any(w in line.lower() for w in
+                                         ["test", "example", "fake", "dummy", "sample", "#"]):
+                                      continue
+                                  findings.append(f"{fpath}:{lineno}")
+                  except (UnicodeDecodeError, PermissionError):
+                      pass
+
+          if findings:
+              print(f"::error::PCI DSS violation: Potential unmasked PAN in {len(findings)} locations")
+              for f in findings[:20]:
+                  print(f"  {f}")
+              sys.exit(1)
+          else:
+              print("PCI DSS PAN check passed: no unmasked PANs detected")
+          PYEOF
+
+      - name: Gate -- session token entropy check
+        run: |
+          python3 - <<'PYEOF'
+          """
+          Verify that session tokens are generated with sufficient entropy.
+          Session tokens created with insufficient entropy are vulnerable to
+          brute-force and prediction attacks -- a common iGaming account takeover vector.
+          """
+          import os, re, sys
+
+          # Patterns that suggest insufficient entropy (less than 128 bits)
+          WEAK_SESSION_PATTERNS = [
+              (r"session[_\-]?token\s*=\s*str\(uuid\.uuid1\(\)", "UUID v1 is time-based, not random"),
+              (r"token\s*=\s*hashlib\.md5\(", "MD5 token derivation is too weak"),
+              (r"secrets\.token_hex\([0-9]\b", "Hex token with single-digit length may be < 128 bits"),
+              (r"Math\.random\(\)\.toString\(36\)\.substr", "JavaScript session token lacks entropy"),
+              (r"session\.id\s*=\s*Date\.now\(\)", "Timestamp-based session ID is predictable"),
+          ]
+
+          findings = []
+          for root, dirs, files in os.walk("."):
+              dirs[:] = [d for d in dirs if d not in
+                        ["node_modules", ".git", "vendor", "__pycache__", ".venv", "tests"]]
+              for fname in files:
+                  if not fname.endswith((".py", ".js", ".ts", ".java", ".go", ".php")):
+                      continue
+                  fpath = os.path.join(root, fname)
+                  try:
+                      with open(fpath) as f:
+                          content = f.read()
+                      for pattern, msg in WEAK_SESSION_PATTERNS:
+                          if re.search(pattern, content, re.IGNORECASE):
+                              findings.append(f"{fpath}: {msg}")
+                  except (UnicodeDecodeError, PermissionError):
+                      pass
+
+          if findings:
+              print(f"::error::Session security: {len(findings)} weak session patterns found")
+              for f in findings:
+                  print(f"  {f}")
+              sys.exit(1)
+          else:
+              print("Session entropy check passed")
+          PYEOF
+
+  # ---------------------------------------------------------------------------
+  # Job: Final Gate Summary
+  # ---------------------------------------------------------------------------
+  deployment-gate:
+    name: Deployment Gate
+    runs-on: ubuntu-24.04
+    needs:
+      - secret-detection
+      - sast
+      - dependency-scan
+      - iac-security
+      - igaming-gates
+    if: always()
+    steps:
+      - name: Evaluate gate results
+        run: |
+          python3 - <<'PYEOF'
+          import json, sys, os
+
+          # Map GitHub job statuses from needs context
+          needs_json = os.environ.get("NEEDS_JSON", "{}")
+          try:
+              needs = json.loads(needs_json)
+          except json.JSONDecodeError:
+              needs = {}
+
+          failed_jobs  = [name for name, data in needs.items()
+                          if data.get("result") == "failure"]
+          skipped_jobs = [name for name, data in needs.items()
+                          if data.get("result") == "skipped"]
+          passed_jobs  = [name for name, data in needs.items()
+                          if data.get("result") == "success"]
+
+          print("=== Deployment Gate Summary ===")
+          print(f"Passed:  {len(passed_jobs)}")
+          print(f"Failed:  {len(failed_jobs)}")
+          print(f"Skipped: {len(skipped_jobs)}")
+
+          if failed_jobs:
+              print(f"\nFailed gates: {', '.join(failed_jobs)}")
+              print("\n::error::Deployment BLOCKED -- resolve security findings before deploying")
+              sys.exit(1)
+          else:
+              print("\nAll security gates passed -- deployment approved")
+          PYEOF
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+
+      - name: Post PR comment with results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const needs = ${{ toJSON(needs) }};
+            const rows = Object.entries(needs)
+              .map(([name, data]) => {
+                const icon = data.result === 'success' ? '✅' :
+                             data.result === 'failure' ? '❌' : '⏭️';
+                return `| ${icon} | \`${name}\` | ${data.result} |`;
+              }).join('\n');
+
+            const body = [
+              '## Security Scan Results',
+              '',
+              '| Status | Check | Result |',
+              '|--------|-------|--------|',
+              rows,
+              '',
+              `**Commit:** \`${context.sha.slice(0,7)}\``,
+            ].join('\n');
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });

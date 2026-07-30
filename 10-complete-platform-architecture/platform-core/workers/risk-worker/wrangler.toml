@@ -1,0 +1,19 @@
+name = "egambling-risk"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+routes = [
+  { pattern = "risk.cloud-acmetocasino.com/*", zone_name = "cloud-acmetocasino.com" }
+]
+
+[vars]
+ENVIRONMENT = "production"
+
+[[kv_namespaces]]
+binding = "PLAYER_RISK_CACHE"
+id = "ecaa3576be904e8e84354b67489295de"
+
+[observability]
+enabled = true
+head_sampling_rate = 1

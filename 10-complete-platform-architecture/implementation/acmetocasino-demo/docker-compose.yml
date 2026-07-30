@@ -1,0 +1,135 @@
+# Companion code for "The Backend of Luck" - Chapter 10, Complete Platform Architecture.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+services:
+  dev-db:
+    image: postgres:18-alpine
+    container_name: dev-casino-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: dev_acmetocasino
+      POSTGRES_USER: casino_dev
+      POSTGRES_PASSWORD: ${DEV_POSTGRES_PASSWORD:?DEV_POSTGRES_PASSWORD must be set}
+    volumes:
+      - dev-pgdata:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "127.0.0.1:5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U casino_dev -d dev_acmetocasino"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+
+  dev-redis:
+    image: redis:7-alpine
+    container_name: dev-casino-redis
+    restart: unless-stopped
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru --save ""
+    ports:
+      - "127.0.0.1:6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 320M
+          cpus: "0.5"
+
+  dev-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dev-casino-api
+    restart: unless-stopped
+    depends_on:
+      dev-db:
+        condition: service_healthy
+      dev-redis:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8090:8090"
+    environment:
+      - DATABASE_URL=postgresql://casino_dev:${DEV_POSTGRES_PASSWORD:?DEV_POSTGRES_PASSWORD must be set}@dev-db:5432/dev_acmetocasino
+      - REDIS_URL=redis://dev-redis:6379/0
+      - JWT_SECRET=${DEV_JWT_SECRET:?DEV_JWT_SECRET must be set}
+      - ENVIRONMENT=development
+      - LOG_LEVEL=INFO
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+
+  dev-seeder:
+    build:
+      context: ./seeder
+    container_name: dev-casino-seeder
+    restart: unless-stopped
+    depends_on:
+      dev-api:
+        condition: service_started
+    environment:
+      - API_BASE_URL=http://dev-api:8090
+      - BOT_COUNT=50
+      - TICK_INTERVAL=3
+      - JWT_SECRET=${DEV_JWT_SECRET:?DEV_JWT_SECRET must be set}
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.25"
+
+  dev-prometheus:
+    image: prom/prometheus:v2.54.0
+    container_name: dev-casino-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - dev-prometheus-data:/prometheus
+    ports:
+      - "127.0.0.1:9091:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.retention.time=7d'
+      - '--storage.tsdb.retention.size=512MB'
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9090/-/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 384M
+          cpus: "0.5"
+
+volumes:
+  dev-pgdata:
+  dev-prometheus-data:

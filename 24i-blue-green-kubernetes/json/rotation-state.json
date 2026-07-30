@@ -1,0 +1,8 @@
+{
+  "active_color": "blue",
+  "pending_color": "null",
+  "previous_color": "null",
+  "provision_completed_at": "null",
+  "switchover_completed_at": "null",
+  "destroy_completed_at": "null"
+}

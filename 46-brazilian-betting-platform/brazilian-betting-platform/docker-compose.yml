@@ -1,0 +1,306 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 46, Building a Brazilian Betting Platform.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# =============================================================================
+# Chapter 46: Brazilian Betting Platform -- Docker Compose
+# =============================================================================
+# Complete local development / staging stack including:
+#   - Python microservices (PIX, KYC, SIGAP, Geo, RG)
+#   - PostgreSQL (primary datastore)
+#   - Redis (caching, rate limiting, session state)
+#   - Kafka (KRaft mode, event streaming for SIGAP)
+#   - Nginx (reverse proxy / TLS termination)
+#
+# Security defaults applied:
+#   - All services run as non-root users
+#   - Read-only filesystems where possible
+#   - No privileged containers
+#   - Internal network isolation (services not exposed unless necessary)
+#   - Health checks on all containers
+#
+# Usage:
+#   docker compose up -d
+#   docker compose logs -f api
+# =============================================================================
+
+version: "3.9"
+
+networks:
+  bet_internal:
+    driver: bridge
+    internal: true        # No direct internet access from internal services
+  bet_public:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  kafka_data:
+  nginx_certs:
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # PostgreSQL -- Primary relational store
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: betbr-postgres
+    restart: unless-stopped
+    user: "70:70"           # postgres uid in alpine
+    environment:
+      POSTGRES_DB: betbr
+      POSTGRES_USER: betbr_user
+      POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
+    secrets:
+      - pg_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    networks:
+      - bet_internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U betbr_user -d betbr"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    tmpfs:
+      - /tmp
+    read_only: false        # PostgreSQL needs writable data dir
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETUID
+      - SETGID
+      - DAC_OVERRIDE
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1G
+
+  # ---------------------------------------------------------------------------
+  # Redis -- Cache, rate limiting, session geo state
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: betbr-redis
+    restart: unless-stopped
+    user: "999:999"
+    command: >
+      redis-server
+        --requirepass "${REDIS_PASSWORD:-redis}"
+        --maxmemory 512mb
+        --maxmemory-policy allkeys-lru
+        --save 900 1
+        --save 300 10
+        --appendonly yes
+        --loglevel warning
+    volumes:
+      - redis_data:/data
+    networks:
+      - bet_internal
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redis}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    read_only: false
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+
+  # ---------------------------------------------------------------------------
+  # Kafka -- Event streaming (SIGAP events, bet events)
+  # KRaft mode: no Zookeeper dependency (Confluent Platform 7.6+)
+  # ---------------------------------------------------------------------------
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: betbr-kafka
+    hostname: kafka
+    restart: unless-stopped
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: PLAINTEXT://kafka:29092,CONTROLLER://kafka:9093,EXTERNAL://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_LOG_SEGMENT_BYTES: 1073741824
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+    volumes:
+      - kafka_data:/tmp/kraft-combined-logs
+    networks:
+      - bet_internal
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - kafka-broker-api-versions --bootstrap-server kafka:29092 >/dev/null 2>&1
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1G
+
+  # ---------------------------------------------------------------------------
+  # API Service -- All Python microservices (single image for simplicity)
+  # In production split into individual containers per microservice.
+  # ---------------------------------------------------------------------------
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: betbr-api:1.0.0
+    container_name: betbr-api
+    restart: unless-stopped
+    user: "1000:1000"       # non-root user defined in Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      # Database
+      DATABASE_URL: postgresql+asyncpg://betbr_user:${POSTGRES_PASSWORD:-postgres}@postgres:5432/betbr
+      # Redis
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis}@redis:6379/0
+      # Kafka
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      # Operator credentials (override via .env or secrets manager)
+      OPERATOR_CNPJ: "${OPERATOR_CNPJ:-12345678000195}"
+      # PSP (inject via secrets manager in production)
+      CELCOIN_API_KEY: "${CELCOIN_API_KEY:-sandbox_key}"
+      CELCOIN_API_SECRET: "${CELCOIN_API_SECRET:-sandbox_secret}"
+      CELCOIN_BASE_URL: "${CELCOIN_BASE_URL:-https://sandbox.openfinance.celcoin.dev}"
+      # Env
+      ENV: "${ENV:-staging}"
+      LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+      LOG_FORMAT: json
+    ports:
+      - "127.0.0.1:8001:8001"   # PIX Payment Gateway
+      - "127.0.0.1:8002:8002"   # CPF KYC Service
+      - "127.0.0.1:8003:8003"   # SIGAP Reporter
+      - "127.0.0.1:8004:8004"   # Geolocation Service
+      - "127.0.0.1:8005:8005"   # Responsible Gaming Engine
+    networks:
+      - bet_internal
+      - bet_public
+    volumes:
+      - /tmp/sigap_wal:/tmp/sigap_wal   # WAL persistence
+    tmpfs:
+      - /tmp/app
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8001/healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 1G
+        reservations:
+          cpus: "0.5"
+          memory: 256M
+
+  # ---------------------------------------------------------------------------
+  # Nginx -- Reverse proxy + TLS termination
+  # ---------------------------------------------------------------------------
+  nginx:
+    image: nginx:stable-alpine
+    container_name: betbr-nginx
+    restart: unless-stopped
+    user: "101:101"
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "80:8080"
+      - "443:8443"
+    volumes:
+      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./infra/nginx/conf.d:/etc/nginx/conf.d:ro
+      - nginx_certs:/etc/nginx/certs:ro
+    networks:
+      - bet_internal
+      - bet_public
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/nginx-health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+
+# ---------------------------------------------------------------------------
+# Docker Secrets
+# ---------------------------------------------------------------------------
+secrets:
+  pg_password:
+    environment: POSTGRES_PASSWORD
+
+# ---------------------------------------------------------------------------
+# Example .env file (create .env in the same directory):
+#
+# POSTGRES_PASSWORD=<set-a-strong-password>
+# REDIS_PASSWORD=<set-a-strong-password>
+# OPERATOR_CNPJ=12345678000195
+# CELCOIN_API_KEY=your_celcoin_key
+# CELCOIN_API_SECRET=your_celcoin_secret
+# ENV=production
+# LOG_LEVEL=INFO
+# ---------------------------------------------------------------------------

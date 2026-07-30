@@ -1,0 +1,62 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 24b, Wazuh SIEM for iGaming Compliance.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# ============================================================================
+# AcmeToCasino — Wazuh Agent Deployment
+# ============================================================================
+#
+# Enrolls Wazuh agents on monitored casino hosts.
+# Agents report to the Wazuh manager at wazuh001 (10.0.10.26).
+#
+# Usage:
+#   ansible-playbook -i inventory/hosts.yml playbook-wazuh-agent.yml
+#
+#   # Deploy to a specific host
+#   ansible-playbook -i inventory/hosts.yml playbook-wazuh-agent.yml --limit casino001
+#
+# Roles: the wazuh-agent role is not duplicated here. It lives in the
+# simulation platform at new-platform/ansible/wazuh/roles/wazuh-agent and is
+# referenced below by path, relative to this playbook's own directory. See the
+# same note in playbook-wazuh-manager.yml.
+# ============================================================================
+
+- name: Deploy Wazuh Agent on Casino Hosts
+  hosts: wazuh_agents
+  become: true
+  gather_facts: true
+
+  pre_tasks:
+    - name: Verify SSH connectivity
+      ansible.builtin.ping:
+
+    - name: Verify manager is reachable
+      ansible.builtin.wait_for:
+        host: "{{ wazuh_manager_ip }}"
+        port: 1514
+        timeout: 30
+      register: manager_check
+      ignore_errors: true
+
+    - name: Warn if manager is not reachable
+      ansible.builtin.debug:
+        msg: "WARNING: Wazuh manager at {{ wazuh_manager_ip }}:1514 is not reachable yet. Agent may need manual enrollment."
+      when: manager_check is failed
+
+  roles:
+    - role: ../../../../../../new-platform/ansible/wazuh/roles/wazuh-agent
+      tags: [wazuh, agent]
+
+  post_tasks:
+    - name: Display agent summary
+      ansible.builtin.debug:
+        msg: |
+          Wazuh Agent deployed on {{ inventory_hostname }}
+          Manager: {{ wazuh_manager_ip }}

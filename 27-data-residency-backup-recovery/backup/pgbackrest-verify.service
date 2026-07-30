@@ -1,0 +1,12 @@
+[Unit]
+Description=pgBackRest Backup Integrity Verification
+Documentation=https://pgbackrest.org/
+
+[Service]
+Type=oneshot
+User=postgres
+ExecStart=/usr/local/bin/backup-verify.sh --stanza casino
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=pgbackrest-verify
+TimeoutStartSec=1800

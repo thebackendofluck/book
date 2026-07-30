@@ -1,0 +1,169 @@
+{
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "spdxVersion": "SPDX-2.3",
+  "creationInfo": {
+    "created": "2026-04-01T10:00:00Z",
+    "creators": [
+      "Tool: trivy-0.58.0",
+      "Organization: AcmeToCasino Platform Engineering"
+    ],
+    "licenseListVersion": "3.22"
+  },
+  "name": "acmetocasino-platform-sbom",
+  "documentNamespace": "https://acmetocasino.com/sbom/platform-2026-04-01",
+  "dataLicense": "CC0-1.0",
+  "documentDescribes": ["SPDXRef-Package-platform"],
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-Package-platform",
+      "name": "acmetocasino-platform",
+      "versionInfo": "1.0.0",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "primaryPackagePurpose": "APPLICATION",
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "LicenseRef-AcmeToCasino-Proprietary"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-fastapi",
+      "name": "fastapi",
+      "versionInfo": "0.109.2",
+      "downloadLocation": "https://pypi.org/project/fastapi/",
+      "filesAnalyzed": false,
+      "primaryPackagePurpose": "LIBRARY",
+      "supplier": "Organization: Sebastián Ramírez",
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:pypi/fastapi@0.109.2"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Package-pydantic",
+      "name": "pydantic",
+      "versionInfo": "2.6.1",
+      "downloadLocation": "https://pypi.org/project/pydantic/",
+      "filesAnalyzed": false,
+      "primaryPackagePurpose": "LIBRARY",
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:pypi/pydantic@2.6.1"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Package-sqlalchemy",
+      "name": "SQLAlchemy",
+      "versionInfo": "2.0.27",
+      "downloadLocation": "https://pypi.org/project/SQLAlchemy/",
+      "filesAnalyzed": false,
+      "primaryPackagePurpose": "LIBRARY",
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:pypi/SQLAlchemy@2.0.27"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Package-redis",
+      "name": "redis",
+      "versionInfo": "5.0.1",
+      "downloadLocation": "https://pypi.org/project/redis/",
+      "filesAnalyzed": false,
+      "primaryPackagePurpose": "LIBRARY",
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:pypi/redis@5.0.1"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Package-kafka-python",
+      "name": "kafka-python",
+      "versionInfo": "2.0.2",
+      "downloadLocation": "https://pypi.org/project/kafka-python/",
+      "filesAnalyzed": false,
+      "primaryPackagePurpose": "LIBRARY",
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:pypi/kafka-python@2.0.2"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Package-psycopg2",
+      "name": "psycopg2-binary",
+      "versionInfo": "2.9.9",
+      "downloadLocation": "https://pypi.org/project/psycopg2-binary/",
+      "filesAnalyzed": false,
+      "primaryPackagePurpose": "LIBRARY",
+      "licenseConcluded": "LGPL-3.0-or-later",
+      "licenseDeclared": "LGPL-3.0-or-later",
+      "comment": "LGPL - approved for dynamic linking use case",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:pypi/psycopg2-binary@2.9.9"
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-platform"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-platform",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-fastapi"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-platform",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-pydantic"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-platform",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-sqlalchemy"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-platform",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-redis"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-platform",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-kafka-python"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-platform",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-psycopg2"
+    }
+  ]
+}

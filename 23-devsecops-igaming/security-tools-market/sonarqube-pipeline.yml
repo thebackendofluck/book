@@ -1,0 +1,217 @@
+# Companion code for "The Backend of Luck" - Chapter 23, DevSecOps for iGaming.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# =============================================================================
+# GitLab CI/CD Pipeline -- SonarQube Integration for iGaming
+# =============================================================================
+#
+# Purpose:
+#   Integrates SonarQube static analysis into the GitLab CI/CD pipeline for
+#   casino platform code. Every merge request and push to protected branches
+#   triggers a full scan against the iGaming Compliance quality gate.
+#
+# Why this matters for iGaming:
+#   Gaming regulators (MGA, UKGC, AGCO) require demonstrable code quality
+#   processes. PCI-DSS v4.0 requirement 6.2.4 mandates automated security
+#   testing in the SDLC. This pipeline provides auditable evidence of
+#   continuous security analysis -- a requirement during license renewals.
+#
+# Prerequisites:
+#   - SonarQube instance (see sonarqube-setup.sh)
+#   - GitLab Runner with Docker executor
+#   - CI/CD variables: SONAR_TOKEN, SONAR_HOST_URL
+#
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Global configuration
+# ---------------------------------------------------------------------------
+variables:
+  # SonarQube connection (set these as CI/CD variables in GitLab)
+  SONAR_HOST_URL: "${SONAR_HOST_URL}"
+  SONAR_TOKEN: "${SONAR_TOKEN}"
+  # Project identification
+  SONAR_PROJECT_KEY: "igaming-platform"
+  SONAR_PROJECT_NAME: "iGaming Platform"
+  # Quality gate timeout (seconds) -- large codebases need time
+  SONAR_QUALITYGATE_TIMEOUT: "300"
+  # Coverage report paths (adjust to your test framework)
+  COVERAGE_REPORT_PATH: "coverage/coverage.xml"
+  JUNIT_REPORT_PATH: "reports/junit.xml"
+
+# Pipeline stages -- security analysis runs after tests pass
+stages:
+  - build
+  - test
+  - sonar-analysis
+  - quality-gate
+
+# Cache dependencies between jobs to speed up pipelines
+# iGaming codebases often have 500+ dependencies
+cache:
+  key: "${CI_COMMIT_REF_SLUG}"
+  paths:
+    - .sonar/cache
+    - node_modules/
+    - .pip-cache/
+    - vendor/
+
+# ---------------------------------------------------------------------------
+# Stage: Build
+# ---------------------------------------------------------------------------
+build:
+  stage: build
+  image: python:3.12-slim
+  script:
+    - pip install --cache-dir=.pip-cache -r requirements.txt
+    - pip install --cache-dir=.pip-cache -r requirements-dev.txt
+  artifacts:
+    paths:
+      - .pip-cache/
+    expire_in: 1 hour
+
+# ---------------------------------------------------------------------------
+# Stage: Test (with coverage for SonarQube)
+# ---------------------------------------------------------------------------
+test:
+  stage: test
+  image: python:3.12-slim
+  script:
+    - pip install --cache-dir=.pip-cache -r requirements.txt -r requirements-dev.txt
+    # Run tests with coverage -- SonarQube needs the XML report
+    # Gaming tests include RNG validation, wallet transaction integrity,
+    # and compliance rule checks
+    - pytest
+        --cov=src
+        --cov-report=xml:coverage/coverage.xml
+        --junitxml=reports/junit.xml
+        -v
+  artifacts:
+    paths:
+      - coverage/
+      - reports/
+    reports:
+      junit: "${JUNIT_REPORT_PATH}"
+      coverage_report:
+        coverage_format: cobertura
+        path: "${COVERAGE_REPORT_PATH}"
+    expire_in: 1 week
+
+# ---------------------------------------------------------------------------
+# Stage: SonarQube Analysis
+# ---------------------------------------------------------------------------
+# Runs the SonarQube scanner against the codebase. Branch analysis ensures
+# feature branches get analysed before merge -- catching issues early.
+sonar-analysis:
+  stage: sonar-analysis
+  image:
+    name: sonarsource/sonar-scanner-cli:5
+    entrypoint: [""]
+  dependencies:
+    - test
+  variables:
+    GIT_DEPTH: "0"  # Full clone needed for blame data and branch analysis
+  script:
+    - >
+      sonar-scanner
+      -Dsonar.projectKey="${SONAR_PROJECT_KEY}"
+      -Dsonar.projectName="${SONAR_PROJECT_NAME}"
+      -Dsonar.host.url="${SONAR_HOST_URL}"
+      -Dsonar.token="${SONAR_TOKEN}"
+      -Dsonar.sources=src
+      -Dsonar.tests=tests
+      -Dsonar.python.coverage.reportPaths="${COVERAGE_REPORT_PATH}"
+      -Dsonar.python.xunit.reportPath="${JUNIT_REPORT_PATH}"
+      -Dsonar.qualitygate.wait=false
+      -Dsonar.scm.provider=git
+  # Branch analysis configuration:
+  # - main/develop: full analysis with new code period
+  # - feature/*: short-lived branch analysis (compared to target branch)
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+    - if: '$CI_MERGE_REQUEST_IID'
+    - if: '$CI_COMMIT_BRANCH =~ /^feature\//'
+  artifacts:
+    paths:
+      - .scannerwork/report-task.txt
+    expire_in: 1 day
+  cache:
+    key: sonar-cache
+    paths:
+      - .sonar/cache
+
+# ---------------------------------------------------------------------------
+# Stage: Quality Gate Check
+# ---------------------------------------------------------------------------
+# This is the enforcement point. If the quality gate fails, the pipeline
+# fails -- blocking merge to protected branches. This is the mechanism
+# that provides auditable evidence for PCI-DSS and ISO 27001 compliance.
+quality-gate:
+  stage: quality-gate
+  image:
+    name: sonarsource/sonar-scanner-cli:5
+    entrypoint: [""]
+  dependencies:
+    - sonar-analysis
+  script:
+    - |
+      echo "Checking SonarQube quality gate status..."
+      # Extract the task URL from the scanner report
+      TASK_URL=$(grep "ceTaskUrl" .scannerwork/report-task.txt | cut -d= -f2-)
+      if [ -z "$TASK_URL" ]; then
+        echo "ERROR: Could not find analysis task URL."
+        exit 1
+      fi
+
+      # Poll until the analysis task completes
+      TIMEOUT=${SONAR_QUALITYGATE_TIMEOUT}
+      ELAPSED=0
+      while [ "$ELAPSED" -lt "$TIMEOUT" ]; do
+        STATUS=$(curl -sf -u "${SONAR_TOKEN}:" "${TASK_URL}" | python3 -c "import sys,json;print(json.load(sys.stdin)['task']['status'])" 2>/dev/null || echo "PENDING")
+        if [ "$STATUS" = "SUCCESS" ]; then
+          break
+        elif [ "$STATUS" = "FAILED" ] || [ "$STATUS" = "CANCELED" ]; then
+          echo "ERROR: SonarQube analysis task ${STATUS}."
+          exit 1
+        fi
+        echo "Analysis in progress (${ELAPSED}s / ${TIMEOUT}s)..."
+        sleep 10
+        ELAPSED=$((ELAPSED + 10))
+      done
+
+      # Fetch the quality gate result
+      ANALYSIS_ID=$(grep "ceTaskId" .scannerwork/report-task.txt | cut -d= -f2-)
+      GATE_STATUS=$(curl -sf -u "${SONAR_TOKEN}:" \
+        "${SONAR_HOST_URL}/api/qualitygates/project_status?analysisId=${ANALYSIS_ID}" | \
+        python3 -c "import sys,json;print(json.load(sys.stdin)['projectStatus']['status'])" 2>/dev/null || echo "ERROR")
+
+      echo "Quality Gate Status: ${GATE_STATUS}"
+
+      if [ "$GATE_STATUS" != "OK" ]; then
+        echo "============================================"
+        echo "QUALITY GATE FAILED"
+        echo "============================================"
+        echo "The iGaming Compliance quality gate rejected this code."
+        echo "Review issues at: ${SONAR_HOST_URL}/dashboard?id=${SONAR_PROJECT_KEY}"
+        echo ""
+        echo "Common causes in gaming codebases:"
+        echo "  - Unchecked financial calculation precision"
+        echo "  - Missing input validation on bet amounts"
+        echo "  - Hardcoded credentials or API keys"
+        echo "  - Insufficient test coverage on payment flows"
+        exit 1
+      fi
+
+      echo "Quality gate passed. Code meets iGaming compliance standards."
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+    - if: '$CI_MERGE_REQUEST_IID'

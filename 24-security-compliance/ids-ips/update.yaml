@@ -1,0 +1,308 @@
+# Companion code for "The Backend of Luck" - Chapter 24, Security and Compliance.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+##############################################################################
+# suricata-update Configuration - iGaming Platform
+#
+# File: /etc/suricata/update.yaml
+#
+# Purpose:
+#   Configures suricata-update, the official Suricata rule management tool.
+#   suricata-update fetches, merges, modifies, and installs rulesets from
+#   multiple sources, then reloads Suricata without dropping traffic.
+#
+# Usage:
+#   suricata-update -c /etc/suricata/update.yaml
+#   suricata-update --suricata-conf /etc/suricata/suricata.yaml
+#
+# Automation:
+#   Schedule via cron or systemd timer (recommended: every 4 hours for ET Open,
+#   every 1 hour for ET Pro if licensed):
+#
+#   # /etc/cron.d/suricata-update
+#   0 */4 * * * root suricata-update -c /etc/suricata/update.yaml \
+#       && suricatasc -c /var/run/suricata/suricata-command.socket \
+#          '{"command":"reload-rules"}' 2>&1 | \
+#       logger -t suricata-update
+#
+# Dependencies:
+#   pip3 install suricata-update
+#   suricata-update --version  # should be 2.x
+#
+# iGaming-specific notes:
+#   - ET Pro subscription is strongly recommended for PCI-DSS compliance.
+#     ET Pro includes rules for payment fraud, card testing, and financial
+#     sector threats that are not in ET Open.
+#   - Local custom rule files (igaming-*.rules) are managed separately
+#     and referenced here so suricata-update includes them in the merged
+#     output and applies disable/modify configs to them.
+##############################################################################
+
+##############################################################################
+# Section 1 - Rule Sources
+#
+# suricata-update fetches rules from these sources and merges them into a
+# single /var/lib/suricata/rules/suricata.rules output file.
+##############################################################################
+
+sources:
+  # ---------------------------------------------------------------------------
+  # Emerging Threats Open (ET Open)
+  # Free ruleset covering malware, C2, scanners, exploits.
+  # Updated multiple times daily by Proofpoint.
+  # Suitable for: base threat detection, internal coverage.
+  # ---------------------------------------------------------------------------
+  - name: et/open
+    url: https://rules.emergingthreats.net/open/suricata-%(__version__)s/emerging.rules.tar.gz
+    # No API key required for ET Open.
+
+  # ---------------------------------------------------------------------------
+  # Emerging Threats Pro (ET Pro) - RECOMMENDED for licensed gambling operators
+  # Requires a paid subscription from Proofpoint.
+  # Set ETPRO_APIKEY environment variable or replace __your_etpro_key__ below.
+  #
+  # ET Pro advantages for iGaming:
+  #   - Financial sector threat rules (card fraud, account takeover kits)
+  #   - Fresh IOCs (typically 30 days ahead of ET Open)
+  #   - Reduced false positive rate
+  #   - Dedicated support from Proofpoint
+  #
+  # To enable: uncomment this block and provide your API key.
+  # ---------------------------------------------------------------------------
+  # - name: et/pro
+  #   url: https://rules.emergingthreatspro.com/YOUR_ETPRO_APIKEY/suricata-%(__version__)s/etpro.rules.tar.gz
+  #   # Alternatively, set SURICATA_UPDATE_ETPRO_KEY env var and use:
+  #   # url: https://rules.emergingthreatspro.com/%(__etpro__)s/suricata-%(__version__)s/etpro.rules.tar.gz
+
+  # ---------------------------------------------------------------------------
+  # OISF Traffic ID Rules
+  # Free rules maintained by the Suricata project for app-layer identification.
+  # Safe to include; low false positive rate.
+  # ---------------------------------------------------------------------------
+  - name: oisf/trafficid
+    url: https://openinfosecfoundation.org/rules/trafficid/trafficid.rules
+
+  # ---------------------------------------------------------------------------
+  # Abuse.ch SSL Blacklist (SSLBL)
+  # Blocks known malicious TLS certificate fingerprints (botnet C2, malware).
+  # Critical for iGaming — C2 traffic often uses TLS to blend in.
+  # ---------------------------------------------------------------------------
+  # Note: Use suricata-update source-update command to add community sources:
+  #   suricata-update update-sources
+  #   suricata-update enable-source sslbl/suricata
+  # Then uncomment:
+  # - name: sslbl/suricata
+
+  # ---------------------------------------------------------------------------
+  # PT Research Attack Detection Team Rules
+  # Free rules from Positive Technologies; good coverage of web attacks.
+  # ---------------------------------------------------------------------------
+  # - name: ptresearch/attackdetection
+  #   url: https://raw.githubusercontent.com/ptresearch/AttackDetection/master/pt.rules.tar.gz
+
+  # ---------------------------------------------------------------------------
+  # Data-Shield IPv4 Blocklist (duggytuxy/Data-Shield_IPv4_Blocklist)
+  # Comprehensive blocklist of ~100K malicious IPs including:
+  #   - Tor exit nodes, botnets, malware C2, scanners, brute-force sources
+  #   - Updated every 6 hours with 15-day rolling window
+  # Critical for iGaming: blocks known Tor/VPN exit nodes used to bypass
+  # geo-fencing and regulatory access controls.
+  #
+  # Integration: Download as IP reputation list for Suricata's iprep module.
+  # Suricata does not natively consume plain IP blocklists as rules — use
+  # the iprep feature or convert to drop rules via the script below.
+  #
+  # Auto-download via cron (add to suricata-rule-update.sh):
+  #   curl -sL https://cdn.jsdelivr.net/gh/duggytuxy/Data-Shield_IPv4_Blocklist@main/global_blocklist_production.txt \
+  #     | grep -v '^#' | sed 's/$/,threat,100/' > /etc/suricata/iprep/datashield.list
+  #
+  # In suricata.yaml, enable iprep:
+  #   reputation-categories-file: /etc/suricata/iprep/categories.txt
+  #   default-reputation-path: /etc/suricata/iprep/
+  #   reputation-files:
+  #     - datashield.list
+  #
+  # Then use in rules:
+  #   alert ip $EXTERNAL_NET any -> $HOME_NET any (msg:"DATA-SHIELD Blocklisted IP"; \
+  #     iprep:src,threat,>,50; sid:9000900; rev:1;)
+  #
+  # Split lists available for hardware with entry limits:
+  #   - global_blocklist_production_A.txt (~30K IPs)
+  #   - global_blocklist_production_B.txt (~30K IPs)
+  #   - global_blocklist_production_C.txt (~30K IPs)
+  #
+  # Sources (CDN redundancy):
+  #   - GitHub: https://raw.githubusercontent.com/duggytuxy/Data-Shield_IPv4_Blocklist/main/
+  #   - jsDelivr: https://cdn.jsdelivr.net/gh/duggytuxy/Data-Shield_IPv4_Blocklist@main/
+  #   - GitLab: https://gitlab.com/duggytuxy/data-shield_ipv4_blocklist/-/raw/main/
+  # ---------------------------------------------------------------------------
+
+##############################################################################
+# Section 2 - Local Rule Files
+#
+# These files are maintained by the internal security team and managed
+# outside of suricata-update source management (no remote fetch).
+# suricata-update will include them in the merged ruleset and apply
+# disable-conf and modify-conf to them.
+#
+# All paths are absolute. These files should be under version control
+# (Git) and deployed via your CI/CD pipeline before suricata-update runs.
+##############################################################################
+
+local:
+  # Payment fraud detection: card testing, velocity attacks, PSP enumeration,
+  # unusual payment endpoint access patterns.
+  - /etc/suricata/rules/igaming-payment.rules
+
+  # API abuse: credential stuffing, scraping bots, bonus abuse automation,
+  # session manipulation, odds arbitrage bots.
+  - /etc/suricata/rules/igaming-api-abuse.rules
+
+  # Account security: account takeover, multi-accounting, suspicious login
+  # patterns, device fingerprint anomalies, impossible travel detection.
+  - /etc/suricata/rules/igaming-account.rules
+
+  # AML indicators: unusual withdrawal patterns, rapid in/out transactions,
+  # structuring indicators, high-frequency micro-deposits.
+  - /etc/suricata/rules/igaming-aml.rules
+
+  # Compliance: geo-block evasion detection, VPN/proxy fingerprinting,
+  # restricted jurisdiction access, age-verification bypass patterns,
+  # UKGC/MGA self-exclusion bypass attempts.
+  - /etc/suricata/rules/igaming-compliance.rules
+
+##############################################################################
+# Section 3 - Output Paths
+#
+# suricata-update writes merged rules to this location.
+# This path must match default-rule-path + suricata.rules in suricata.yaml.
+##############################################################################
+
+output: /var/lib/suricata/rules/suricata.rules
+
+# Output directory for individual per-source rule files (useful for debugging)
+# output-dir: /var/lib/suricata/rules/
+
+##############################################################################
+# Section 4 - Disable Configuration
+#
+# Rules that should be permanently disabled in this environment.
+# These are rules that either:
+#   a) Generate too many false positives for an iGaming environment
+#   b) Are superseded by a custom iGaming rule with better tuning
+#   c) Are not applicable to the iGaming threat model
+#
+# Reference file: /etc/suricata/disable.conf
+#
+# The disable.conf file uses the same syntax as suricata-update's
+# --disable-conf option. See Section 6 for format.
+##############################################################################
+
+disable-conf: /etc/suricata/disable.conf
+
+##############################################################################
+# Section 5 - Modify Configuration
+#
+# Modify rule metadata without changing the rule body.
+# Useful for adjusting severity, action (alert -> drop), or adding metadata.
+#
+# Reference file: /etc/suricata/modify.conf
+# See Section 7 for format examples.
+##############################################################################
+
+modify-conf: /etc/suricata/modify.conf
+
+##############################################################################
+# Section 6 - Threshold Integration
+#
+# Tell suricata-update about the threshold file so it can generate
+# documentation and validate SID references.
+# This does NOT cause suricata-update to modify threshold.conf.
+##############################################################################
+
+threshold-in: /etc/suricata/threshold.conf
+
+##############################################################################
+# Section 7 - Suricata Binary Path
+#
+# Required so suricata-update can query Suricata's version and feature flags
+# to download the correct ruleset version.
+##############################################################################
+
+suricata: /usr/bin/suricata
+
+##############################################################################
+# Section 8 - Data Directory
+#
+# Where suricata-update stores its internal state (downloaded archives,
+# checksums, source tracking). Keep on a fast disk with sufficient space.
+##############################################################################
+
+data-dir: /var/lib/suricata
+
+##############################################################################
+# Section 9 - Reload Command
+#
+# Command to reload Suricata rules without restart.
+# Uses the Unix socket command interface (requires unix-command enabled
+# in suricata.yaml).
+##############################################################################
+
+reload-command: >
+  suricatasc -c /var/run/suricata/suricata-command.socket
+  '{"command":"reload-rules"}'
+
+##############################################################################
+# Section 10 - No-Merge Mode (optional)
+#
+# When no-merge is enabled, suricata-update writes one file per source
+# rather than merging into a single suricata.rules.
+# Disable for standard deployments; enable for debugging source conflicts.
+##############################################################################
+
+no-merge: false
+
+##############################################################################
+# NOTE: disable.conf format reference
+#
+# Lines starting with '#' are comments.
+# Each line specifies a rule or group to disable:
+#
+# Disable by SID:
+#   2019401
+#
+# Disable by signature name pattern (regex):
+#   re:ET POLICY.*SMTP
+#
+# Disable by group/file:
+#   group:emerging-games.rules
+#
+# Disable by metadata:
+#   metadata:affected_product, Web_Browsers
+##############################################################################
+
+##############################################################################
+# NOTE: modify.conf format reference
+#
+# Each line: <rule-filter> "<pattern>" "<replacement>"
+#
+# Change alert to drop for payment fraud rules (IPS mode only):
+#   9002001 "alert" "drop"
+#
+# Add custom metadata to all AML rules:
+#   re:igaming-aml "noalert" "noalert; metadata: compliance aml"
+#
+# Adjust priority of compliance rules:
+#   group:igaming-compliance.rules "priority:2" "priority:1"
+##############################################################################
+
+##############################################################################
+# End of update.yaml
+##############################################################################

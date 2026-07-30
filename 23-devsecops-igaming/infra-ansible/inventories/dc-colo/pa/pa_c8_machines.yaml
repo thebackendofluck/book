@@ -1,0 +1,140 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 23, DevSecOps for iGaming.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# Ansible inventory — Pennsylvania, Continent 8 Philadelphia-area datacenter
+#
+# Continent 8 holds regulatory approvals from the Pennsylvania Gaming Control
+# Board (PGCB).  All hosts listed here are physically located in the approved
+# Pennsylvania facility and meet PGCB data residency requirements for player
+# PII, financial records, and game outcome data.
+#
+# Reference: Chapter 23 — DevSecOps for iGaming / Compliance as Code
+#            Chapter 29b — US Datacenter Infrastructure (Continent 8)
+#
+# IP addresses use the TEST-NET-3 block (203.0.113.0/24, RFC 5737)
+# to avoid leaking production addressing in published material.
+
+pa_c8_machines:
+  vars:
+    ansible_user: ansible
+    ansible_ssh_private_key_file: ~/.ssh/ansible-dc
+    ansible_ssh_extra_args: "-o StrictHostKeyChecking=yes -o BatchMode=yes"
+    ansible_python_interpreter: /usr/bin/python3
+
+    # Jurisdiction metadata consumed by Datadog and compliance scripts
+    jurisdiction: pa
+    datacenter: c8-philadelphia
+    regulatory_tier: pgcb
+    data_residency_zone: us-pa
+
+    # Datadog site tags injected by dc-phys-servers.yml pre_tasks
+    dd_site_tags:
+      jurisdiction: pa
+      datacenter: c8-philadelphia
+      env: production
+      team: platform-infra
+
+  hosts:
+    # ------------------------------------------------------------------
+    # Kubernetes control-plane nodes (3-node HA etcd + API server)
+    # ------------------------------------------------------------------
+    pa_master_1:
+      ansible_host: 203.0.113.121
+      node_role: k8s-master
+      host_fqdn: pa-master-1.live.acmetocasino.com
+
+    pa_master_2:
+      ansible_host: 203.0.113.122
+      node_role: k8s-master
+      host_fqdn: pa-master-2.live.acmetocasino.com
+
+    pa_master_3:
+      ansible_host: 203.0.113.123
+      node_role: k8s-master
+      host_fqdn: pa-master-3.live.acmetocasino.com
+
+    # ------------------------------------------------------------------
+    # Kubernetes worker nodes
+    # ------------------------------------------------------------------
+    pa_worker_1:
+      ansible_host: 203.0.113.131
+      node_role: k8s-worker
+      host_fqdn: pa-worker-1.live.acmetocasino.com
+
+    pa_worker_2:
+      ansible_host: 203.0.113.132
+      node_role: k8s-worker
+      host_fqdn: pa-worker-2.live.acmetocasino.com
+
+    pa_worker_3:
+      ansible_host: 203.0.113.133
+      node_role: k8s-worker
+      host_fqdn: pa-worker-3.live.acmetocasino.com
+
+    pa_worker_4:
+      ansible_host: 203.0.113.134
+      node_role: k8s-worker
+      host_fqdn: pa-worker-4.live.acmetocasino.com
+
+    pa_worker_5:
+      ansible_host: 203.0.113.135
+      node_role: k8s-worker
+      host_fqdn: pa-worker-5.live.acmetocasino.com
+
+    # Primary PA production platform host
+    # DNS: pa-platform.live.acmetocasino.com
+    pa_worker_6:
+      ansible_host: 203.0.113.136
+      node_role: k8s-worker
+      host_fqdn: pa-platform.live.acmetocasino.com
+      platform_primary: true
+
+    # ------------------------------------------------------------------
+    # Database nodes (PostgreSQL 18, hub-and-spoke per-jurisdiction)
+    # ------------------------------------------------------------------
+    pa_db_1:
+      ansible_host: 203.0.113.141
+      node_role: db-primary
+      host_fqdn: pa-db-1.live.acmetocasino.com
+      db_role: primary
+      db_schemas:
+        - casino_core
+        - pgcb
+
+    pa_db_2:
+      ansible_host: 203.0.113.142
+      node_role: db-replica
+      host_fqdn: pa-db-2.live.acmetocasino.com
+      db_role: replica
+      db_schemas:
+        - casino_core
+        - pgcb
+
+  children:
+    pa_k8s_masters:
+      hosts:
+        pa_master_1:
+        pa_master_2:
+        pa_master_3:
+
+    pa_k8s_nodes:
+      hosts:
+        pa_worker_1:
+        pa_worker_2:
+        pa_worker_3:
+        pa_worker_4:
+        pa_worker_5:
+        pa_worker_6:
+
+    pa_dbs:
+      hosts:
+        pa_db_1:
+        pa_db_2:

@@ -1,0 +1,99 @@
+# Companion code for "The Backend of Luck" - Chapter 27b, The Jurisdiction Transfer Gateway and Cookie Consent.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# Dedicated Redis for the jurisdiction gateway.
+# Isolated in the `compliance` namespace — shares nothing with the casino's
+# production Redis. Memory-bounded (256Mi), appendonly off (rules are rebuilt
+# from the ConfigMap on restart; session cache is ephemeral by design).
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: compliance
+  labels: { app: jgw-redis }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: jgw-redis }
+  template:
+    metadata:
+      labels: { app: jgw-redis }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        fsGroup: 999
+      containers:
+        - name: redis
+          image: redis:8.8-alpine
+          args:
+            - "--save"
+            - ""
+            - "--appendonly"
+            - "no"
+            - "--maxmemory"
+            - "200mb"
+            - "--maxmemory-policy"
+            - "allkeys-lru"
+            - "--protected-mode"
+            - "no"
+            - "--bind"
+            - "0.0.0.0"
+          ports:
+            - containerPort: 6379
+          resources:
+            requests: { cpu: 20m, memory: 64Mi }
+            limits:   { cpu: 200m, memory: 256Mi }
+          livenessProbe:
+            tcpSocket: { port: 6379 }
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: compliance
+spec:
+  selector: { app: jgw-redis }
+  ports:
+    - port: 6379
+      targetPort: 6379
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: redis-jgw-only
+  namespace: compliance
+spec:
+  podSelector: { matchLabels: { app: jgw-redis } }
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { app: jurisdiction-gateway } }
+      ports:
+        - port: 6379
+          protocol: TCP

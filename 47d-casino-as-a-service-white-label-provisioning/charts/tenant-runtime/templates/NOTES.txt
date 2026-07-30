@@ -1,0 +1,35 @@
+Thank you for installing {{ .Chart.Name }} {{ .Chart.Version }} (appVersion: {{ .Chart.AppVersion }}).
+
+Tenant:      {{ .Values.tenant.slug }}
+Brand:       {{ .Values.tenant.brandName }}
+Namespace:   {{ include "tenant-runtime.namespace" . }}
+Domain:      {{ .Values.tenant.domain }}
+Jurisdiction: {{ .Values.tenant.jurisdiction }}
+
+Deployment:
+  Release: {{ .Release.Name }}
+  Replicas: {{ .Values.replicas }}
+  Image: {{ include "tenant-runtime.image" . }}
+
+To check rollout status:
+  kubectl rollout status deployment/{{ include "tenant-runtime.fullname" . }} \
+    -n {{ include "tenant-runtime.namespace" . }}
+
+To inspect logs:
+  kubectl logs -l caas.tenant={{ .Values.tenant.slug }} \
+    -n {{ include "tenant-runtime.namespace" . }} --tail=100 -f
+
+{{- if .Values.ingress.enabled }}
+
+Player-facing URL:
+  http{{ if .Values.ingress.tls.enabled }}s{{ end }}://{{ .Values.tenant.domain }}
+{{- end }}
+
+{{- if .Values.networkPolicy.enabled }}
+
+Network isolation: ENABLED — default-deny ingress/egress with explicit
+allow rules for the ingress controller, DNS, and the tenant database.
+{{- end }}
+
+IMPORTANT: Ensure the Secret '{{ .Values.db.secretName }}' exists in namespace
+'{{ include "tenant-runtime.namespace" . }}' before the deployment can start.

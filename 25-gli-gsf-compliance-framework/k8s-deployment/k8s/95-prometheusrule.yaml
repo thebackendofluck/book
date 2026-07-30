@@ -1,0 +1,106 @@
+# Companion code for "The Backend of Luck" - Chapter 25, GLI-GSF Compliance Framework.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# NOTE: deployed to acmetocasino-monitoring namespace (where Prometheus runs)
+# instead of gli-compliance because the kube-prometheus-stack ruleNamespaceSelector
+# in this cluster only loads rules co-located with the Prometheus pod, despite
+# the spec showing `{}` (intended to be all-namespaces). Cross-namespace targeting
+# via the ServiceMonitor still works — only the alert rule needs to be there.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: gli-compliance-alerts
+  namespace: acmetocasino-monitoring
+  labels:
+    app: kube-prometheus-stack
+    release: prometheus
+spec:
+  groups:
+    - name: gli.compliance.runs
+      interval: 30s
+      rules:
+        - alert: GLIComplianceCheckFailing
+          expr: |
+            sum by (check) (increase(gli_check_runs_total{outcome="failure",namespace="gli-compliance"}[5m])) > 0
+          for: 1m
+          labels:
+            severity: critical
+            team: compliance-ops
+            gli_standard: '{{ $labels.check | toUpper }}'
+          annotations:
+            summary: 'GLI compliance check {{ $labels.check }} reporting failures'
+            description: |
+              GLI check `{{ $labels.check }}` reported {{ $value | humanize }} failure outcome(s) in the
+              last 5 minutes. A regulator-facing compliance control is breaching its assertion.
+              Pager target: compliance on-call. Immediate triage required — a sustained failure becomes
+              a Notifiable Event under most jurisdictions (SPA, MGCB, KSA, AGCO).
+            runbook_url: 'https://github.com/acmetocasino/egambling-book/blob/main/writing/new-book/chapters/25-gli-gsf-compliance-framework.md#reference-deployment-gli-compliance-runner-on-k3s'
+
+        - alert: GLIComplianceCheckTimingOut
+          expr: |
+            sum by (check) (increase(gli_check_runs_total{outcome="timeout",namespace="gli-compliance"}[10m])) > 0
+          for: 2m
+          labels:
+            severity: warning
+            team: compliance-ops
+          annotations:
+            summary: 'GLI compliance check {{ $labels.check }} timing out'
+            description: |
+              GLI check `{{ $labels.check }}` exceeded its timeout budget. Likely root causes:
+              regulator MCS endpoint slow (GLI-13), upstream payment provider settlement export
+              delayed (GLI-16), or game URL list blocked (GLI-28). Triage the corresponding
+              upstream before the failure budget burns through.
+
+        - alert: GLIComplianceP99DurationHigh
+          expr: |
+            histogram_quantile(0.99,
+              sum by (le, check) (rate(gli_check_duration_seconds_bucket{namespace="gli-compliance"}[10m]))
+            ) > 60
+          for: 10m
+          labels:
+            severity: warning
+            team: compliance-ops
+          annotations:
+            summary: 'GLI compliance check {{ $labels.check }} p99 duration > 60s'
+            description: |
+              p99 wall-clock of `{{ $labels.check }}` is {{ $value | humanizeDuration }} over 10 min.
+              Trend toward timeout. Investigate upstream latency before the timeout alert fires.
+
+    - name: gli.compliance.scrape
+      interval: 30s
+      rules:
+        - alert: GLIComplianceRunnerDown
+          expr: |
+            up{namespace="gli-compliance",service="gli-compliance-runner"} == 0
+          for: 5m
+          labels:
+            severity: critical
+            team: compliance-ops
+          annotations:
+            summary: 'gli-compliance-runner Prometheus scrape failing'
+            description: |
+              The /metrics endpoint of the GLI compliance runner has not been scraped successfully
+              for 5 minutes. Either the Pod is down (rollout regression?) or the ServiceMonitor
+              selector is broken. Without scrape, the failure-rate alerts go silent — this is the
+              meta-alert that catches the alerts going blind.
+
+        - alert: GLIComplianceScrapeMissing
+          expr: |
+            absent(up{namespace="gli-compliance",service="gli-compliance-runner"}) == 1
+          for: 10m
+          labels:
+            severity: warning
+            team: compliance-ops
+          annotations:
+            summary: 'No gli-compliance scrape target visible to Prometheus'
+            description: |
+              Prometheus has not seen a target labelled namespace=gli-compliance,service=gli-compliance-runner
+              for 10 minutes. ServiceMonitor likely deleted or label-mismatched. Without a target the
+              "runner down" alert can never fire — re-check the ServiceMonitor selector.

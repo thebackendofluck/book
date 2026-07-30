@@ -1,0 +1,128 @@
+{
+  "dashboard": {
+    "title": "Fraud Detection System - Overview",
+    "tags": ["fraud-detection", "monitoring"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "System Health",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "up{job=~\"fraud-detection-.*\"}",
+            "legendFormat": "{{job}}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "mappings": [
+              {
+                "options": {
+                  "0": {
+                    "text": "DOWN",
+                    "color": "red"
+                  },
+                  "1": {
+                    "text": "UP",
+                    "color": "green"
+                  }
+                },
+                "type": "value"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "Event Ingestion Rate",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(fraud_detection_events_ingested_total[5m])",
+            "legendFormat": "{{type}}"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "API Response Time",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(fraud_detection_request_duration_seconds_bucket[5m]))",
+            "legendFormat": "95th percentile"
+          },
+          {
+            "expr": "histogram_quantile(0.50, rate(fraud_detection_request_duration_seconds_bucket[5m]))",
+            "legendFormat": "50th percentile"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Error Rate",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(fraud_detection_ingestion_errors_total[5m]) / rate(fraud_detection_events_ingested_total[5m]) * 100",
+            "legendFormat": "Error Rate %"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "Kafka Consumer Lag",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "kafka_consumer_lag",
+            "legendFormat": "{{topic}} - {{partition}}"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "title": "Database Connections",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "pg_stat_activity_count{datname=\"fraud_detection\"}",
+            "legendFormat": "Active Connections"
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "title": "Memory Usage",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "process_resident_memory_bytes{job=~\"fraud-detection-.*\"} / 1024 / 1024",
+            "legendFormat": "{{job}} - Memory (MB)"
+          }
+        ]
+      },
+      {
+        "id": 8,
+        "title": "CPU Usage",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(process_cpu_user_seconds_total{job=~\"fraud-detection-.*\"}[5m]) * 100",
+            "legendFormat": "{{job}} - CPU %"
+          }
+        ]
+      }
+    ],
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "refresh": "30s",
+    "schemaVersion": 27,
+    "version": 0,
+    "links": []
+  }
+}

@@ -1,0 +1,70 @@
+title = "egambling-book gitleaks config"
+
+[extend]
+# Extend the default gitleaks config
+useDefault = true
+
+# ---------------------------------------------------------------------------
+# Historical GitHub secret-scanning alerts.
+#
+# This allowlist used to carry one regex per secret CLASS: AKIA[0-9A-Z]{16},
+# ghp_[A-Za-z0-9]{36}, the OPENSSH private key header, Slack, SendGrid, Google,
+# New Relic, Atlassian and Shopify token shapes. The comment said they covered
+# placeholder and example values, but a class regex matches ANY value of that
+# shape, so a genuinely leaked AWS key or GitHub token would have been
+# suppressed in silence. That was tolerable while this job only reported.
+# It stopped being tolerable when the job started blocking the pipeline,
+# because a blocking scanner that cannot fail on the credential types that
+# matter most signals a confidence it has not earned.
+#
+# The patterns were removed after checking what they actually suppressed:
+# every one of them matched nothing anywhere in the tree except the two copies
+# of this config file and one scanner that legitimately searches for private
+# key headers. They cost nothing to remove and they hid the classes with the
+# widest blast radius.
+#
+# If a historical alert resurfaces, allowlist the specific value or the
+# specific path. Never the class.
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Allowlist: documentation and writing directories should not be scanned.
+# These contain book content, sample configs, and reference material.
+# ---------------------------------------------------------------------------
+[[allowlists]]
+description = "Documentation and writing — not production code"
+paths = [
+  "writing/",
+  "support_material/",
+  "docs/",
+  "\\.md$",
+  "README",
+  "CHANGELOG",
+  "CLAUDE\\.md",
+  "AGENTS\\.md",
+]
+
+# ---------------------------------------------------------------------------
+# Allowlist: test fixtures and example credential files
+# ---------------------------------------------------------------------------
+[[allowlists]]
+description = "Test fixtures and example files"
+paths = [
+  "tests/",
+  "test-platform/",
+  "\\.example$",
+  "\\.sample$",
+  "\\.template$",
+  "fixtures/",
+]
+
+# ---------------------------------------------------------------------------
+# Scan targets — production code paths that MUST be checked.
+# Gitleaks scans the full repo by default; these comments document intent.
+# Use --no-git or path arguments in CI to restrict scope if needed.
+#
+#   new-platform/**  — main application backend (Python, Terraform, Docker)
+#   dev-platform/**  — development environment (Python, Docker)
+#   scripts/**       — automation scripts (.py, .sh)
+#   *.py *.sh *.tf *.ts *.js — source files at root level
+# ---------------------------------------------------------------------------

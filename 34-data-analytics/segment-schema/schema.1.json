@@ -1,0 +1,1468 @@
+{
+  "name": "<unique-workspace-name>",
+  "display_name": "AcmetoCasino v2",
+  "rules": {
+    "identify_traits": [],
+    "group_traits": [],
+    "events": [
+      {
+        "name": "bet placed",
+        "rules": {
+          "type": "object",
+          "labels": {},
+          "properties": {
+            "properties": {
+              "type": "object",
+              "properties": {
+                "cashAmount": {
+                  "description": "Cash amount used to fund the bet",
+                  "type": "integer"
+                },
+                "currencyType": {
+                  "description": "Currency abreviation, i.e. USD",
+                  "type": "string"
+                },
+                "liveBetting": {
+                  "description": "",
+                  "type": "boolean"
+                },
+                "odds": {
+                  "description": "",
+                  "type": "number"
+                },
+                "outcomes": {
+                  "description": "",
+                  "type": "integer"
+                },
+                "amount": {
+                  "description": "",
+                  "type": "integer"
+                },
+                "betOfferId": {
+                  "description": "Kambi identifier for the bet offer",
+                  "type": "integer"
+                },
+                "bonusAmount": {
+                  "description": "Total bonus amount used to fund the bet",
+                  "type": "integer"
+                },
+                "jurisdiction": {
+                  "description": "Jurisdiction where the event occurred",
+                  "type":"string"
+                },
+                "bonusDetails": {
+                  "description": "",
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "campaignName": {
+                        "description": "",
+                        "type": "string"
+                      },
+                      "amount": {
+                        "description": "",
+                        "type": "integer"
+                      },
+                      "bonusAccountId": {
+                        "description": "The id of the bonus account",
+                        "type": "number"
+                      },
+                      "awardedBy": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "description": "The id of the awarded by bulk operation",
+                            "type": "number"
+                          },
+                          "name": {
+                            "description": "The name of the awarded by bulk operation",
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "promotionCategory": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "description": "The id of the promotion category bulk operation",
+                            "type": "number"
+                          },
+                          "name": {
+                            "description": "The name of the promotion category bulk operation",
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "deductabilityCategory": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "description": "The id of the deductability category bulk operation",
+                            "type": "number"
+                          },
+                          "name": {
+                            "description": "The name of the deductability category bulk operation",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "required": [
+                      "campaignName",
+                      "amount",
+                      "bonusAccountId"
+                    ]
+                  }
+                },
+                "geoTags": {
+                  "type": "array",
+                  "description": "Geo tags for the place where the bet was made",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "cashAmount",
+                "currencyType",
+                "liveBetting",
+                "odds",
+                "outcomes",
+                "amount",
+                "betOfferId",
+                "bonusAmount",
+                "jurisdiction",
+                "bonusDetails",
+                "geoTags"
+              ]
+            },
+            "context": {},
+            "traits": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "properties"
+          ],
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "version": 1
+      },
+      {
+        "name": "bet_settled",
+        "rules": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "labels": {},
+          "properties": {
+            "context": {},
+            "traits": {
+              "type": "object"
+            },
+            "properties": {
+              "required": [
+                "betOfferId"
+              ],
+              "type": "object",
+              "properties": {
+                "betOfferId": {
+                  "type": "integer",
+                  "description": "Kambi identifier for the bet offer"
+                },
+                "ticketStatus": {
+                  "description": "",
+                  "enum": [
+                    "Win",
+                    "Lost"
+                  ]
+                },
+                "winCashAmount": {
+                  "description": "",
+                  "type": "integer"
+                },
+                "winBonusAmount": {
+                  "description": "",
+                  "type": "integer"
+                },
+                "currencyType": {
+                  "description": "Currency abreviation, i.e. USD",
+                  "type": "string"
+                },
+                "currentCashBalance": {
+                  "description": "",
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "required": [
+            "properties"
+          ]
+        },
+        "version": 1
+      },
+      {
+        "name": "deposited",
+        "rules": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "labels": {},
+          "properties": {
+            "context": {},
+            "traits": {
+              "type": "object"
+            },
+            "properties": {
+              "type": "object",
+              "properties": {
+                "depositNumber": {
+                  "description": "",
+                  "type": "integer"
+                },
+                "amount": {
+                  "description": "this is the amount the player deposited in this txn",
+                  "type": "integer"
+                },
+                "bonus": {
+                  "description": "For AcmetoCasino, this is the resulting bonus \nbalance, following a successful deposit",
+                  "type": "integer"
+                },
+                "cash": {
+                  "description": "For AcmetoCasino, this is the resulting cash\nbalance, following a successful deposit",
+                  "type": "integer"
+                },
+                "currencyType": {
+                  "description": "",
+                  "type": "string"
+                },
+                "jurisdiction": {
+                  "description": "Jurisdiction where the event occurred",
+                  "type":"string"
+                },
+                "paymentMethod": {
+                  "description": "Payment method used for this deposite",
+                  "type":"string"
+                },
+                "storeId": {
+                  "description": "Id of land based casino if payment was done there",
+                  "type":"string"
+                }
+              },
+              "required": [
+                "depositNumber",
+                "amount",
+                "bonus",
+                "cash",
+                "currencyType",
+                "jurisdiction"
+              ]
+            }
+          },
+          "required": [
+            "properties"
+          ]
+        },
+        "version": 1
+      },
+      {
+        "name": "locked",
+        "rules": {
+          "properties": {
+            "traits": {
+              "type": "object"
+            },
+            "properties": {
+              "properties": {
+                "type": {
+                  "description": "",
+                  "enum": [
+                    "ACCOUNT_CLOSURE_NO_MARKETING",
+                    "DORMANT_USER",
+                    "LIMIT_BREACH",
+                    "MANUAL",
+                    "OPERATOR_BAN",
+                    "RESPONSIBLE_GAMING_ISSUE",
+                    "SELF_EXCLUDE",
+                    "SUSPICIOUS_ACTIVITY",
+                    "TIMEOUT",
+                    "OPERATOR_EXCLUSION_LIST"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type"
+              ],
+              "type": "object"
+            },
+            "context": {}
+          },
+          "required": [
+            "properties"
+          ],
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "labels": {}
+        },
+        "version": 1
+      },
+      {
+        "name": "logged in",
+        "rules": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "labels": {},
+          "properties": {
+            "properties": {
+              "type": "object",
+              "properties": {
+                "bonus": {
+                  "description": "",
+                  "type": "integer"
+                },
+                "cash": {
+                  "description": "",
+                  "type": "integer"
+                },
+                "jurisdiction": {
+                  "description": "Jurisdiction where the event occurred",
+                  "type":"string"
+                }
+              },
+              "required": [
+                "bonus",
+                "cash",
+                "jurisdiction"
+              ]
+            },
+            "context": {},
+            "traits": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "properties"
+          ]
+        },
+        "version": 1
+      },
+      {
+        "version": 1,
+        "name": "unlocked",
+        "rules": {
+          "required": [
+            "properties"
+          ],
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "labels": {},
+          "properties": {
+            "context": {},
+            "traits": {
+              "type": "object"
+            },
+            "properties": {
+              "properties": {
+                "type": {
+                  "description": "",
+                  "enum": [
+                    "ACCOUNT_CLOSURE_NO_MARKETING",
+                    "DORMANT_USER",
+                    "LIMIT_BREACH",
+                    "MANUAL",
+                    "OPERATOR_BAN",
+                    "RESPONSIBLE_GAMING_ISSUE",
+                    "SELF_EXCLUDE",
+                    "SUSPICIOUS_ACTIVITY",
+                    "TIMEOUT",
+                    "OPERATOR_EXCLUSION_LIST"
+                  ],
+                  "type": "string"
+                },
+                "jurisdiction": {
+                  "description": "Jurisdiction where the event occurred",
+                  "type":"string"
+                }
+              },
+              "required": [
+                "type",
+                "jurisdiction"
+              ],
+              "type": "object"
+            }
+          }
+        }
+      },
+      {
+        "name": "withdrawal requested",
+        "rules": {
+          "required": [
+            "properties"
+          ],
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "labels": {},
+          "properties": {
+            "context": {},
+            "traits": {
+              "type": "object"
+            },
+            "properties": {
+              "type": "object",
+              "properties": {
+                "amount": {
+                  "description": "",
+                  "type": "integer"
+                },
+                "currencyType": {
+                  "description": "",
+                  "type": "string"
+                },
+                "resultingBalance": {
+                  "description": "",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "amount",
+                "currencyType",
+                "resultingBalance"
+              ]
+            }
+          }
+        },
+        "version": 1
+      },
+      {
+        "name": "deposit failure",
+        "rules": {
+          "required": [
+            "properties"
+          ],
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "labels": {},
+          "properties": {
+            "context": {},
+            "traits": {
+              "type": "object"
+            },
+            "properties": {
+              "type": "object",
+              "properties": {
+                "jurisdiction": {
+                  "description": "",
+                  "type": "string"
+                },
+                "paymentMethod": {
+                  "description": "",
+                  "type": "string"
+                },
+                "amount": {
+                  "description": "",
+                  "type": "integer"
+                },
+                "reason": {
+                  "description": "",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "jurisdiction",
+                "paymentMethod",
+                "amount",
+                "reason"
+              ]
+            }
+          }
+        },
+        "version": 1
+      },
+      {
+        "name": "bet_resettlement",
+        "rules": {
+          "required": [
+            "properties"
+          ],
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "labels": {},
+          "properties": {
+            "context": {},
+            "traits": {
+              "type": "object"
+            },
+            "properties": {
+              "type": "object",
+              "properties": {
+                "adjustedCashAmount": {
+                  "description": "",
+                  "type": "integer"
+                },
+                "adjustedBonusAmount": {
+                  "description": "",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "adjustedCashAmount",
+                "adjustedBonusAmount"
+              ]
+            }
+          }
+        },
+        "version": 1
+      },
+      {
+        "name": "bet_clawback",
+        "rules": {
+          "required": [
+            "properties"
+          ],
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "labels": {},
+          "properties": {
+            "context": {},
+            "traits": {
+              "type": "object"
+            },
+            "properties": {
+              "type": "object",
+              "properties": {
+                "adjustedCashAmount": {
+                  "description": "",
+                  "type": "integer"
+                },
+                "adjustedBonusAmount": {
+                  "description": "",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "adjustedCashAmount",
+                "adjustedBonusAmount"
+              ]
+            }
+          }
+        },
+        "version": 1
+      },
+      {
+        "name": "game_launch",
+        "rules": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "labels": {},
+          "properties": {
+            "context": {},
+            "traits": {
+              "type": "object"
+            },
+            "properties": {
+              "type": "object",
+              "properties": {
+                "brandName": {
+                  "type": "string",
+                  "description": "Brand name"
+                },
+                "gameName": {
+                  "type": "string",
+                  "description": "Game name"
+                },
+                "gameId": {
+                  "type": "integer",
+                  "description": "Game identifier"
+                },
+                "jurisdiction": {
+                  "type": "string",
+                  "description": "Jurisdiction of player launching the game"
+                },
+                "country": {
+                  "type": "string",
+                  "description": "Country of player launching the game"
+                },
+                "supplierName": {
+                  "type": "string",
+                  "description": "Game supplier name"
+                },
+                "supplierId": {
+                  "type": "integer",
+                  "description": "Game supplier identifier"
+                }
+              },
+              "required": [
+                "brandName", "gameName", "gameId", "jurisdiction", "supplierName", "supplierId"
+              ]
+            }
+          },
+          "required": [
+            "properties"
+          ]
+        },
+        "version": 1
+      },
+      {
+        "name": "round_played",
+        "rules": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "labels": {},
+          "properties": {
+            "context": {},
+            "traits": {
+              "type": "object"
+            },
+            "properties": {
+              "type": "object",
+              "properties": {
+                "roundId": {
+                  "type": "string",
+                  "description": "Round identifier"
+                },
+                "brandName": {
+                  "type": "string",
+                  "description": "Brand name"
+                },
+                "gameName": {
+                  "type": "string",
+                  "description": "Game name"
+                },
+                "gameId": {
+                  "type": "integer",
+                  "description": "Game identifier"
+                },
+                "jurisdiction": {
+                  "type": "string",
+                  "description": "Jurisdiction of player launching the game"
+                },
+                "supplierName": {
+                  "type": "string",
+                  "description": "Game supplier name"
+                },
+                "supplierId": {
+                  "type": "integer",
+                  "description": "Game supplier identifier"
+                },
+                "betFundedType": {
+                  "type": "string",
+                  "enum": ["cash", "bonus", "cash_and_bonus"],
+                  "description": "Indicator which accounts where used in round"
+                },
+                "ticketStatus": {
+                  "description": "",
+                  "enum": [
+                    "Win",
+                    "Lost"
+                  ]
+                },
+                "betCashAmount": {
+                  "type": "integer",
+                  "description": "Bet amount cash"
+                },
+                "betBonusAmount": {
+                  "type": "integer",
+                  "description": "Bet amount bonus"
+                },
+                "winCashAmount": {
+                  "type": "integer",
+                  "description": "Win amount cash"
+                },
+                "winBonusAmount": {
+                  "type": "integer",
+                  "description": "Win amount bonus"
+                },
+                "bonusDetails": {
+                  "description": "",
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "campaignName": {
+                        "description": "",
+                        "type": "string"
+                      },
+                      "amount": {
+                        "description": "",
+                        "type": "integer"
+                      },
+                      "bonusAccountId": {
+                        "description": "The id of the bonus account",
+                        "type": "number"
+                      },
+                      "awardedBy": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "description": "The id of the awarded by bulk operation",
+                            "type": "number"
+                          },
+                          "name": {
+                            "description": "The name of the awarded by bulk operation",
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "promotionCategory": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "description": "The id of the promotion category bulk operation",
+                            "type": "number"
+                          },
+                          "name": {
+                            "description": "The name of the promotion category bulk operation",
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "deductabilityCategory": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "description": "The id of the deductability category bulk operation",
+                            "type": "number"
+                          },
+                          "name": {
+                            "description": "The name of the deductability category bulk operation",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "required": [
+                      "campaignName",
+                      "amount",
+                      "bonusAccountId"
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "roundId",
+                "brandName",
+                "gameName",
+                "gameId",
+                "jurisdiction",
+                "supplierName",
+                "supplierId",
+                "betFundedType",
+                "ticketStatus",
+                "betCashAmount",
+                "betBonusAmount",
+                "winCashAmount",
+                "winBonusAmount"
+              ]
+            }
+          },
+          "required": [
+            "properties"
+          ]
+        },
+        "version": 1
+      },
+      {
+        "name": "withdrawal_accepted",
+        "rules": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "labels": {},
+          "properties": {
+            "context": {},
+            "traits": {
+              "type": "object"
+            },
+            "properties": {
+              "type": "object",
+              "properties": {
+                "userId": {
+                  "type": "number",
+                  "description": "AcmetoCasino user id"
+                },
+                "paymentMethod": {
+                  "type": "string",
+                  "description": "Payment method"
+                },
+                "cashAmount": {
+                  "type": "number",
+                  "description": "Transaction cash amount"
+                },
+                "storeId": {
+                  "description": "Id of land based casino if payment was done there",
+                  "type":"string"
+                }
+              },
+              "required": [
+                "userId",
+                "paymentMethod",
+                "cashAmount"
+              ]
+            }
+          },
+          "required": [
+            "properties"
+          ]
+        },
+        "version": 1
+      },
+      {
+        "name": "withdrawal_rejected",
+        "rules": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "labels": {},
+          "properties": {
+            "context": {},
+            "traits": {
+              "type": "object"
+            },
+            "properties": {
+              "type": "object",
+              "properties": {
+                "userId": {
+                  "type": "number",
+                  "description": "AcmetoCasino user id"
+                },
+                "paymentMethod": {
+                  "type": "string",
+                  "description": "Payment method"
+                },
+                "cashAmount": {
+                  "type": "number",
+                  "description": "Transaction cash amount"
+                }
+              },
+              "required": [
+                "userId",
+                "paymentMethod",
+                "cashAmount"
+              ]
+            }
+          },
+          "required": [
+            "properties"
+          ]
+        },
+        "version": 1
+      },
+      {
+        "name": "kyc_approved",
+        "rules": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "labels": {},
+          "properties": {
+            "context": {},
+            "traits": {
+              "type": "object"
+            },
+            "properties": {
+              "type": "object",
+              "properties": {
+                "registration": {
+                  "type": "object",
+                  "parameters": {
+                    "firstName": {
+                      "type": "string",
+                      "description": "User first name used during reistration"
+                    },
+                    "lastName": {
+                      "type": "string",
+                      "description": "User last name used during reistration"
+                    },
+                    "phone": {
+                      "type": "string",
+                      "description": "User phone number used during reistration"
+                    },
+                    "email": {
+                      "type": "string",
+                      "description": "User email used during reistration"
+                    },
+                    "address": {
+                      "type": "object",
+                      "properties": {
+                        "state": {
+                          "type": "string",
+                          "description": "User state used during registration"
+                        },
+                        "postalCode": {
+                          "type": "string",
+                          "description": "User postal code used during registration"
+                        },
+                        "country": {
+                          "type": "string",
+                          "description": "User country used during registration"
+                        }
+                      },
+                      "required": [
+                        "state",
+                        "postalCode",
+                        "country"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "phone",
+                    "email",
+                    "address"
+                  ]
+                },
+                "userAdminId": {
+                  "type": "number",
+                  "description": "When value is present - user was approved by BO admin with that id"
+                }
+              },
+              "required": [
+              ]
+            }
+          },
+          "required": [
+            "properties"
+          ]
+        },
+        "version": 1
+      },
+      {
+        "name": "flag_applied",
+        "rules": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "labels": {},
+          "properties": {
+            "context": {},
+            "traits": {
+              "type": "object"
+            },
+            "properties": {
+              "type": "object",
+              "properties": {
+                "userId": {
+                  "type": "number",
+                  "description": "User id used in customer system"
+                },
+                "flagName": {
+                  "type": "string",
+                  "description": "Name of applied flag"
+                },
+                "blocksBonuses": {
+                  "type": "boolean",
+                  "description": "Is flag blocking bonusses"
+                },
+                "excludesFromMarketing":{
+                  "type": "boolean",
+                  "description": "Is flag excluding from marketing"
+                },
+                "disallowsWithdrawals": {
+                  "type": "boolean",
+                  "description": "Is flag disallowing withdrawals"
+                },
+                "flagId": {
+                  "type": "number",
+                  "description": "Id of flag"
+                },
+                "dateTimeAdded": {
+                  "type": "string",
+                  "description": "When flag was added"
+                },
+                "agentId": {
+                  "type": "number",
+                  "description": "Id of backoffice user"
+                }
+              },
+              "required": [
+                "userId",
+                "flagName",
+                "blocksBonuses",
+                "excludesFromMarketing",
+                "disallowsWithdrawals",
+                "flagId",
+                "dateTimeAdded"
+              ]
+            }
+          },
+          "required": [
+            "properties"
+          ]
+        },
+        "version": 1
+      },
+      {
+        "name": "flag_removed",
+        "rules": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "labels": {},
+          "properties": {
+            "context": {},
+            "traits": {
+              "type": "object"
+            },
+            "properties": {
+              "type": "object",
+              "properties": {
+                "userId": {
+                  "type": "number",
+                  "description": "User id used in customer system"
+                },
+                "flagName": {
+                  "type": "string",
+                  "description": "Name of applied flag"
+                },
+                "blocksBonuses": {
+                  "type": "boolean",
+                  "description": "Is flag blocking bonusses"
+                },
+                "excludesFromMarketing":{
+                  "type": "boolean",
+                  "description": "Is flag excluding from marketing"
+                },
+                "disallowsWithdrawals": {
+                  "type": "boolean",
+                  "description": "Is flag disallowing withdrawals"
+                },
+                "flagId": {
+                  "type": "number",
+                  "description": "Id of flag"
+                },
+                "dateTimeRemoved": {
+                  "type": "string",
+                  "description": "When flag was added"
+                },
+                "agentId": {
+                  "type": "number",
+                  "description": "Id of backoffice user"
+                }
+              },
+              "required": [
+                "userId",
+                "flagName",
+                "blocksBonuses",
+                "excludesFromMarketing",
+                "disallowsWithdrawals",
+                "flagId",
+                "dateTimeRemoved"
+              ]
+            }
+          },
+          "required": [
+            "properties"
+          ]
+        },
+        "version": 1
+      },
+      {
+        "name": "bonus_converted",
+        "rules": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "labels": {},
+          "properties": {
+            "context": {},
+            "traits": {
+              "type": "object"
+            },
+            "properties": {
+              "type": "object",
+              "properties": {
+                "userId": {
+                  "type": "number",
+                  "description": "User id used in customer system"
+                },
+                "timeOfConversion": {
+                  "type": "string",
+                  "description": "When the bonus was converted"
+                },
+                "bonusDetails": {
+                  "description": "",
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "campaignName": {
+                        "description": "",
+                        "type": "string"
+                      },
+                      "amount": {
+                        "description": "",
+                        "type": "integer"
+                      },
+                      "bonusAccountId": {
+                        "description": "The id of the bonus account",
+                        "type": "number"
+                      },
+                      "awardedBy": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "description": "The id of the awarded by bulk operation",
+                            "type": "number"
+                          },
+                          "name": {
+                            "description": "The name of the awarded by bulk operation",
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "promotionCategory": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "description": "The id of the promotion category bulk operation",
+                            "type": "number"
+                          },
+                          "name": {
+                            "description": "The name of the promotion category bulk operation",
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "deductabilityCategory": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "description": "The id of the deductability category bulk operation",
+                            "type": "number"
+                          },
+                          "name": {
+                            "description": "The name of the deductability category bulk operation",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "required": [
+                      "campaignName",
+                      "amount",
+                      "bonusAccountId"
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "userId",
+                "timeOfConversion"
+              ]
+            }
+          },
+          "required": [
+            "properties"
+          ]
+        },
+        "version": 1
+      },
+      {
+        "name": "bonus_revoke",
+        "rules": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "labels": {},
+          "properties": {
+            "context": {},
+            "traits": {
+              "type": "object"
+            },
+            "properties": {
+              "type": "object",
+              "properties": {
+                "userId": {
+                  "type": "number",
+                  "description": "User id used in customer system"
+                },
+                "timeOfRevoke": {
+                  "type": "string",
+                  "description": "When the bonus was revoked"
+                },
+                "countdownBalance": {
+                  "type": "integer",
+                  "description": "Countdown balance at the point of the bonus revoke"
+                },
+                "bonusDetails": {
+                  "description": "",
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "campaignName": {
+                        "description": "",
+                        "type": "string"
+                      },
+                      "amount": {
+                        "description": "",
+                        "type": "integer"
+                      },
+                      "bonusAccountId": {
+                        "description": "The id of the bonus account",
+                        "type": "number"
+                      },
+                      "awardedBy": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "description": "The id of the awarded by bulk operation",
+                            "type": "number"
+                          },
+                          "name": {
+                            "description": "The name of the awarded by bulk operation",
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "promotionCategory": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "description": "The id of the promotion category bulk operation",
+                            "type": "number"
+                          },
+                          "name": {
+                            "description": "The name of the promotion category bulk operation",
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "deductabilityCategory": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "description": "The id of the deductability category bulk operation",
+                            "type": "number"
+                          },
+                          "name": {
+                            "description": "The name of the deductability category bulk operation",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "required": [
+                      "campaignName",
+                      "amount",
+                      "bonusAccountId"
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "userId",
+                "timeOfRevoke",
+                "countdownBalance"
+              ]
+            }
+          },
+          "required": [
+            "properties"
+          ]
+        },
+        "version": 1
+      },
+      {
+        "name": "bonus_clawback",
+        "rules": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "labels": {},
+          "properties": {
+            "context": {},
+            "traits": {
+              "type": "object"
+            },
+            "properties": {
+              "type": "object",
+              "properties": {
+                "userId": {
+                  "type": "number",
+                  "description": "User id used in customer system"
+                },
+                "timeOfClawback": {
+                  "type": "string",
+                  "description": "When the bonus was clawed back"
+                },
+                "bonusDetails": {
+                  "description": "",
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "campaignName": {
+                        "description": "",
+                        "type": "string"
+                      },
+                      "amount": {
+                        "description": "",
+                        "type": "integer"
+                      },
+                      "bonusAccountId": {
+                        "description": "The id of the bonus account",
+                        "type": "number"
+                      },
+                      "awardedBy": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "description": "The id of the awarded by bulk operation",
+                            "type": "number"
+                          },
+                          "name": {
+                            "description": "The name of the awarded by bulk operation",
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "promotionCategory": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "description": "The id of the promotion category bulk operation",
+                            "type": "number"
+                          },
+                          "name": {
+                            "description": "The name of the promotion category bulk operation",
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "deductabilityCategory": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "description": "The id of the deductability category bulk operation",
+                            "type": "number"
+                          },
+                          "name": {
+                            "description": "The name of the deductability category bulk operation",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "required": [
+                      "campaignName",
+                      "amount",
+                      "bonusAccountId"
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "userId",
+                "timeOfClawback"
+              ]
+            }
+          },
+          "required": [
+            "properties"
+          ]
+        },
+        "version": 1
+      },
+      {
+        "name": "bonus_awarded",
+        "rules": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "labels": {},
+          "properties": {
+            "context": {},
+            "traits": {
+              "type": "object"
+            },
+            "properties": {
+              "type": "object",
+              "properties": {
+                "userId": {
+                  "type": "number",
+                  "description": "User id used in customer system"
+                },
+                "timeOfAwarding": {
+                  "type": "string",
+                  "description": "When the bonus was awarded"
+                },
+                "channel": {
+                  "type": "string",
+                  "enum": ["backOffice", "external", "technical"],
+                  "description": "Channel the bonus was awarded from"
+                },
+                "bonusDetails": {
+                  "description": "",
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "campaignName": {
+                        "description": "",
+                        "type": "string"
+                      },
+                      "amount": {
+                        "description": "",
+                        "type": "integer"
+                      },
+                      "bonusAccountId": {
+                        "description": "The id of the bonus account",
+                        "type": "number"
+                      },
+                      "awardedBy": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "description": "The id of the awarded by bulk operation",
+                            "type": "number"
+                          },
+                          "name": {
+                            "description": "The name of the awarded by bulk operation",
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "promotionCategory": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "description": "The id of the promotion category bulk operation",
+                            "type": "number"
+                          },
+                          "name": {
+                            "description": "The name of the promotion category bulk operation",
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "deductabilityCategory": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "description": "The id of the deductability category bulk operation",
+                            "type": "number"
+                          },
+                          "name": {
+                            "description": "The name of the deductability category bulk operation",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "required": [
+                      "campaignName",
+                      "amount",
+                      "bonusAccountId"
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "userId",
+                "timeOfAwarding"
+              ]
+            }
+          },
+          "required": [
+            "properties"
+          ]
+        },
+        "version": 1
+      }
+    ]
+  },
+  "create_time": "2020-12-02T00:37:39Z",
+  "update_time": "2020-12-02T18:05:17Z"
+}

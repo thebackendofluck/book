@@ -1,0 +1,89 @@
+#
+# postgresql.conf rendered by Ansible role postgres-16.
+# Tuned for iGaming OLTP: 500 PG connections behind PgBouncer transaction-mode
+# (target: up to 10k app-facing connections per shard, pooled down to 500
+# backend connections here).
+#
+# Assumes: {{ vm_ram_mb | default(8192) }} MB RAM on {{ inventory_hostname }}.
+
+# --- Debian/Ubuntu package wrapper requirements (DO NOT remove) ---
+data_directory     = '{{ pgdata_mount }}'
+hba_file           = '/etc/postgresql/{{ pg_version }}/main/pg_hba.conf'
+ident_file         = '/etc/postgresql/{{ pg_version }}/main/pg_ident.conf'
+external_pid_file  = '/var/run/postgresql/{{ pg_version }}-main.pid'
+cluster_name       = '{{ pg_version }}/main'
+unix_socket_directories = '/var/run/postgresql'
+
+# --- connection / networking ---
+listen_addresses = '{{ pg_listen }}'
+port             = {{ pg_port }}
+max_connections  = 500
+superuser_reserved_connections = 5
+
+# --- memory ---
+shared_buffers       = '{{ (vm_ram_mb | default(8192)) // 4 }}MB'
+effective_cache_size = '{{ ((vm_ram_mb | default(8192)) * 3) // 4 }}MB'
+work_mem             = '16MB'
+maintenance_work_mem = '256MB'
+huge_pages           = try
+
+# --- WAL + replication ---
+wal_level            = replica
+max_wal_senders      = {{ pg_parameters.max_wal_senders | default(20) }}
+max_replication_slots = {{ pg_parameters.max_replication_slots | default(20) }}
+hot_standby          = on
+hot_standby_feedback = on
+wal_keep_size        = '4GB'
+max_wal_size         = '16GB'
+min_wal_size         = '2GB'
+checkpoint_completion_target = 0.9
+checkpoint_timeout   = '10min'
+synchronous_commit   = on
+# Patroni may bump synchronous_standby_names at runtime.
+
+# --- planner / autovacuum ---
+random_page_cost                  = 1.1
+effective_io_concurrency          = 200
+autovacuum_max_workers            = 6
+autovacuum_naptime                = '20s'
+autovacuum_vacuum_scale_factor    = 0.05
+autovacuum_analyze_scale_factor   = 0.02
+default_statistics_target         = 200
+track_io_timing                   = on
+track_wal_io_timing               = on
+track_functions                   = pl
+
+# --- TLS (cert-manager or pg-aegis CA writes the cert pair) ---
+ssl                   = on
+ssl_cert_file         = '/etc/postgresql/{{ pg_version }}/main/server.crt'
+ssl_key_file          = '/etc/postgresql/{{ pg_version }}/main/server.key'
+ssl_ca_file           = '/etc/postgresql/{{ pg_version }}/main/root.crt'
+ssl_prefer_server_ciphers = on
+ssl_min_protocol_version  = 'TLSv1.3'
+password_encryption   = scram-sha-256
+
+# --- logging ---
+logging_collector   = on
+log_filename        = 'postgresql-%a.log'
+log_rotation_age    = '1d'
+log_rotation_size   = 0
+log_truncate_on_rotation = on
+log_line_prefix     = '%m [%p] db=%d,user=%u,app=%a,client=%h '
+log_checkpoints     = on
+log_connections     = on
+log_disconnections  = on
+log_lock_waits      = on
+log_min_duration_statement = 200ms
+log_autovacuum_min_duration = 1s
+log_temp_files      = 0
+log_statement       = 'ddl'
+
+# --- extensions / pgaudit ---
+shared_preload_libraries = 'pg_stat_statements,pgaudit'
+pgaudit.log              = 'write,ddl,role'
+pgaudit.log_statement_once = on
+pgaudit.log_catalog      = off
+
+# --- pg_stat_statements ---
+pg_stat_statements.max = 10000
+pg_stat_statements.track = all

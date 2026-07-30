@@ -1,0 +1,64 @@
+# ============================================================================
+# CODEOWNERS -- Backoffice Nx Monorepo
+# ============================================================================
+# This file defines team ownership for the backoffice admin panel.
+# Each line maps a file path pattern to the team(s) responsible for review.
+#
+# The structure reflects how team topology maps directly to code boundaries
+# in an Nx monorepo: each feature library is owned by a single team, while
+# shared infrastructure libraries require cross-team review.
+# ============================================================================
+
+# -- Default: platform team reviews anything not explicitly owned -----------
+*                                           @acmetocasino/backoffice-platform
+
+# -- Application shell and deployment --------------------------------------
+/apps/fe-main-app/                          @acmetocasino/backoffice-platform
+/apps/fe-main-app-e2e/                      @acmetocasino/backoffice-qa
+/docker/                                    @acmetocasino/backoffice-devops
+
+# -- Backend services -------------------------------------------------------
+/apps/player-service/                       @acmetocasino/backoffice-services
+/apps/search-service/                       @acmetocasino/backoffice-services
+/apps/utils-service/                        @acmetocasino/backoffice-services
+
+# -- Feature libraries (team-per-feature ownership) -------------------------
+/libs/feature-dashboard/                    @acmetocasino/backoffice-dashboard-team
+/libs/feature-players/                      @acmetocasino/backoffice-player-team
+/libs/feature-search-and-tables/            @acmetocasino/backoffice-player-team
+/libs/feature-knowledge-base/               @acmetocasino/backoffice-platform
+/libs/feature-modals/                       @acmetocasino/backoffice-platform
+
+# -- UI shared libraries (design system team) --------------------------------
+/libs/ui/                                   @acmetocasino/backoffice-design-system
+/libs/ui/components/                        @acmetocasino/backoffice-design-system
+/libs/ui/icons/                             @acmetocasino/backoffice-design-system
+/libs/ui/layouts/                           @acmetocasino/backoffice-design-system
+
+# -- State management & routing (platform team) -----------------------------
+/libs/store-main/                           @acmetocasino/backoffice-platform
+/libs/router-main/                          @acmetocasino/backoffice-platform
+
+# -- Shared infrastructure libraries (cross-team review required) -----------
+/libs/composables/                          @acmetocasino/backoffice-platform
+/libs/interfaces/                           @acmetocasino/backoffice-platform @acmetocasino/backoffice-services
+/libs/plugins/                              @acmetocasino/backoffice-platform
+/libs/util-js/                              @acmetocasino/backoffice-platform
+
+# -- Service clients (service team + consuming team) -------------------------
+/libs/service-clients/                      @acmetocasino/backoffice-services
+/libs/service-clients/player-service/       @acmetocasino/backoffice-services @acmetocasino/backoffice-player-team
+/libs/service-clients/search-service/       @acmetocasino/backoffice-services @acmetocasino/backoffice-player-team
+
+# -- Backend services & legacy bridge ---------------------------------------
+/libs/services/platform-database/           @acmetocasino/backoffice-services @acmetocasino/backoffice-dba
+/libs/services/legacy-platform-service/     @acmetocasino/backoffice-services @acmetocasino/backoffice-platform
+/libs/services/kong-client/                 @acmetocasino/backoffice-devops
+/libs/services/cqrs-server/                 @acmetocasino/backoffice-services
+/libs/services/helpers/                     @acmetocasino/backoffice-services
+
+# -- Workspace configuration (requires platform lead approval) ---------------
+/workspace.json                             @acmetocasino/backoffice-platform-leads
+/nx.json                                    @acmetocasino/backoffice-platform-leads
+/tsconfig.base.json                         @acmetocasino/backoffice-platform-leads
+/package.json                               @acmetocasino/backoffice-platform-leads

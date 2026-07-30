@@ -1,0 +1,57 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 24, Security and Compliance.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# Staging Inventory — Suricata IDS/IPS Sensors
+# Used for:
+#   - Rule validation before production push
+#   - IPS mode testing (fail-open behaviour under load)
+#   - Performance benchmarking against known-good baselines
+
+all:
+  children:
+    suricata_sensors:
+      hosts:
+
+        # ── Staging DMZ Sensor ─────────────────────────────────────────────────
+        ids-dmz-01.staging.igaming.internal:
+          ansible_host: 10.10.0.11
+          monitored_interface: ens3f0
+          sensor_zone: dmz
+          numa_node: 0
+          worker_count: 4
+
+        # ── Staging App Sensor ─────────────────────────────────────────────────
+        ids-app-01.staging.igaming.internal:
+          ansible_host: 10.10.1.11
+          monitored_interface: ens4f0
+          sensor_zone: app
+          numa_node: 0
+          worker_count: 2
+
+        # ── Staging Payment Sensor ─────────────────────────────────────────────
+        ids-payment-01.staging.igaming.internal:
+          ansible_host: 10.10.3.11
+          monitored_interface: ens6f0
+          sensor_zone: payment
+          numa_node: 0
+          worker_count: 2
+
+      vars:
+        ansible_user: ansible
+        ansible_ssh_private_key_file: ~/.ssh/ansible_staging_ed25519
+        ansible_become: true
+        ansible_become_method: sudo
+        # Staging runs IPS mode so we can test fail-open and drop behaviour
+        suricata_mode: ids
+        environment_name: staging
+        # More verbose logging in staging; watch performance impact
+        suricata_eve_payload_printable: true
+        suricata_log_level: info

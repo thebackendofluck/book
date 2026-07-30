@@ -1,0 +1,46 @@
+# Companion code for "The Backend of Luck" - Chapter 28a, Distributed Systems Deep Dive.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+services:
+  iggy-server:
+    image: apache/iggy:latest
+    container_name: chapter28a-iggy-server
+    restart: unless-stopped
+    environment:
+      IGGY_ROOT_USERNAME: ${IGGY_ROOT_USERNAME:-iggy}
+      IGGY_ROOT_PASSWORD: ${IGGY_ROOT_PASSWORD:-change-me}
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - iggy-data:/local_data
+    networks:
+      - iggy-casino
+
+  iggy-web-ui:
+    image: apache/iggy-web-ui:latest
+    container_name: chapter28a-iggy-web-ui
+    restart: unless-stopped
+    environment:
+      PORT: 3050
+      ORIGIN: ${IGGY_WEB_ORIGIN:-http://localhost:3050}
+      PUBLIC_IGGY_API_URL: ${PUBLIC_IGGY_API_URL:-http://localhost:3000}
+    ports:
+      - "127.0.0.1:3050:3050"
+    depends_on:
+      - iggy-server
+    networks:
+      - iggy-casino
+
+networks:
+  iggy-casino:
+    driver: bridge
+
+volumes:
+  iggy-data:

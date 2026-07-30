@@ -1,0 +1,71 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 24b, Wazuh SIEM for iGaming Compliance.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# ============================================================================
+# AcmeToCasino — Wazuh Manager (All-in-One) Deployment
+# ============================================================================
+#
+# Deploys Wazuh Manager + Indexer + Dashboard on wazuh001.
+# Includes custom iGaming FIM rules, log collection, and detection rules.
+#
+# Usage:
+#   ansible-playbook -i inventory/hosts.yml playbook-wazuh-manager.yml
+#
+#   # Dry-run
+#   ansible-playbook -i inventory/hosts.yml playbook-wazuh-manager.yml --check --diff
+#
+# Roles: the wazuh-manager role is not duplicated here. It lives in the
+# simulation platform at new-platform/ansible/wazuh/roles/wazuh-manager and is
+# referenced below by path, relative to this playbook's own directory, so that
+# the FIM paths, log collection and detection rules have exactly one copy to
+# maintain. Ansible resolves a role name containing a path separator relative
+# to the playbook directory, so this works from any working directory. If you
+# lift this playbook out of the book repository, either copy that role tree in
+# beside it or point roles_path at wherever you put it.
+# ============================================================================
+
+- name: Deploy Wazuh SIEM Manager (All-in-One)
+  hosts: wazuh_manager
+  become: true
+  gather_facts: true
+
+  pre_tasks:
+    - name: Verify SSH connectivity
+      ansible.builtin.ping:
+
+    - name: Verify minimum resources
+      ansible.builtin.assert:
+        that:
+          - ansible_memtotal_mb >= 7000
+          - ansible_processor_vcpus >= 4
+        fail_msg: >
+          Wazuh requires at least 8GB RAM and 4 CPU cores.
+          Found {{ ansible_memtotal_mb }}MB RAM and {{ ansible_processor_vcpus }} vCPUs.
+        success_msg: "Resource check passed: {{ ansible_memtotal_mb }}MB RAM, {{ ansible_processor_vcpus }} vCPUs"
+
+    - name: Record deployment start time
+      ansible.builtin.set_fact:
+        deploy_start: "{{ ansible_date_time.iso8601 }}"
+
+  roles:
+    - role: ../../../../../../new-platform/ansible/wazuh/roles/wazuh-manager
+      tags: [wazuh, manager, siem]
+
+  post_tasks:
+    - name: Display deployment summary
+      ansible.builtin.debug:
+        msg: |
+          Wazuh SIEM Manager deployment complete
+          Host: {{ inventory_hostname }} ({{ ansible_host }})
+          Started: {{ deploy_start }}
+          Finished: {{ ansible_date_time.iso8601 }}
+          Dashboard: https://{{ ansible_host }}:443
+          API: https://{{ ansible_host }}:55000

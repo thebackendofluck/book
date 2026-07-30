@@ -1,0 +1,338 @@
+# Companion code for "The Backend of Luck" - Chapter 44, Deploying iGaming Platforms on Cloudflare Workers.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# .github/workflows/preview.yml
+#
+# Preview deployment pipeline for AcmetoCasino Cloudflare Workers platform.
+#
+# Trigger: Pull requests to main when Worker source or Terraform files change.
+#
+# Pipeline stages:
+#   1. lint    — TypeScript type checking + ESLint (zero warnings permitted)
+#   2. test    — Vitest unit and integration tests (single failure blocks deploy)
+#   3. tf-plan — Terraform plan (never apply on PRs — reviewers inspect the diff)
+#   4. preview — Wrangler deploys acmetocasino-api-preview-{PR_NUMBER}
+#   5. comment — Bot posts the preview URL as a PR comment
+#   6. cleanup — Delete the preview Worker when the PR is closed or merged
+#
+# Preview URL: https://acmetocasino-api-preview-{N}.workers.dev
+#
+# Required repository secrets:
+#   CLOUDFLARE_API_TOKEN — Workers, D1, KV, DNS, Zone:Read permissions
+#   CLOUDFLARE_ACCOUNT_ID — Cloudflare account ID
+#   CF_ZONE_ID — Zone ID for cloud-acmetocasino.com
+#
+# Reference: Chapter 44 — Deploying iGaming on Cloudflare Workers / CI/CD Pipeline
+
+name: Preview
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "new-platform/cloudflare-acmetocasino/**"
+      - "new-platform/terraform/**"
+      - ".github/workflows/preview.yml"
+
+# Cancel any in-progress preview pipeline for the same PR when new commits arrive.
+# (Production deploy.yml uses cancel-in-progress: false — never interrupt live deploys.)
+concurrency:
+  group: preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write   # Required for posting the preview URL comment
+
+env:
+  NODE_VERSION: "22"
+  TERRAFORM_VERSION: "1.9.5"
+  WORKER_DIR: new-platform/cloudflare-acmetocasino
+  TERRAFORM_DIR: new-platform/terraform
+  PREVIEW_WORKER_NAME: acmetocasino-api-preview-${{ github.event.pull_request.number }}
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Job 1: Lint — TypeScript + ESLint
+  # ---------------------------------------------------------------------------
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    if: github.event.action != 'closed'
+
+    defaults:
+      run:
+        working-directory: ${{ env.WORKER_DIR }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: ${{ env.WORKER_DIR }}/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript type check
+        run: npx tsc --noEmit
+
+      - name: ESLint (zero warnings)
+        run: npx eslint . --max-warnings 0
+
+  # ---------------------------------------------------------------------------
+  # Job 2: Test — Vitest
+  # ---------------------------------------------------------------------------
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    needs: lint
+    if: github.event.action != 'closed'
+
+    defaults:
+      run:
+        working-directory: ${{ env.WORKER_DIR }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: ${{ env.WORKER_DIR }}/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Vitest (unit + integration)
+        run: npx vitest run --reporter=verbose
+
+  # ---------------------------------------------------------------------------
+  # Job 3: Terraform Plan — Generate infrastructure diff for review
+  # Never applies — reviewers inspect the plan output in the PR.
+  # ---------------------------------------------------------------------------
+  tf-plan:
+    name: Terraform Plan
+    runs-on: ubuntu-latest
+    needs: lint
+    if: github.event.action != 'closed'
+
+    defaults:
+      run:
+        working-directory: ${{ env.TERRAFORM_DIR }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform ${{ env.TERRAFORM_VERSION }}
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: Terraform init
+        run: terraform init -input=false
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+      - name: Terraform validate
+        run: terraform validate
+
+      - name: Terraform plan
+        id: plan
+        run: |
+          terraform plan \
+            -input=false \
+            -no-color \
+            -out=tfplan.binary \
+            -var="cloudflare_api_token=$CLOUDFLARE_API_TOKEN" \
+            -var="cloudflare_zone_id=$CF_ZONE_ID" \
+            -var="cloudflare_account_id=$CLOUDFLARE_ACCOUNT_ID" \
+            2>&1 | tee plan_output.txt
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ZONE_ID: ${{ secrets.CF_ZONE_ID }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Post Terraform plan as PR comment
+        uses: actions/github-script@v7
+        if: always()
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('${{ env.TERRAFORM_DIR }}/plan_output.txt', 'utf8');
+            const truncated = plan.length > 60000
+              ? plan.substring(0, 60000) + '\n... (truncated — see CI logs for full output)'
+              : plan;
+            const body = `## Terraform Plan
+
+            <details><summary>Show Plan</summary>
+
+            \`\`\`terraform
+            ${truncated}
+            \`\`\`
+            </details>
+
+            > Plan generated from commit \`${{ github.sha }}\`. No changes are applied on PRs.
+            > The \`deploy.yml\` pipeline applies infrastructure changes after merge to \`main\`.`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body
+            });
+
+  # ---------------------------------------------------------------------------
+  # Job 4: Deploy Preview Worker
+  # ---------------------------------------------------------------------------
+  preview:
+    name: Deploy Preview Worker
+    runs-on: ubuntu-latest
+    needs: [test, tf-plan]
+    if: github.event.action != 'closed'
+
+    defaults:
+      run:
+        working-directory: ${{ env.WORKER_DIR }}
+
+    outputs:
+      preview_url: ${{ steps.deploy.outputs.preview_url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: ${{ env.WORKER_DIR }}/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Deploy preview Worker
+        id: deploy
+        run: |
+          npx wrangler deploy \
+            --name "$PREVIEW_WORKER_NAME" \
+            --env preview \
+            --compatibility-date "$(date +%Y-%m-%d)"
+          PREVIEW_URL="https://${PREVIEW_WORKER_NAME}.${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.workers.dev"
+          echo "preview_url=${PREVIEW_URL}" >> "$GITHUB_OUTPUT"
+          echo "Preview deployed: ${PREVIEW_URL}"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PREVIEW_WORKER_NAME: ${{ env.PREVIEW_WORKER_NAME }}
+
+      - name: Health check preview Worker
+        run: |
+          PREVIEW_URL="${{ steps.deploy.outputs.preview_url }}"
+          for i in 1 2 3 4 5; do
+            STATUS=$(curl --silent --output /dev/null --write-out "%{http_code}" \
+              --max-time 10 "${PREVIEW_URL}/health")
+            if [[ "$STATUS" == "200" ]]; then
+              echo "Health check passed (HTTP ${STATUS})"
+              exit 0
+            fi
+            echo "Attempt ${i}/5: HTTP ${STATUS} — retrying in 5s"
+            sleep 5
+          done
+          echo "ERROR: Preview Worker health check failed after 5 attempts"
+          exit 1
+
+  # ---------------------------------------------------------------------------
+  # Job 5: Post preview URL as PR comment
+  # ---------------------------------------------------------------------------
+  comment:
+    name: Comment Preview URL
+    runs-on: ubuntu-latest
+    needs: preview
+    if: github.event.action != 'closed'
+
+    steps:
+      - name: Post preview URL comment
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const previewUrl = '${{ needs.preview.outputs.preview_url }}';
+            const workerName = '${{ env.PREVIEW_WORKER_NAME }}';
+            const body = `## Preview Deployment
+
+            Worker **\`${workerName}\`** deployed successfully.
+
+            | Endpoint | URL |
+            |----------|-----|
+            | Health check | [/health](${previewUrl}/health) |
+            | API root | [/api/v1/](${previewUrl}/api/v1/) |
+            | Brand: AcmetoCasino | [/api/v1/games](${previewUrl}/api/v1/games) |
+
+            > **Note:** Preview Workers share production D1/KV bindings.
+            > Do not use production player credentials for testing.
+            > Preview Worker will be deleted when this PR is closed.
+
+            Deployed from commit \`${{ github.sha }}\`.`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body
+            });
+
+  # ---------------------------------------------------------------------------
+  # Job 6: Cleanup — delete preview Worker when PR is closed or merged
+  # ---------------------------------------------------------------------------
+  cleanup:
+    name: Cleanup Preview Worker
+    runs-on: ubuntu-latest
+    if: github.event.action == 'closed'
+
+    defaults:
+      run:
+        working-directory: ${{ env.WORKER_DIR }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: ${{ env.WORKER_DIR }}/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Delete preview Worker
+        run: |
+          echo "Deleting preview Worker: ${PREVIEW_WORKER_NAME}"
+          npx wrangler delete --name "$PREVIEW_WORKER_NAME" --force || {
+            echo "Worker already deleted or not found — continuing"
+          }
+          echo "Cleanup complete"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PREVIEW_WORKER_NAME: ${{ env.PREVIEW_WORKER_NAME }}

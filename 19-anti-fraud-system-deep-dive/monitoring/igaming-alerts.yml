@@ -1,0 +1,89 @@
+# Companion code for "The Backend of Luck" - Chapter 19, Anti-Fraud System Deep Dive.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# iGaming "Big Four" Alerts — canonical Prometheus rules pack shipped with
+# the iGaming Platform Engineering book.
+#
+# Every operator running a real-money gambling platform should have, at a
+# minimum, the four alerts grouped here:
+#
+#   1. BetPlacementErrorRateHigh  — player-visible bet placement failures
+#   2. SettlementLagHigh          — settlement worker stuck / SIGAP backlog
+#   3. WalletLedgerDrift          — ledger vs. event-sourced wallet drift
+#   4. HsmSessionFailureSpike     — HSM (YubiHSM) auth / connector issues
+#
+# A fifth alert, HsmSigningLatencyHigh, is bundled because crypto-signing
+# latency is the most common early warning before the HSM stack hard-fails.
+#
+# These alerts assume the metric names emitted by the reference services in
+# this book. Adjust expressions if your platform uses different names.
+
+groups:
+  - name: igaming-core
+    interval: 30s
+    rules:
+      - alert: BetPlacementErrorRateHigh
+        expr: |
+          (
+            sum(rate(bet_placement_errors_total[5m]))
+              /
+            sum(rate(bet_placement_attempts_total[5m]))
+          ) > 0.02
+        for: 5m
+        labels:
+          severity: critical
+          team: sportsbook
+        annotations:
+          summary: "Bet placement error rate > 2% for 5 minutes"
+          description: "Player-visible errors during bet placement. Check /gal logs, wallet service, and rate-limit middleware."
+
+      - alert: SettlementLagHigh
+        expr: |
+          time() - max(bet_settlement_last_completed_timestamp_seconds) > 300
+        for: 2m
+        labels:
+          severity: critical
+          team: sportsbook
+        annotations:
+          summary: "No bet settlement completed in last 5 minutes"
+          description: "Settlement worker may be stuck. Check settlement service logs and SIGAP queue depth."
+
+      - alert: WalletLedgerDrift
+        expr: |
+          abs(wallet_ledger_sum - wallet_events_sum) > 0.01
+        for: 1m
+        labels:
+          severity: critical
+          team: wallet
+        annotations:
+          summary: "Wallet ledger vs. event-sourced balance drifted"
+          description: "Ledger total disagrees with the wallet_events sum by more than 1 cent. Audit immediately."
+
+      - alert: HsmSessionFailureSpike
+        expr: |
+          sum(rate(hsm_session_open_failures_total[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          team: security
+        annotations:
+          summary: "HSM session failures > 0.1/sec for 5 minutes"
+          description: "YubiHSM authentication or connector issues. Check connector logs and audit-key access policy."
+
+      - alert: HsmSigningLatencyHigh
+        expr: |
+          histogram_quantile(0.99, sum(rate(hsm_sign_duration_seconds_bucket[5m])) by (le)) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          team: security
+        annotations:
+          summary: "HSM signing p99 latency above 500ms"
+          description: "Crypto operations are slowing the API. Check HSM load and network path."

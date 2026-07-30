@@ -1,0 +1,106 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 18, Real-Time Clock Module Implementation.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# Secure Data Destruction System - Configuration
+# This configuration defines the destruction sequence for iGaming infrastructure
+# decommissioning with HSM-aware resource handling.
+
+# Phase configuration
+phases:
+  documentation_analysis:
+    timeout: 300
+    required: true
+    description: "Parse infrastructure documentation and build destruction inventory"
+
+  security_device_preparation:
+    timeout: 600
+    required: true
+    description: "Export HSM audit logs and inventory security devices"
+
+  authentication_isolation:
+    timeout: 300
+    required: true
+    description: "Disable MFA/2FA systems and revoke authentication tokens"
+
+  parallel_infrastructure_destruction:
+    timeout: 1800
+    required: true
+    description: "Parallel destruction of cloud, HSM, and on-premise infrastructure"
+
+  network_destruction:
+    timeout: 900
+    required: true
+    description: "Reset network equipment (switches, routers, firewalls)"
+
+  verification:
+    timeout: 600
+    required: true
+    description: "Verify all systems have been destroyed"
+
+  self_destruct:
+    timeout: 300
+    required: true
+    description: "Hardware self-destruction of edge nodes (Zymbit SEN-500)"
+
+# HSM-specific settings
+hsm:
+  connector_url: "http://localhost:12345"
+  auth_key_id: 2
+  # Password should be provided via YUBIHSM_PASSWORD environment variable
+  export_audit_before_destroy: true
+  backup_file: "/var/log/hsm_final_audit.json"
+
+# Cloud destruction settings
+cloud:
+  # AWS account IDs should be configured per-environment
+  aws_regions: []  # Empty means all regions
+  dry_run: true    # Set to false for actual destruction
+  max_retries: 3
+  retry_delay: 30
+
+  # Resource types to preserve initially (destroyed by dedicated modules)
+  preserved_resources:
+    - "KMS keys with HSM references"
+    - "CloudHSM clusters"
+
+# Verification settings
+verification:
+  required: true
+  check_aws: true
+  check_hsm: true
+  check_network: true
+  check_on_premise: true
+
+# Audit and compliance
+audit:
+  log_file: "/var/log/sdds_audit.log"
+  backup_location: "/backup/audit_logs/"
+  hmac_secret_env: "AUDIT_HMAC_SECRET"
+  compliance_standards:
+    - "GDPR"
+    - "PCI_DSS"
+    - "GLI_11"
+    - "FIPS_140_2"
+
+# Safety settings
+safety:
+  emergency_stop_file: "/tmp/emergency_stop"
+  checkpoint_file: "/tmp/sdds_checkpoint.json"
+  require_confirmation: true
+  require_sms_auth: false
+  sms_auth_number: ""  # Configure when sms_auth is enabled
+
+# Logging
+logging:
+  level: "info"
+  file: "/var/log/destruction_orchestrator.log"
+  max_file_size: "100MB"
+  retention_days: 365

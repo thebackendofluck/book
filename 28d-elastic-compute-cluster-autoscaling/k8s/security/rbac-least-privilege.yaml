@@ -1,0 +1,146 @@
+# Companion code for "The Backend of Luck" - Chapter 28d, Elastic Compute and Cluster Autoscaling on EKS.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# Least-privilege RBAC + no token automount (CIS / ISO A.5.15/A.8.2/A.8.3 / PCI Req 7).
+# The wallet service gets a dedicated ServiceAccount that mounts NO API token
+# (it talks to Postgres/Redis, not the K8s API) and a narrowly-scoped Role.
+#
+# ServiceAccounts, Roles and RoleBindings are all namespace-scoped, and
+# `automountServiceAccountToken: false` on the payments/default SA does nothing
+# for any other namespace. Every namespace ships with its own `default`
+# ServiceAccount that automounts a token unless patched, so covering only
+# payments left kyc and casino handing a mounted API token to any pod that
+# forgot to name a ServiceAccount. That token is the standard first step from
+# "one compromised pod" to "enumerate the cluster".
+#
+# Patched below: payments, kyc, casino. Any new namespace needs the same three
+# lines, which is the argument for enforcing it with a Kyverno policy
+# (`mutate` on Namespace creation) rather than a manifest people must remember.
+#
+#   kubectl apply -f rbac-least-privilege.yaml
+#   kubectl get sa -A -o custom-columns=NS:.metadata.namespace,\
+#     NAME:.metadata.name,AUTOMOUNT:.automountServiceAccountToken
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: wallet
+  namespace: payments
+automountServiceAccountToken: false # don't hand every pod a cluster token
+---
+# Patch the *default* SA too — anything that forgot to set its own SA gets no token.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: default
+  namespace: payments
+automountServiceAccountToken: false
+---
+# Narrow Role: read only its own config/secret, nothing cluster-wide, no wildcards.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: wallet-reader
+  namespace: payments
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["wallet-config"]
+    verbs: ["get", "watch"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["wallet-db"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: wallet-reader-binding
+  namespace: payments
+subjects:
+  - kind: ServiceAccount
+    name: wallet
+    namespace: payments
+roleRef:
+  kind: Role
+  name: wallet-reader
+  apiGroup: rbac.authorization.k8s.io
+---
+# --- kyc namespace ----------------------------------------------------------
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kyc-service
+  namespace: kyc
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: default
+  namespace: kyc
+automountServiceAccountToken: false
+---
+# The verification service reads its own config and the vendor API credential.
+# No list/watch on secrets: `list` on the secrets collection returns the values,
+# not just the names, so a list verb on secrets is read-everything in disguise.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: kyc-service-reader
+  namespace: kyc
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["kyc-config"]
+    verbs: ["get", "watch"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["kyc-vendor-api"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kyc-service-reader-binding
+  namespace: kyc
+subjects:
+  - kind: ServiceAccount
+    name: kyc-service
+    namespace: kyc
+roleRef:
+  kind: Role
+  name: kyc-service-reader
+  apiGroup: rbac.authorization.k8s.io
+---
+# --- casino namespace -------------------------------------------------------
+# No Role at all: the game engine and API tier have no business calling the
+# Kubernetes API. Revoking the automounted token is the whole control here, and
+# the absence of a Role is deliberate rather than an omission.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: default
+  namespace: casino
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: game-engine
+  namespace: casino
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: casino-api
+  namespace: casino
+automountServiceAccountToken: false

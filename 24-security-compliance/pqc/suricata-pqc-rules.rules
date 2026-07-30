@@ -1,0 +1,263 @@
+# =============================================================================
+# suricata-pqc-rules.rules — Suricata IDS/IPS rules for PQC monitoring
+# Chapter 24g: Post-Quantum Cryptography for iGaming
+#
+# SID range: 9001000 – 9001099 (reserved for this chapter)
+#
+# Purpose:
+#   Detect TLS anomalies relevant to the PQC migration of an iGaming platform:
+#   - PQC key share extensions in ClientHello (visibility into PQC adoption)
+#   - Abnormally large TLS handshakes (PQC or potential attack vector)
+#   - Legacy TLS 1.0/1.1 connections (should be blocked post-migration)
+#   - Classical-only cipher negotiation from internal servers (compliance)
+#   - Certificate algorithm compliance from monitored endpoints
+#
+# Configuration:
+#   Place this file in /etc/suricata/rules/ and add to suricata.yaml:
+#     rule-files:
+#       - suricata-pqc-rules.rules
+#
+# Variables used (define in suricata.yaml vars section):
+#   $HOME_NET     — your internal network ranges
+#   $EXTERNAL_NET — everything else (typically !$HOME_NET)
+#   $HTTP_PORTS   — typically [80,443,8080,8443]
+#
+# Suricata version: 7.x+
+# Reference: https://docs.suricata.io/en/latest/rules/tls-keywords.html
+# =============================================================================
+
+
+# ---------------------------------------------------------------------------
+# Rule 9001000 — Detect TLS ClientHello with ML-KEM-768 / Kyber768 key share
+#
+# The TLS ClientHello key_share extension carries the client's key exchange
+# contribution. For ML-KEM-768 / X25519Kyber768Draft00, the named group ID
+# is 0x6399 (25497 decimal). Detecting this tells us which clients are
+# attempting PQC-capable handshakes — useful for adoption monitoring and
+# ensuring PQC-capable servers are reachable.
+#
+# TLS extension type 0x0033 = supported_groups / key_share (TLS 1.3)
+# Named group 0x6399 = X25519Kyber768Draft00
+# Named group 0x11ec = x25519mlkem768 (IETF final name)
+#
+# Alert action: use 'alert' (not 'drop') — this is normal, expected traffic
+# ---------------------------------------------------------------------------
+alert tls $EXTERNAL_NET any -> $HOME_NET $HTTP_PORTS (
+    msg:"PQC-MONITOR TLS ClientHello with ML-KEM-768 (X25519Kyber768Draft00) key share detected";
+    flow:established,to_server;
+    tls.version:1.3;
+    content:"|00 33|";      # key_share extension type
+    content:"|63 99|";      # named group 0x6399 = X25519Kyber768Draft00
+    distance:0;
+    classtype:protocol-command-decode;
+    sid:9001000;
+    rev:1;
+    metadata:affected_product TLS, attack_target Server,
+             created_at 2025_01_01, deployment Perimeter,
+             signature_severity Informational, updated_at 2025_01_01,
+             tag pqc_monitoring;
+)
+
+
+# ---------------------------------------------------------------------------
+# Rule 9001001 — Detect TLS ClientHello with x25519mlkem768 (IETF final name)
+#
+# The IETF standardised name uses a different codepoint: 0x11ec (4588 decimal)
+# for x25519mlkem768 (draft-kwiatkowski-tls-ecdhe-mlkem).
+# Chrome 131+ and Firefox 132+ may use this codepoint instead of 0x6399.
+# ---------------------------------------------------------------------------
+alert tls $EXTERNAL_NET any -> $HOME_NET $HTTP_PORTS (
+    msg:"PQC-MONITOR TLS ClientHello with x25519mlkem768 (IETF) key share detected";
+    flow:established,to_server;
+    tls.version:1.3;
+    content:"|00 33|";      # key_share extension type
+    content:"|11 ec|";      # named group 0x11ec = x25519mlkem768
+    distance:0;
+    classtype:protocol-command-decode;
+    sid:9001001;
+    rev:1;
+    metadata:affected_product TLS, attack_target Server,
+             created_at 2025_01_01, deployment Perimeter,
+             signature_severity Informational, updated_at 2025_01_01,
+             tag pqc_monitoring;
+)
+
+
+# ---------------------------------------------------------------------------
+# Rule 9001010 — Detect abnormally large TLS handshake record (>20 KB)
+#
+# A TLS ClientHello normally fits in a single TCP segment (~300-800 bytes for
+# classical ECDHE). With PQC hybrid key shares (ML-KEM-768 adds ~1200 bytes),
+# the ClientHello grows to ~1500-2000 bytes but rarely exceeds 5 KB legitimately.
+#
+# A TLS record exceeding 20 KB in the handshake phase is unusual and may
+# indicate:
+#   1. A misconfigured PQC implementation sending multiple large key shares
+#   2. A ClientHello amplification / DoS probe
+#   3. An unusually large certificate chain
+#
+# The dsize keyword matches on TCP payload size; 20000 bytes = ~20 KB.
+# This rule triggers on the initial handshake phase (no session cookie set).
+# ---------------------------------------------------------------------------
+alert tls $EXTERNAL_NET any -> $HOME_NET $HTTP_PORTS (
+    msg:"PQC-ALERT Abnormally large TLS handshake record (>20KB) — possible misconfiguration or DoS probe";
+    flow:established,to_server;
+    dsize:>20000;
+    tls.version:!1.0,!1.1;    # Exclude legacy TLS (covered by rule 9001020)
+    classtype:attempted-dos;
+    sid:9001010;
+    rev:1;
+    metadata:affected_product TLS, attack_target Server,
+             created_at 2025_01_01, deployment Perimeter,
+             signature_severity Major, updated_at 2025_01_01,
+             tag pqc_anomaly;
+)
+
+
+# ---------------------------------------------------------------------------
+# Rule 9001011 — Detect large TLS ServerHello or Certificate record (>16 KB)
+#
+# ML-DSA-65 certificates are ~3.3 KB (signature) + ~1.95 KB (public key).
+# A full ML-DSA-65 certificate chain (leaf + intermediate + root) can approach
+# 15 KB, which is the TLS maximum record size. Records exceeding 16 KB indicate
+# a fragmented or malformed certificate transmission and should be investigated.
+# ---------------------------------------------------------------------------
+alert tls $HOME_NET $HTTP_PORTS -> $EXTERNAL_NET any (
+    msg:"PQC-ALERT Large TLS server record (>16KB) — PQC certificate chain or malformed TLS";
+    flow:established,to_client;
+    dsize:>16000;
+    classtype:protocol-command-decode;
+    sid:9001011;
+    rev:1;
+    metadata:affected_product TLS, attack_target Client,
+             created_at 2025_01_01, deployment Perimeter,
+             signature_severity Informational, updated_at 2025_01_01,
+             tag pqc_monitoring;
+)
+
+
+# ---------------------------------------------------------------------------
+# Rule 9001020 — Detect legacy TLS 1.0 connection from any source
+#
+# TLS 1.0 was deprecated by RFC 8996 (March 2021) and is prohibited by
+# PCI DSS 4.0, GDPR technical guidance, and most iGaming regulator mandates.
+# After completing the PQC migration (which requires TLS 1.3), any TLS 1.0
+# connection is a compliance violation and potential security incident.
+#
+# tls.version keyword matches the negotiated version in the ServerHello.
+# ---------------------------------------------------------------------------
+alert tls any any -> $HOME_NET $HTTP_PORTS (
+    msg:"PQC-COMPLIANCE Legacy TLS 1.0 connection detected — regulatory violation";
+    flow:established,to_server;
+    tls.version:1.0;
+    classtype:policy-violation;
+    sid:9001020;
+    rev:1;
+    metadata:affected_product TLS, attack_target Server,
+             created_at 2025_01_01, deployment Perimeter,
+             signature_severity Major, updated_at 2025_01_01,
+             tag compliance,pqc_migration;
+)
+
+
+# ---------------------------------------------------------------------------
+# Rule 9001021 — Detect legacy TLS 1.1 connection from any source
+#
+# TLS 1.1 is equally deprecated and must be disabled. See rule 9001020.
+# ---------------------------------------------------------------------------
+alert tls any any -> $HOME_NET $HTTP_PORTS (
+    msg:"PQC-COMPLIANCE Legacy TLS 1.1 connection detected — regulatory violation";
+    flow:established,to_server;
+    tls.version:1.1;
+    classtype:policy-violation;
+    sid:9001021;
+    rev:1;
+    metadata:affected_product TLS, attack_target Server,
+             created_at 2025_01_01, deployment Perimeter,
+             signature_severity Major, updated_at 2025_01_01,
+             tag compliance,pqc_migration;
+)
+
+
+# ---------------------------------------------------------------------------
+# Rule 9001030 — Detect non-PQC cipher negotiation from internal iGaming servers
+#
+# After PQC migration is complete, internal server-to-server connections should
+# use PQC hybrid key exchange. This rule detects TLS 1.3 connections that
+# negotiated a classical cipher suite (no PQC KEM) from monitored internal
+# endpoints — indicating a server that has not yet been migrated.
+#
+# Implementation note:
+#   Suricata does not have a native keyword for the negotiated KEM group.
+#   This rule approximates by checking the TLS ServerHello for the absence
+#   of the PQC key share extension (0x6399 or 0x11ec) in the KeyShare
+#   extension of the ServerHello. Adjust the content match to your network's
+#   specific PQC group IDs.
+#
+# Requires: Suricata 7+ with full TLS record inspection
+# ---------------------------------------------------------------------------
+alert tls $HOME_NET $HTTP_PORTS -> $EXTERNAL_NET any (
+    msg:"PQC-COMPLIANCE Internal server using non-PQC TLS 1.2 — migration pending";
+    flow:established,to_client;
+    tls.version:1.2;
+    classtype:policy-violation;
+    sid:9001030;
+    rev:1;
+    metadata:affected_product TLS, attack_target Client,
+             created_at 2025_01_01, deployment Internal,
+             signature_severity Informational, updated_at 2025_01_01,
+             tag compliance,pqc_migration_gap;
+)
+
+
+# ---------------------------------------------------------------------------
+# Rule 9001040 — Alert on RSA certificate presented by monitored endpoints
+#
+# After migrating to PQC or hybrid certificates, any server in the monitored
+# estate presenting an RSA certificate is a compliance gap. This rule uses
+# the tls.cert_subject keyword to match known monitored domains.
+#
+# Adjust the tls.cert_subject content to match your actual domain pattern.
+# Example below monitors *.igaming.example.com for RSA certificates.
+#
+# tls.cert_subject is available in Suricata 6.0.3+ with ja3 / ja4 logging.
+# ---------------------------------------------------------------------------
+alert tls $HOME_NET $HTTP_PORTS -> $EXTERNAL_NET any (
+    msg:"PQC-COMPLIANCE RSA certificate detected from monitored iGaming endpoint — replace with PQC/hybrid cert";
+    flow:established,to_client;
+    tls.cert_subject;
+    content:".igaming.example.com";
+    tls.cert_fingerprint;
+    pcre:"/rsaEncryption/i";
+    classtype:policy-violation;
+    sid:9001040;
+    rev:1;
+    metadata:affected_product X509, attack_target Client,
+             created_at 2025_01_01, deployment Internal,
+             signature_severity High, updated_at 2025_01_01,
+             tag compliance,certificate_rotation;
+)
+
+
+# ---------------------------------------------------------------------------
+# Rule 9001041 — Alert on ECDSA certificate from monitored endpoints
+#
+# ECDSA certificates are also quantum-vulnerable (Shor's algorithm breaks
+# elliptic curve discrete log). Flag any monitored endpoint still serving
+# ECDSA-only certificates post-migration deadline.
+# ---------------------------------------------------------------------------
+alert tls $HOME_NET $HTTP_PORTS -> $EXTERNAL_NET any (
+    msg:"PQC-COMPLIANCE ECDSA certificate detected from monitored iGaming endpoint — upgrade to hybrid cert";
+    flow:established,to_client;
+    tls.cert_subject;
+    content:".igaming.example.com";
+    tls.cert_fingerprint;
+    pcre:"/ecPublicKey/i";
+    classtype:policy-violation;
+    sid:9001041;
+    rev:1;
+    metadata:affected_product X509, attack_target Client,
+             created_at 2025_01_01, deployment Internal,
+             signature_severity High, updated_at 2025_01_01,
+             tag compliance,certificate_rotation;
+)

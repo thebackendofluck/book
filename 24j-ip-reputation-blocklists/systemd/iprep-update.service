@@ -1,0 +1,45 @@
+# /etc/systemd/system/iprep-update.service
+[Unit]
+Description=Suricata IP Reputation Database Update
+Documentation=https://wiki.internal/iprep-pipeline
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=600
+StartLimitBurst=3
+
+[Service]
+Type=oneshot
+User=suricata
+Group=suricata
+ExecStart=/usr/local/bin/iprep-update.py --loglevel INFO
+ExecStartPost=/usr/local/bin/iprep-notify.sh
+TimeoutStartSec=300
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=iprep-update
+
+# iprep-update.py exits 1 when the reputation file was written but the Suricata
+# reload failed. That is a partial success worth notifying about, and treating
+# it as a unit failure would skip ExecStartPost and lose the audit record for
+# precisely the runs that need one. Exit 2 (nothing deployed) still fails.
+SuccessExitStatus=1
+
+# Security hardening for the service process
+NoNewPrivileges=yes
+ProtectSystem=strict
+# ProtectSystem=strict mounts everything read-only except /dev, /proc and /sys,
+# so every path written during a run has to be listed here:
+#   /etc/suricata/iprep  reputation.list, whitelist.list, metadata
+#   /var/lib/iprep       downloads, staging, serve/ for the OPNsense alias
+#   /run/suricata        the management socket suricatasc connects to, which
+#                        needs write access on the socket itself
+ReadWritePaths=/etc/suricata/iprep /var/lib/iprep /run/suricata
+# Creates /var/log/iprep owned by User= and adds it to ReadWritePaths.
+# iprep-notify.sh appends the audit line there under `set -e`, so without this
+# the unit failed on every single run and the audit trail was never written.
+LogsDirectory=iprep
+LogsDirectoryMode=0750
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

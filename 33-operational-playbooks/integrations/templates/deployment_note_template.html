@@ -1,0 +1,92 @@
+<!-- Deployment Note Template for iGaming Operations -->
+<!-- Placeholders: {{VERSION}}, {{ENVIRONMENT}}, {{TIMESTAMP}}, {{COMMIT_SHA}},
+     {{DEPLOYER}}, {{CHANGES}}, {{AFFECTED_SERVICES}}, {{JIRA_TICKETS}},
+     {{ROLLBACK_PLAN}} -->
+
+<ac:structured-macro ac:name="info">
+    <ac:rich-text-body>
+        <p>Deployment record for compliance and operational tracking.
+        All production deployments must be documented per regulatory requirements.</p>
+    </ac:rich-text-body>
+</ac:structured-macro>
+
+<h2>Deployment Summary</h2>
+<table>
+    <tbody>
+        <tr><th style="width:200px">Version</th><td>{{VERSION}}</td></tr>
+        <tr><th>Environment</th><td>{{ENVIRONMENT}}</td></tr>
+        <tr><th>Deploy Timestamp</th><td>{{TIMESTAMP}}</td></tr>
+        <tr><th>Commit SHA</th><td><code>{{COMMIT_SHA}}</code></td></tr>
+        <tr><th>Deployed by</th><td>{{DEPLOYER}}</td></tr>
+    </tbody>
+</table>
+
+<h2>Changes Included</h2>
+<ul>
+    {{CHANGES}}
+</ul>
+
+<h2>Affected Services</h2>
+<ul>
+    {{AFFECTED_SERVICES}}
+</ul>
+
+<h2>Linked Jira Tickets</h2>
+<ul>
+    {{JIRA_TICKETS}}
+</ul>
+
+<h2>Pre-Deployment Checklist</h2>
+<ac:structured-macro ac:name="tasklist">
+    <ac:rich-text-body>
+        <ac:task><ac:task-body>Database migrations reviewed and tested</ac:task-body></ac:task>
+        <ac:task><ac:task-body>Feature flags configured for gradual rollout</ac:task-body></ac:task>
+        <ac:task><ac:task-body>Rollback plan documented and tested</ac:task-body></ac:task>
+        <ac:task><ac:task-body>Monitoring dashboards updated for new metrics</ac:task-body></ac:task>
+        <ac:task><ac:task-body>Change request approved in Jira</ac:task-body></ac:task>
+        <ac:task><ac:task-body>Security scan passed (no critical/high findings)</ac:task-body></ac:task>
+        <ac:task><ac:task-body>Load test results reviewed</ac:task-body></ac:task>
+    </ac:rich-text-body>
+</ac:structured-macro>
+
+<h2>Post-Deployment Verification</h2>
+<ac:structured-macro ac:name="tasklist">
+    <ac:rich-text-body>
+        <ac:task><ac:task-body>Health check endpoints returning 200 OK</ac:task-body></ac:task>
+        <ac:task><ac:task-body>Error rate below 0.1% threshold</ac:task-body></ac:task>
+        <ac:task><ac:task-body>Latency within SLA (p99 &lt; 200ms for game API)</ac:task-body></ac:task>
+        <ac:task><ac:task-body>RTP calculations verified on sample games</ac:task-body></ac:task>
+        <ac:task><ac:task-body>Player-facing smoke tests passed</ac:task-body></ac:task>
+        <ac:task><ac:task-body>Payment processing verified (deposit + withdrawal)</ac:task-body></ac:task>
+        <ac:task><ac:task-body>Responsible gaming features operational</ac:task-body></ac:task>
+        <ac:task><ac:task-body>Real-time monitoring showing normal patterns</ac:task-body></ac:task>
+    </ac:rich-text-body>
+</ac:structured-macro>
+
+<h2>Rollback Plan</h2>
+<p>{{ROLLBACK_PLAN}}</p>
+
+<h3>Rollback Procedure</h3>
+<ol>
+    <li>Trigger rollback pipeline or redeploy previous version tag</li>
+    <li>Verify health checks return to normal</li>
+    <li>Run player-facing smoke tests</li>
+    <li>Monitor error rates for 15 minutes</li>
+    <li>Notify stakeholders of rollback via Slack #deployments</li>
+    <li>Create Jira ticket for rollback investigation</li>
+</ol>
+
+<h2>Regulatory Notes</h2>
+<table>
+    <tbody>
+        <tr><th style="width:200px">RNG changes?</th><td><em>Yes/No — if yes, detail the changes</em></td></tr>
+        <tr><th>RTP changes?</th><td><em>Yes/No — if yes, which games affected</em></td></tr>
+        <tr><th>Player data schema changes?</th><td><em>Yes/No — GDPR/privacy implications</em></td></tr>
+        <tr><th>New jurisdiction support?</th><td><em>Yes/No — which jurisdictions</em></td></tr>
+        <tr><th>Regulatory pre-approval needed?</th><td><em>Yes/No — approval reference</em></td></tr>
+    </tbody>
+</table>
+
+<hr/>
+<p><em>This deployment note is auto-generated and maintained as part of the
+regulatory audit trail. Do not delete.</em></p>

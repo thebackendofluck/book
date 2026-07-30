@@ -1,0 +1,48 @@
+// rtc.proto
+syntax = "proto3";
+
+package rtc;
+
+option go_package = "github.com/casino/rtc/proto";
+
+service RTCService {
+    rpc GetTimestamp(TimestampRequest) returns (TimestampResponse);
+    rpc StreamTimestamp(StreamRequest) returns (stream TimestampResponse);
+    rpc ValidateTimestamp(ValidationRequest) returns (ValidationResponse);
+    rpc GetDrift(DriftRequest) returns (DriftResponse);
+    rpc SyncClocks(SyncRequest) returns (SyncResponse);
+}
+
+message TimestampRequest {
+    string request_id = 1;
+    map<string, string> metadata = 2;
+    bool require_consensus = 3;
+    int32 precision_ns = 4;
+}
+
+message TimestampResponse {
+    int64 unix_seconds = 1;
+    int32 nanos = 2;
+    string iso8601 = 3;
+    string signature = 4;
+    double confidence = 5;
+    double drift_ms = 6;
+    string source = 7;
+    map<string, string> metadata = 8;
+}
+
+message StreamRequest {
+    int32 interval_ms = 1;
+    bool include_drift = 2;
+}
+
+message ValidationRequest {
+    TimestampResponse timestamp = 1;
+    int64 tolerance_ms = 2;
+}
+
+message ValidationResponse {
+    bool valid = 1;
+    string reason = 2;
+    double actual_drift_ms = 3;
+}

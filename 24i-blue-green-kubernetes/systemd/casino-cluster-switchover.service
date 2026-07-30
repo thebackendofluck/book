@@ -1,0 +1,21 @@
+# /etc/systemd/system/casino-cluster-switchover.service
+[Unit]
+Description=Casino K3s Cluster Switchover
+After=casino-cluster-provision.service
+Requires=network-online.target
+
+[Service]
+Type=oneshot
+User=casino-deploy
+Group=casino-deploy
+EnvironmentFile=/etc/casino/deploy.env
+WorkingDirectory=/opt/casino/scripts
+ExecStart=/opt/casino/scripts/rotation-driver.sh switchover
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=900
+SyslogIdentifier=casino-switchover
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/log/casino /tmp /root/.kube /etc/haproxy

@@ -1,0 +1,77 @@
+# Companion code for "The Backend of Luck" - Chapter 32, Testing and QA in Gambling.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+type: peruser
+events:
+  register:
+    profile:
+      average_wait: 2
+      url: /users/register/
+    transitions:
+      login: 1
+  login:
+    profile:
+      average_wait: 1
+      url: /users/login/
+    transitions:
+      get_profile: 1
+  get_profile:
+    profile:
+      url: /users/profile/
+      average_wait: 0
+    transitions:
+      get_config: 1
+  get_config:
+    profile:
+      url: /main/config/
+      average_wait: 0
+    transitions:
+      generate_geo_test_packet: 1
+  generate_geo_test_packet:
+    profile:
+      url: /geocomply/dev_generate/
+      average_wait: 0
+    transitions:
+      geo_validate: 1
+  geo_validate:
+    profile:
+      url: /geocomply/validate/
+      average_wait: 0
+    transitions:
+      homepage_landing: 1
+  homepage_landing:
+    profile:
+      url: /offerings/homepage
+      average_wait: 60
+    transitions:
+      logout: .20
+      login: .20
+      coupon_history: 0.6
+  get_homepage:
+    profile:
+      url: /offerings/homepage
+      average_wait: 45
+    transitions:
+      coupon_history: 0.2
+      get_homepage: 0.6
+      logout: 0.2
+  coupon_history:
+    profile:
+      average_wait: 10
+    transitions:
+      coupon_history: 0.05
+      logout: 0.45
+      get_homepage: 0.3
+      login: 0.2
+  logout:
+    profile:
+      average_wait: 0
+    transitions:
+      logout: 1

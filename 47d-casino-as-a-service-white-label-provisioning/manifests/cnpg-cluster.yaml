@@ -1,0 +1,54 @@
+# Companion code for "The Backend of Luck" - Chapter 47d, Casino as a Service.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: BUSL-1.1
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# Per-tenant PostgreSQL via CloudNativePG (silo model: one DB cluster per tenant).
+# Template — rendered per tenant by ../scripts/render_manifests.sh into
+# rendered/<slug>/cnpg-cluster.yaml, then applied by caasctl step "Provision CNPG database".
+# Placeholders: __SLUG__ __DBCLASS__
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: caas-__SLUG__-db
+  namespace: caas-__SLUG__
+  labels:
+    caas.tenant: "__SLUG__"
+    app.kubernetes.io/component: postgresql
+spec:
+  instances: 2
+  imagePullPolicy: IfNotPresent
+  storage:
+    size: 10Gi
+    storageClass: __DBCLASS__
+  # App credentials are seeded in OpenBao at caas/__SLUG__/ by setup_tenant_secrets.sh
+  # and surfaced to the runtime as the Secret named below.
+  bootstrap:
+    initdb:
+      database: casino
+      owner: caas
+      secret:
+        name: tenant-db-credentials
+  postgresql:
+    parameters:
+      ssl: "on"
+      log_statement: "ddl"
+  # Continuous backup to the per-tenant S3 bucket created by the tenant-aws Terraform module.
+  backup:
+    retentionPolicy: "30d"
+    barmanObjectStore:
+      destinationPath: "s3://tenant-__SLUG__-backups/cnpg"
+      s3Credentials:
+        inheritFromIAMRole: true
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "256Mi"
+    limits:
+      cpu: "1"
+      memory: "1Gi"

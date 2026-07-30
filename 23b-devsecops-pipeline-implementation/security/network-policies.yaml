@@ -1,0 +1,355 @@
+# Companion code for "The Backend of Luck" - Chapter 23b, DevSecOps Pipeline Implementation.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# ---------------------------------------------------------------------------
+# Standalone NetworkPolicy manifests for the acmetocasino-prod namespace.
+#
+# These are the non-Helm equivalents of the policies in:
+#   k8s/casino-migration/templates/networkpolicies.yaml
+#
+# Apply to the live cluster with:
+#   kubectl apply -f network-policies.yaml \
+#     --kubeconfig /path/to/your/kubeconfig
+#
+# Namespace labels assumed:
+#   acmetocasino-prod   : kubernetes.io/metadata.name=acmetocasino-prod
+#   kube-system         : kubernetes.io/metadata.name=kube-system
+#   monitoring          : kubernetes.io/metadata.name=monitoring
+#   kong-system         : kubernetes.io/metadata.name=kong-system
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# 1. Default deny — drop all ingress and egress unless explicitly allowed
+# ---------------------------------------------------------------------------
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: acmetocasino-prod
+  labels:
+    app.kubernetes.io/part-of: casino-security
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+
+---
+# ---------------------------------------------------------------------------
+# 2. DNS egress — all pods need to resolve names via CoreDNS in kube-system
+# ---------------------------------------------------------------------------
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: acmetocasino-prod
+  labels:
+    app.kubernetes.io/part-of: casino-security
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+
+---
+# ---------------------------------------------------------------------------
+# 3. casino-api — ingress from Kong, egress to pg + redis
+# ---------------------------------------------------------------------------
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: casino-api
+  namespace: acmetocasino-prod
+  labels:
+    app.kubernetes.io/part-of: casino-security
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: casino-api
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Kong ingress controller (kong-system namespace)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kong-system
+      ports:
+        - port: 8091
+          protocol: TCP
+    # Prometheus scraping from monitoring namespace
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - port: 8091
+          protocol: TCP
+  egress:
+    # PostgreSQL 18
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: postgresql
+      ports:
+        - port: 5432
+          protocol: TCP
+    # Redis 7
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: redis
+      ports:
+        - port: 6379
+          protocol: TCP
+    # External fraud API (YOUR_FRAUD_API_IP:443) — must remain reachable
+    - to:
+        - ipBlock:
+            cidr: YOUR_FRAUD_API_IP/32
+      ports:
+        - port: 443
+          protocol: TCP
+
+---
+# ---------------------------------------------------------------------------
+# 4. bot-manager — no inbound, egress to casino-api only
+# ---------------------------------------------------------------------------
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: bot-manager
+  namespace: acmetocasino-prod
+  labels:
+    app.kubernetes.io/part-of: casino-security
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: bot-manager
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress: []
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: casino-api
+      ports:
+        - port: 8091
+          protocol: TCP
+
+---
+# ---------------------------------------------------------------------------
+# 5. market-watch — no inbound, egress to casino-api only
+# ---------------------------------------------------------------------------
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: market-watch
+  namespace: acmetocasino-prod
+  labels:
+    app.kubernetes.io/part-of: casino-security
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: market-watch
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress: []
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: casino-api
+      ports:
+        - port: 8091
+          protocol: TCP
+
+---
+# ---------------------------------------------------------------------------
+# 6. postgresql — ingress from api + cron-jobs; no external egress
+# ---------------------------------------------------------------------------
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgresql
+  namespace: acmetocasino-prod
+  labels:
+    app.kubernetes.io/part-of: casino-security
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: postgresql
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: casino-api
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: fraud-event-pusher
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: refresh-views
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: pg-backup
+      ports:
+        - port: 5432
+          protocol: TCP
+  egress: []  # DNS covered by allow-dns-egress policy above
+
+---
+# ---------------------------------------------------------------------------
+# 7. redis — ingress from api + cron-jobs; no external egress
+# ---------------------------------------------------------------------------
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: redis
+  namespace: acmetocasino-prod
+  labels:
+    app.kubernetes.io/part-of: casino-security
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: redis
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: casino-api
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: fraud-event-pusher
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: refresh-views
+      ports:
+        - port: 6379
+          protocol: TCP
+  egress: []  # DNS covered by allow-dns-egress policy above
+
+---
+# ---------------------------------------------------------------------------
+# 8. cron-jobs — egress to pg, redis, external fraud API
+# ---------------------------------------------------------------------------
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: cron-jobs-egress
+  namespace: acmetocasino-prod
+  labels:
+    app.kubernetes.io/part-of: casino-security
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: cron-jobs
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress: []
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: postgresql
+      ports:
+        - port: 5432
+          protocol: TCP
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: redis
+      ports:
+        - port: 6379
+          protocol: TCP
+    - to:
+        - ipBlock:
+            cidr: YOUR_FRAUD_API_IP/32
+      ports:
+        - port: 443
+          protocol: TCP
+
+---
+# ---------------------------------------------------------------------------
+# 9. monitoring namespace — allow Prometheus to scrape acmetocasino-prod pods
+#    (Applied to the monitoring namespace, not acmetocasino-prod)
+# ---------------------------------------------------------------------------
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-monitoring-scrape
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/part-of: casino-security
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: prometheus
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: acmetocasino-prod
+      ports:
+        - port: 8091
+          protocol: TCP
+
+---
+# ---------------------------------------------------------------------------
+# 10. Block all inter-namespace traffic into acmetocasino-prod
+#     except from kong-system and monitoring (already allowed above).
+#     This policy has lower specificity — the explicit allow policies win.
+# ---------------------------------------------------------------------------
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-cross-namespace-ingress
+  namespace: acmetocasino-prod
+  labels:
+    app.kubernetes.io/part-of: casino-security
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    # Only admit traffic from within the same namespace ...
+    - from:
+        - podSelector: {}
+    # ... or from kong-system (ingress controller) ...
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kong-system
+    # ... or from monitoring (Prometheus)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring

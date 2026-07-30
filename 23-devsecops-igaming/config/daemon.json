@@ -1,0 +1,77 @@
+{
+  "_comment": "Docker daemon hardening configuration for iGaming production hosts.",
+  "_reference": "Chapter 23 — DevSecOps for iGaming / Container Security",
+  "_last_reviewed": "2026-04-01",
+
+  "userns-remap": "dockremap",
+
+  "live-restore": true,
+
+  "no-new-privileges": true,
+
+  "seccomp-profile": "/etc/docker/seccomp/igaming-seccomp.json",
+
+  "icc": false,
+
+  "ip-forward": false,
+
+  "userland-proxy": false,
+
+  "storage-driver": "overlay2",
+  "storage-opts": [
+    "overlay2.override_kernel_check=true"
+  ],
+
+  "log-driver": "json-file",
+  "log-opts": {
+    "max-size": "50m",
+    "max-file": "5",
+    "compress": "true",
+    "labels": "com.acmetocasino.service,com.acmetocasino.env,com.acmetocasino.jurisdiction"
+  },
+
+  "default-ulimits": {
+    "nofile": {
+      "Name": "nofile",
+      "Hard": 65536,
+      "Soft": 65536
+    },
+    "nproc": {
+      "Name": "nproc",
+      "Hard": 16384,
+      "Soft": 16384
+    }
+  },
+
+  "max-concurrent-downloads": 3,
+  "max-concurrent-uploads": 3,
+
+  "insecure-registries": [],
+
+  "registry-mirrors": [],
+
+  "experimental": false,
+
+  "metrics-addr": "127.0.0.1:9323",
+  "metrics-port": 9323,
+
+  "hosts": [
+    "unix:///var/run/docker.sock"
+  ],
+
+  "tls": false,
+
+  "debug": false,
+
+  "containerd": "/var/run/containerd/containerd.sock",
+
+  "features": {
+    "buildkit": true
+  },
+
+  "default-runtime": "runc",
+
+  "oom-score-adjust": -500,
+
+  "shutdown-timeout": 30
+}

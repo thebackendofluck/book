@@ -1,0 +1,431 @@
+// =============================================================================
+// RTC Service gRPC Definition
+// =============================================================================
+// High-throughput gRPC interface for game server integration with the
+// hardware-backed RTC timestamp service.
+//
+// GLI-11 Compliance: Section 5.4 requires that all game events be
+// timestamped from a tamper-resistant source. This gRPC service provides
+// low-latency access for game servers processing thousands of rounds
+// per second.
+//
+// Performance Targets:
+//   - P99 latency: < 500us for GetTimestamp
+//   - Throughput: 50,000+ RPC/s per instance
+//   - Streaming: 10,000+ timestamps/s per stream
+//
+// Build:
+//   protoc --go_out=. --go-grpc_out=. rtc_service.proto
+//   python -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. rtc_service.proto
+// =============================================================================
+
+syntax = "proto3";
+
+package casino.rtc.v1;
+
+option go_package = "github.com/casino-platform/rtc/proto/v1;rtcv1";
+option java_package = "com.casino.rtc.v1";
+option java_multiple_files = true;
+option csharp_namespace = "Casino.RTC.V1";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/empty.proto";
+
+// =============================================================================
+// RTC Timestamp Service
+// =============================================================================
+// Primary service for obtaining and validating hardware-backed timestamps.
+service RTCTimestampService {
+    // GetTimestamp returns a single signed timestamp from BFT consensus.
+    // This is the primary RPC for game event timestamping.
+    // Latency target: P99 < 500us
+    rpc GetTimestamp(TimestampRequest) returns (TimestampResponse);
+
+    // GetBatchTimestamps returns multiple timestamps in a single RPC.
+    // More efficient than multiple GetTimestamp calls for batch operations.
+    rpc GetBatchTimestamps(BatchTimestampRequest) returns (BatchTimestampResponse);
+
+    // StreamTimestamps opens a server-streaming RPC that pushes timestamps
+    // at the configured interval. Ideal for game servers that need
+    // continuous time synchronization.
+    rpc StreamTimestamps(StreamRequest) returns (stream TimestampResponse);
+
+    // ValidateTimestamp verifies the HMAC-SHA256 signature on a previously
+    // issued timestamp. Used for dispute resolution and audit.
+    rpc ValidateTimestamp(ValidationRequest) returns (ValidationResponse);
+
+    // ValidateBatch validates multiple timestamps in a single RPC.
+    rpc ValidateBatch(BatchValidationRequest) returns (BatchValidationResponse);
+
+    // GetDrift returns the current drift measurement between the RTC
+    // hardware and system clock.
+    rpc GetDrift(DriftRequest) returns (DriftResponse);
+
+    // SyncClocks triggers a synchronization cycle across all RTC modules.
+    // Requires admin privileges.
+    rpc SyncClocks(SyncRequest) returns (SyncResponse);
+}
+
+// =============================================================================
+// Consensus Service
+// =============================================================================
+// Service for monitoring and managing the BFT consensus algorithm.
+service RTCConsensusService {
+    // GetConsensusState returns the current consensus algorithm state.
+    rpc GetConsensusState(google.protobuf.Empty) returns (ConsensusState);
+
+    // StreamConsensusEvents streams consensus round results in real-time.
+    rpc StreamConsensusEvents(ConsensusStreamRequest) returns (stream ConsensusEvent);
+
+    // GetByzantineEvents returns detected Byzantine fault events.
+    rpc GetByzantineEvents(ByzantineEventRequest) returns (ByzantineEventResponse);
+
+    // GetModuleStatus returns health status of individual RTC modules.
+    rpc GetModuleStatus(ModuleStatusRequest) returns (ModuleStatusResponse);
+}
+
+// =============================================================================
+// Health Service
+// =============================================================================
+service RTCHealthService {
+    // Check performs a health check (gRPC Health Checking Protocol).
+    rpc Check(HealthCheckRequest) returns (HealthCheckResponse);
+
+    // Watch streams health status changes.
+    rpc Watch(HealthCheckRequest) returns (stream HealthCheckResponse);
+}
+
+// =============================================================================
+// Message Definitions
+// =============================================================================
+
+// --- Timestamp Messages ---
+
+message TimestampRequest {
+    // Unique request identifier for tracing and audit
+    string request_id = 1;
+
+    // Game context metadata
+    map<string, string> metadata = 2;
+
+    // Whether to require full BFT consensus (slower but more reliable)
+    bool require_consensus = 3;
+
+    // Requested precision level
+    TimestampPrecision precision = 4;
+
+    // Game event type for audit categorization
+    GameEventType event_type = 5;
+}
+
+message TimestampResponse {
+    // Unix timestamp in seconds
+    int64 unix_seconds = 1;
+
+    // Nanosecond component of the timestamp
+    int32 nanos = 2;
+
+    // ISO 8601 formatted timestamp
+    string iso8601 = 3;
+
+    // HMAC-SHA256 signature for non-repudiation
+    string signature = 4;
+
+    // BFT consensus confidence score (0.0-1.0)
+    double confidence = 5;
+
+    // Drift from system clock in milliseconds
+    double drift_ms = 6;
+
+    // RTC module ID that provided the primary reading
+    string source = 7;
+
+    // Request metadata echoed back
+    map<string, string> metadata = 8;
+
+    // Consensus round identifier
+    string consensus_round_id = 9;
+
+    // Temperature of the primary RTC module (Celsius)
+    double temperature_celsius = 10;
+
+    // Server-side processing time
+    google.protobuf.Duration processing_time = 11;
+}
+
+message BatchTimestampRequest {
+    // Number of timestamps to generate (max 100)
+    int32 count = 1;
+
+    // Interval between timestamps in milliseconds
+    int32 interval_ms = 2;
+
+    // Shared metadata for all timestamps in the batch
+    map<string, string> metadata = 3;
+
+    // Game event type
+    GameEventType event_type = 4;
+}
+
+message BatchTimestampResponse {
+    // Generated timestamps
+    repeated TimestampResponse timestamps = 1;
+
+    // Unique batch identifier
+    string batch_id = 2;
+
+    // HMAC-SHA256 signature covering the entire batch
+    string batch_signature = 3;
+}
+
+message StreamRequest {
+    // Timestamp push interval in milliseconds (min: 10)
+    int32 interval_ms = 1;
+
+    // Include drift measurements in each response
+    bool include_drift = 2;
+
+    // Include temperature readings
+    bool include_temperature = 3;
+
+    // Game context
+    map<string, string> metadata = 4;
+}
+
+// --- Validation Messages ---
+
+message ValidationRequest {
+    // The timestamp to validate
+    TimestampResponse timestamp = 1;
+
+    // Maximum acceptable drift for validation (milliseconds)
+    int64 tolerance_ms = 2;
+}
+
+message ValidationResponse {
+    // Whether the signature is valid
+    bool valid = 1;
+
+    // Human-readable validation result
+    string reason = 2;
+
+    // Actual drift calculated during validation
+    double actual_drift_ms = 3;
+
+    // ID of the signing key used for verification
+    string key_id = 4;
+
+    // When the validation was performed
+    google.protobuf.Timestamp verified_at = 5;
+}
+
+message BatchValidationRequest {
+    repeated TimestampResponse timestamps = 1;
+    int64 tolerance_ms = 2;
+}
+
+message BatchValidationResponse {
+    repeated ValidationResponse results = 1;
+    int32 valid_count = 2;
+    int32 invalid_count = 3;
+}
+
+// --- Drift Messages ---
+
+message DriftRequest {
+    // Optional: specific module to check (empty = all modules)
+    string module_id = 1;
+}
+
+message DriftResponse {
+    // Current drift measurements per module
+    repeated ModuleDrift modules = 1;
+
+    // Overall median drift across all modules
+    double median_drift_ms = 2;
+
+    // Maximum drift observed
+    double max_drift_ms = 3;
+
+    // Whether drift is within GLI-11 thresholds
+    bool compliant = 4;
+}
+
+message ModuleDrift {
+    string module_id = 1;
+    double drift_ms = 2;
+    double drift_rate_ppm = 3;
+    string status = 4;
+    google.protobuf.Timestamp last_sync = 5;
+}
+
+// --- Sync Messages ---
+
+message SyncRequest {
+    // Sync source override (default: auto-select)
+    SyncSource source = 1;
+
+    // Whether to force sync even if drift is within threshold
+    bool force = 2;
+}
+
+message SyncResponse {
+    bool success = 1;
+    string message = 2;
+    int32 modules_synced = 3;
+    double max_correction_ms = 4;
+    google.protobuf.Timestamp sync_timestamp = 5;
+}
+
+// --- Consensus Messages ---
+
+message ConsensusState {
+    string status = 1;  // healthy, degraded, unavailable
+    double confidence = 2;
+    repeated string participating_modules = 3;
+    repeated string excluded_modules = 4;
+    string last_round_id = 5;
+    int32 last_round_duration_us = 6;
+    double spread_ms = 7;
+    int32 byzantine_events_24h = 8;
+    int32 total_rounds_24h = 9;
+    double success_rate_24h = 10;
+}
+
+message ConsensusStreamRequest {
+    // Include full round details (participants, excluded, etc.)
+    bool include_details = 1;
+
+    // Filter by minimum confidence threshold
+    double min_confidence = 2;
+}
+
+message ConsensusEvent {
+    string round_id = 1;
+    google.protobuf.Timestamp timestamp = 2;
+    string status = 3;
+    double confidence = 4;
+    int32 participants = 5;
+    int32 excluded = 6;
+    double spread_ms = 7;
+    int32 duration_us = 8;
+    repeated string excluded_modules = 9;
+}
+
+message ByzantineEventRequest {
+    // Time range
+    google.protobuf.Timestamp since = 1;
+    google.protobuf.Timestamp until = 2;
+
+    // Filter by module
+    string module_id = 3;
+
+    // Pagination
+    int32 limit = 4;
+    int32 offset = 5;
+}
+
+message ByzantineEventResponse {
+    repeated ByzantineEvent events = 1;
+    int32 total = 2;
+}
+
+message ByzantineEvent {
+    string module_id = 1;
+    google.protobuf.Timestamp detected_at = 2;
+    string evidence_type = 3;  // excessive_drift, time_reversal, etc.
+    double deviation_ms = 4;
+    double threshold_ms = 5;
+    string round_id = 6;
+    string details = 7;
+}
+
+// --- Module Messages ---
+
+message ModuleStatusRequest {
+    // Empty = all modules; set module_id for specific module
+    string module_id = 1;
+}
+
+message ModuleStatusResponse {
+    repeated RTCModuleInfo modules = 1;
+}
+
+message RTCModuleInfo {
+    string module_id = 1;
+    string status = 2;  // active, degraded, failed, maintenance
+    string serial_number = 3;
+    string manufacturer = 4;
+    string firmware_version = 5;
+    string datacenter = 6;
+    double drift_ms = 7;
+    double temperature_celsius = 8;
+    double battery_percentage = 9;
+    google.protobuf.Timestamp last_sync = 10;
+    google.protobuf.Timestamp last_calibration = 11;
+    int64 total_readings = 12;
+    int64 failed_readings = 13;
+    int64 consensus_participations = 14;
+}
+
+// --- Health Messages ---
+
+message HealthCheckRequest {
+    string service = 1;
+}
+
+message HealthCheckResponse {
+    ServingStatus status = 1;
+
+    message ServiceStatus {
+        string name = 1;
+        ServingStatus status = 2;
+        string details = 3;
+    }
+
+    repeated ServiceStatus components = 2;
+}
+
+// =============================================================================
+// Enums
+// =============================================================================
+
+enum TimestampPrecision {
+    PRECISION_UNSPECIFIED = 0;
+    PRECISION_SECONDS = 1;
+    PRECISION_MILLISECONDS = 2;
+    PRECISION_MICROSECONDS = 3;
+    PRECISION_NANOSECONDS = 4;
+}
+
+enum GameEventType {
+    EVENT_UNSPECIFIED = 0;
+    EVENT_ROUND_START = 1;
+    EVENT_ROUND_END = 2;
+    EVENT_BET_PLACED = 3;
+    EVENT_WIN_AWARDED = 4;
+    EVENT_JACKPOT_HIT = 5;
+    EVENT_BONUS_TRIGGERED = 6;
+    EVENT_SESSION_START = 7;
+    EVENT_SESSION_END = 8;
+    EVENT_DEPOSIT = 9;
+    EVENT_WITHDRAWAL = 10;
+    EVENT_COMPLIANCE_CHECK = 11;
+    EVENT_SELF_EXCLUSION = 12;
+}
+
+enum SyncSource {
+    SYNC_AUTO = 0;
+    SYNC_NTP = 1;
+    SYNC_GPS = 2;
+    SYNC_PTP = 3;      // Precision Time Protocol (IEEE 1588)
+    SYNC_MANUAL = 4;
+}
+
+enum ServingStatus {
+    UNKNOWN = 0;
+    SERVING = 1;
+    NOT_SERVING = 2;
+    SERVICE_UNKNOWN = 3;
+}

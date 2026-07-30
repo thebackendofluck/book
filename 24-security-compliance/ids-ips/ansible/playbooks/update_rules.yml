@@ -1,0 +1,146 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 24, Security and Compliance.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# playbooks/update_rules.yml
+# Rules-only update playbook.
+# Use this for manual rule pushes, CI-triggered updates, or testing new rules
+# without re-running the full deployment.
+#
+# Safe to run at any time — rules are hot-reloaded via SIGUSR2 without
+# restarting Suricata or dropping packets.
+#
+# Usage:
+#   # Update all sensors
+#   ansible-playbook -i inventory/production.yml playbooks/update_rules.yml
+#
+#   # Update a specific zone
+#   ansible-playbook -i inventory/production.yml playbooks/update_rules.yml \
+#     --limit dmz_sensors
+#
+#   # Push custom rules only (skip suricata-update fetch)
+#   ansible-playbook -i inventory/production.yml playbooks/update_rules.yml \
+#     --tags custom
+#
+#   # Dry run with diff
+#   ansible-playbook -i inventory/production.yml playbooks/update_rules.yml \
+#     --check --diff
+
+- name: Update Suricata rules — hot reload via SIGUSR2
+  hosts: suricata_sensors
+  become: true
+  gather_facts: false
+  serial: 2   # update 2 sensors at a time to maintain coverage during rollout
+
+  pre_tasks:
+    - name: "Verify Suricata is running before attempting rule update"
+      ansible.builtin.command: systemctl is-active suricata
+      register: suricata_running
+      changed_when: false
+      failed_when: suricata_running.stdout != "active"
+      tags: [always]
+
+  tasks:
+    # ── Custom iGaming rules ────────────────────────────────────────────────
+    - name: "Push updated custom iGaming rules"
+      ansible.builtin.copy:
+        src: "{{ item }}"
+        dest: "{{ suricata_rules_dir }}/{{ item }}"
+        owner: "{{ suricata_user }}"
+        group: "{{ suricata_group }}"
+        mode: "0640"
+      loop: "{{ suricata_custom_rule_files }}"
+      register: custom_rules_changed
+      tags: [rules, custom]
+
+    # ── Update threshold config ─────────────────────────────────────────────
+    - name: "Push updated threshold.conf"
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../roles/suricata/templates/threshold.conf.j2"
+        dest: "{{ suricata_config_dir }}/threshold.conf"
+        owner: "{{ suricata_user }}"
+        group: "{{ suricata_group }}"
+        mode: "0640"
+      register: threshold_changed
+      tags: [rules, threshold]
+
+    # ── Fetch remote rules via suricata-update ──────────────────────────────
+    - name: "Run suricata-update to fetch latest ET rules"
+      ansible.builtin.command: >
+        suricata-update
+        --suricata /usr/bin/suricata
+        --suricata-conf {{ suricata_config_dir }}/suricata.yaml
+        --config {{ suricata_config_dir }}/update.yaml
+        --output {{ suricata_rules_dir }}/suricata.rules
+        --no-reload
+      register: update_result
+      changed_when: >
+        'New rules' in update_result.stdout or
+        'Enabled rules' in update_result.stdout
+      tags: [rules, fetch]
+
+    - name: "Display suricata-update output"
+      ansible.builtin.debug:
+        msg: "{{ update_result.stdout_lines[-10:] }}"
+      tags: [rules, fetch]
+
+    # ── Validate before reload ──────────────────────────────────────────────
+    - name: "Validate configuration before reload"
+      ansible.builtin.command: >
+        suricata -T -c {{ suricata_config_dir }}/suricata.yaml -l /tmp
+      register: validate_result
+      changed_when: false
+      failed_when: validate_result.rc != 0
+      tags: [rules, validate]
+
+    # ── Hot reload ──────────────────────────────────────────────────────────
+    - name: "Determine if reload is needed"
+      ansible.builtin.set_fact:
+        rules_need_reload: >-
+          {{ custom_rules_changed.changed or
+             threshold_changed.changed or
+             update_result.changed }}
+      tags: [rules]
+
+    - name: "Hot reload rules via SIGUSR2"
+      ansible.builtin.shell: >
+        kill -USR2 $(cat {{ suricata_run_dir }}/suricata.pid)
+      when: rules_need_reload
+      changed_when: true
+      tags: [rules]
+
+    - name: "Wait for rule reload to complete"
+      ansible.builtin.pause:
+        seconds: 10
+      when: rules_need_reload
+      tags: [rules]
+
+    # ── Post-reload verification ────────────────────────────────────────────
+    - name: "Count loaded rules after reload"
+      ansible.builtin.shell: >
+        grep -c '^alert\|^drop\|^pass\|^reject'
+        {{ suricata_rules_dir }}/suricata.rules || echo 0
+      register: rule_count
+      changed_when: false
+      tags: [rules, verify]
+
+    - name: "Assert rules are loaded"
+      ansible.builtin.assert:
+        that: rule_count.stdout | int > 0
+        fail_msg: "Rule count is 0 after update — something went wrong"
+        success_msg: "{{ rule_count.stdout }} rules loaded on {{ inventory_hostname }}"
+      tags: [rules, verify]
+
+    - name: "Display rule update summary"
+      ansible.builtin.debug:
+        msg: >
+          {{ inventory_hostname }}: {{ rule_count.stdout }} rules loaded.
+          Reload triggered: {{ rules_need_reload }}.
+      tags: [rules]

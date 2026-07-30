@@ -1,0 +1,95 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 27d, PostgreSQL Aegis.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# Shared defaults for every role in postgres-aegis-vms.
+# Override per-environment via --extra-vars or host_vars.
+
+# --- Credentials (resolved at run-time from OpenBao) ---
+bao_addr: "{{ lookup('env','BAO_ADDR') | default('https://10.0.0.12:8200', true) }}"
+bao_token: "{{ lookup('env','BAO_TOKEN') | mandatory }}"
+
+# --- OpenBao paths (must pre-exist; see README bootstrap) ---
+bao_paths:
+  aegis_dek_wrapped: "casino/postgres/aegis/dek_wrapped"
+  luks_passphrase:   "casino/postgres/aegis/luks_passphrase"
+  postgres_super:    "casino/postgres/aegis/super"
+  postgres_repl:     "casino/postgres/aegis/replicator"
+  pgbackrest_s3:     "casino/postgres/aegis/pgbackrest_s3"
+
+# --- HSM ---
+hsm_connector_url: "http://10.0.0.12:12345"
+hsm_auth_key_id: 1
+hsm_wrap_key_id: "0x0100"
+
+# --- Storage / filesystem ---
+# /dev/sdb for Proxmox virtio-scsi; /dev/vdb for libvirt virtio-blk on lab-server.
+luks_device: "/dev/sdb"
+luks_mapper_name: "pgdata_crypt"
+pgdata_mount: "/var/lib/postgresql/16/main"
+pgdata_fstype: "ext4"
+
+# --- PostgreSQL ---
+pg_version: "16"
+pg_port: 5432
+pg_listen: "0.0.0.0"
+pg_superuser: "aegis_admin"
+pg_repl_user: "replicator"
+pg_repl_app_name: "{{ inventory_hostname }}"
+pg_database: "casino"
+pg_aegis_extension: "pg_aegis"        # falls back to pgcrypto in post_init
+pg_parameters:
+  shared_buffers: "2GB"
+  effective_cache_size: "6GB"
+  wal_level: "replica"
+  max_wal_senders: 20
+  max_replication_slots: 20
+  hot_standby: "on"
+  ssl: "on"
+  log_connections: "on"
+  log_disconnections: "on"
+  log_statement: "ddl"
+  shared_preload_libraries: "pg_stat_statements,pgaudit"
+
+# --- Patroni ---
+patroni_etcd_hosts: "{{ groups['etcd'] | map('extract', hostvars, 'ansible_host') | list }}"
+patroni_rest_api_port: 8008
+
+# --- PgCat / sharding ---
+pgcat_port: 6432
+pgcat_admin_port: 9930
+# replicas resolved dynamically from actual inventory groups — no hardcoded indices.
+pgcat_shards:
+  shard-a:
+    database: "{{ pg_database }}"
+    primary_host: "{{ hostvars[groups['shard_a_writer'][0]].ansible_host }}"
+    replicas: "{{ groups['shard_a_readers'] | map('extract', hostvars, 'ansible_host') | list }}"
+  shard-b:
+    database: "{{ pg_database }}"
+    primary_host: "{{ hostvars[groups['shard_b_writer'][0]].ansible_host }}"
+    replicas: "{{ groups['shard_b_readers'] | map('extract', hostvars, 'ansible_host') | list }}"
+pgcat_shard_key_column: "player_id"
+
+# --- HAProxy ---
+haproxy_listen_writer: 5000
+haproxy_listen_reader: 5001
+haproxy_stats_port: 7000
+
+# --- pgbackrest ---
+pgbackrest_stanza: "casino-aegis"
+pgbackrest_repo_type: "s3"
+pgbackrest_retention_full: 30
+pgbackrest_retention_diff: 7
+pgbackrest_compress_type: "zst"
+pgbackrest_cipher_type: "aes-256-cbc"
+
+# --- Monitoring ---
+node_exporter_port: 9100
+postgres_exporter_port: 9187

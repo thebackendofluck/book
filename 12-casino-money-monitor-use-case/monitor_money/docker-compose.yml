@@ -1,0 +1,175 @@
+# Companion code for "The Backend of Luck" - Chapter 12, Real-Time Cash Flow Management for Online Casinos.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# docker-compose.yml -- AcmetoCasino Money Monitor
+# Orchestrates PostgreSQL, Redis, the monitoring application, and an nginx reverse proxy.
+# Production pattern: real-time financial monitoring for online casinos.
+
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: acme_monitor_postgres
+    environment:
+      POSTGRES_DB: acme_monitor
+      POSTGRES_USER: acme_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - acme_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U acme_user -d acme_monitor"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+
+  redis:
+    image: redis:8-alpine
+    container_name: acme_monitor_redis
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - acme_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: acme_monitor_app
+    environment:
+      NODE_ENV: production
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: acme_monitor
+      DB_USER: acme_user
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      BANK_API_URL: http://mock_bank:3001
+      ALERT_EMAIL: ${ALERT_EMAIL:-alerts@example.com}
+      OWNER_EMAIL: ${OWNER_EMAIL:-owner@example.com}
+      SMTP_HOST: ${SMTP_HOST:-smtp.example.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-noreply@example.com}
+      SMTP_PASS: ${SMTP_PASS:?SMTP_PASS must be set}
+    ports:
+      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:3002:3002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - acme_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+
+  mock_bank:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.mock
+    container_name: acme_mock_bank
+    environment:
+      NODE_ENV: development
+      MOCK_BANK_PORT: 3001
+    ports:
+      - "127.0.0.1:3001:3001"
+    networks:
+      - acme_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: acme_monitor_nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - app
+    networks:
+      - acme_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.5"
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  acme_network:
+    driver: bridge

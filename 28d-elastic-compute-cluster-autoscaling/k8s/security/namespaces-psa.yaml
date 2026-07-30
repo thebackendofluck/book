@@ -1,0 +1,62 @@
+# Companion code for "The Backend of Luck" - Chapter 28d, Elastic Compute and Cluster Autoscaling on EKS.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# Pod Security Admission — enforce the `restricted` standard on the regulated
+# namespaces (CIS / ISO A.8.27-A.8.28 / PCI Req 6). `restricted` forces
+# runAsNonRoot, drop ALL caps, seccomp RuntimeDefault, no privilege escalation.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: payments
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+    cde: "true" # PCI cardholder-data environment marker
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kyc
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: casino
+  labels:
+    # `restricted`, not `baseline`. This namespace hosts the certified RNG, the
+    # game-math engine and the bet/settlement path: it is the money path, and
+    # `baseline` enforces none of the four controls that matter for it. Baseline
+    # blocks the obvious escapes (hostPath, hostNetwork, privileged) but still
+    # permits running as UID 0, keeps the default capability set including
+    # CAP_NET_RAW, requires no seccomp profile, and allows privilege escalation.
+    # A container breakout from a root process in the game engine reaches the
+    # node, and from the node the certified binaries and session state.
+    #
+    # Setting audit/warn to `restricted` while enforcing `baseline` produces
+    # warnings nobody reads and blocks nothing. Enforce it.
+    #
+    # Exception, stated because an auditor will ask: kube-system is deliberately
+    # unlabelled. The kube-bench Job there needs hostPID and host path mounts to
+    # read the kubelet and node config, which `restricted` forbids by design, and
+    # a CIS evidence collector that cannot read node config is useless. That
+    # workload is isolated in kube-system rather than weakening a namespace that
+    # runs player-facing code. No workload in casino, payments or kyc requires an
+    # exception; if one appears, it gets its own namespace, not a downgrade here.
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

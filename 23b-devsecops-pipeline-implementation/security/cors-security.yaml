@@ -1,0 +1,81 @@
+# Companion code for "The Backend of Luck" - Chapter 23b, DevSecOps Pipeline Implementation.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# ---------------------------------------------------------------------------
+# Kong CORS Plugin — strict configuration for casino API endpoints
+#
+# Apply via: konghq.com/plugins: cors-strict
+#
+# Origins must be listed explicitly.  Wildcards are intentionally avoided
+# to prevent credential-bearing cross-origin requests from untrusted sites.
+# ---------------------------------------------------------------------------
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: cors-strict
+  namespace: acmetocasino-prod
+  labels:
+    app.kubernetes.io/part-of: casino-security
+spec:
+  plugin: cors
+  config:
+    # Only list domains that legitimately embed the casino API.
+    # Add additional origins as new front-ends are deployed.
+    origins:
+      - "https://acmetocasino.com"
+      - "https://www.acmetocasino.com"
+      - "https://m.acmetocasino.com"
+      - "https://staging.acmetocasino.com"
+    methods:
+      - GET
+      - POST
+      - PUT
+      - PATCH
+      - DELETE
+      - OPTIONS
+    headers:
+      - Accept
+      - Accept-Language
+      - Authorization
+      - Content-Type
+      - X-Requested-With
+      - X-CSRF-Token
+      - X-Request-ID
+    exposed_headers:
+      - X-Request-ID
+      - X-RateLimit-Limit-Second
+      - X-RateLimit-Remaining-Second
+    credentials: true          # required for cookie / Authorization header requests
+    max_age: 3600              # preflight cache TTL (1 hour)
+    preflight_continue: false  # Kong handles OPTIONS; do not forward to upstream
+
+---
+# Relaxed CORS for public endpoints (game catalog, no credentials)
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: cors-public
+  namespace: acmetocasino-prod
+  labels:
+    app.kubernetes.io/part-of: casino-security
+spec:
+  plugin: cors
+  config:
+    origins:
+      - "*"                    # public read-only endpoints may be accessed by any origin
+    methods:
+      - GET
+      - OPTIONS
+    headers:
+      - Accept
+      - Content-Type
+    credentials: false
+    max_age: 7200
+    preflight_continue: false

@@ -1,0 +1,267 @@
+# Companion code for "The Backend of Luck" - Chapter 21, Caching Strategies and Benefits.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# =============================================================================
+# docker-compose.cdn.yml — Full iGaming CDN Stack
+# =============================================================================
+# This compose file deploys a complete, production-equivalent CDN stack with:
+#   - HAProxy: TLS termination, ACL routing, rate limiting
+#   - Varnish: In-memory object cache with grace mode
+#   - Nginx CDN: Disk-backed proxy cache (second cache tier)
+#   - Origin: Simulated game server (replace with your actual backend)
+#   - Prometheus + Grafana: Metrics and dashboards
+#
+# Architecture:
+#
+#   Client
+#     │
+#     ▼ :443 (HTTPS)
+#   ┌─────────────────────────────┐
+#   │  HAProxy                    │  TLS termination, routing, rate limiting
+#   └─────────────────────────────┘
+#     │           │           │
+#     ▼ /ws/*     ▼ /api/*    ▼ default
+#   WS Pool    API Pool    ┌─────────────────────────────┐
+#                          │  Varnish (RAM cache)         │  grace mode, ban-based purge
+#                          └─────────────────────────────┘
+#                                       │
+#                          ┌────────────▼────────────────┐
+#                          │  Nginx CDN (disk cache)      │  disk overflow, TLS to origin
+#                          └─────────────────────────────┘
+#                                       │
+#                          ┌────────────▼────────────────┐
+#                          │  Game Origin Server          │  your actual game server
+#                          └─────────────────────────────┘
+#
+# For a simpler setup (most operators), remove Nginx CDN and point Varnish
+# directly at the origin:
+#
+#   HAProxy → Varnish → Origin
+#
+# Usage:
+#   docker compose -f docker-compose.cdn.yml up -d
+#   docker compose -f docker-compose.cdn.yml ps
+#   docker compose -f docker-compose.cdn.yml logs -f varnish
+# =============================================================================
+
+services:
+
+  # ===========================================================================
+  # GAME ORIGIN — Simulated game server
+  # Replace this with your actual game server container in production.
+  # This example uses Nginx to serve static files simulating game assets.
+  # ===========================================================================
+  origin:
+    image: nginx:alpine
+    container_name: cdn-origin
+    restart: unless-stopped
+    volumes:
+      - ./origin-content:/usr/share/nginx/html:ro
+      - ./configs/origin-nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "127.0.0.1:3000:80"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    labels:
+      org.igaming.component: "origin"
+      org.igaming.tier: "backend"
+
+  # ===========================================================================
+  # VARNISH — In-memory cache, grace mode, ban-based invalidation
+  # The highest-performance cache tier (sub-millisecond for small objects).
+  # ===========================================================================
+  varnish:
+    image: varnish:7.1
+    container_name: cdn-varnish
+    restart: unless-stopped
+    command: >
+      varnishd
+      -f /etc/varnish/default.vcl
+      -a http=0.0.0.0:6081,HTTP
+      -s malloc,4g
+      -T 127.0.0.1:6082
+      -p thread_pool_min=200
+      -p thread_pool_max=4000
+      -p thread_pool_add_delay=2ms
+      -p ban_lurker_sleep=0.01
+    volumes:
+      - ./default.vcl:/etc/varnish/default.vcl:ro
+    ports:
+      - "127.0.0.1:6081:6081"
+    depends_on:
+      origin:
+        condition: service_healthy
+    environment:
+      # Varnish cache size — size to 70-80% of available RAM on cache servers
+      VARNISH_SIZE: 4G
+    healthcheck:
+      test: ["CMD", "varnishadm", "-T", "127.0.0.1:6082", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    labels:
+      org.igaming.component: "varnish"
+      org.igaming.tier: "cache"
+
+  # ===========================================================================
+  # NGINX CDN — Disk-backed cache (second tier, handles large game bundles)
+  # Useful for large assets (5MB+ game bundles) that don't fit in Varnish RAM.
+  # Points to Varnish (cache-on-cache) for maximum cache efficiency.
+  # ===========================================================================
+  nginx-cdn:
+    image: nginx:1.25-alpine
+    container_name: cdn-nginx
+    restart: unless-stopped
+    volumes:
+      - ./nginx-cdn.conf:/etc/nginx/nginx.conf:ro
+      - ./certs:/etc/nginx/ssl:ro
+      - nginx-cache:/var/cache/nginx/cdn_cache
+      - /var/log/nginx:/var/log/nginx
+    ports:
+      - "127.0.0.1:8080:8080"   # HTTP (non-TLS, internal CDN traffic)
+      - "127.0.0.1:8443:8443"   # HTTPS (TLS termination)
+    depends_on:
+      varnish:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    labels:
+      org.igaming.component: "nginx-cdn"
+      org.igaming.tier: "cache"
+
+  # ===========================================================================
+  # HAPROXY — TLS termination, routing, rate limiting
+  # The player-facing entry point. All traffic from the internet enters here.
+  # ===========================================================================
+  haproxy:
+    image: haproxy:2.8-alpine
+    container_name: cdn-haproxy
+    restart: unless-stopped
+    volumes:
+      - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - ./certs:/etc/haproxy/certs:ro
+    ports:
+      - "0.0.0.0:80:80"      # HTTP (redirects to HTTPS)
+      - "0.0.0.0:443:443"    # HTTPS player-facing
+      - "127.0.0.1:9000:9000" # Stats page (internal only!)
+    depends_on:
+      nginx-cdn:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "haproxy", "-c", "-f", "/usr/local/etc/haproxy/haproxy.cfg"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    labels:
+      org.igaming.component: "haproxy"
+      org.igaming.tier: "ingress"
+
+  # ===========================================================================
+  # PROMETHEUS — Metrics collection
+  # Scrapes Varnish (via varnish_exporter), Nginx, and HAProxy stats.
+  # ===========================================================================
+  prometheus:
+    image: prom/prometheus:v2.45.0
+    container_name: cdn-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./configs/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+    ports:
+      - "127.0.0.1:9090:9090"
+    labels:
+      org.igaming.component: "prometheus"
+      org.igaming.tier: "monitoring"
+
+  # ===========================================================================
+  # GRAFANA — Dashboards for CDN performance
+  # Pre-built dashboards for: cache hit ratio, latency P50/P99, bandwidth,
+  # error rates, Varnish object count, HAProxy session rates.
+  # ===========================================================================
+  grafana:
+    image: grafana/grafana:10.0.0
+    container_name: cdn-grafana
+    restart: unless-stopped
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./configs/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./configs/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD must be set}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      # Disable anonymous access — CDN metrics may reveal business intelligence
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+      - GF_SERVER_DOMAIN=grafana.internal
+    ports:
+      - "127.0.0.1:3001:3000"
+    depends_on:
+      - prometheus
+    labels:
+      org.igaming.component: "grafana"
+      org.igaming.tier: "monitoring"
+
+  # ===========================================================================
+  # VARNISH EXPORTER — Exposes Varnish metrics to Prometheus
+  # Key metrics: cache_hit_ratio, threads_created, n_object, g_bytes
+  # ===========================================================================
+  varnish-exporter:
+    image: jonnenauha/prometheus-varnish-exporter:1.6.1
+    container_name: cdn-varnish-exporter
+    restart: unless-stopped
+    command:
+      - --varnish.host=varnish
+      - --varnish.port=6082
+    depends_on:
+      - varnish
+    ports:
+      - "127.0.0.1:9131:9131"
+    labels:
+      org.igaming.component: "varnish-exporter"
+      org.igaming.tier: "monitoring"
+
+# =============================================================================
+# NAMED VOLUMES
+# =============================================================================
+volumes:
+  nginx-cache:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /var/cache/nginx-cdn   # Use fast SSD path on production
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
+
+# =============================================================================
+# NETWORK
+# All services communicate on an internal bridge network.
+# Only HAProxy exposes ports to the public internet.
+# =============================================================================
+networks:
+  default:
+    name: igaming-cdn
+    driver: bridge

@@ -1,0 +1,50 @@
+secret:
+  ignored_matches:
+  - match: f5497258a185027ea1a354a46dbde44bed5794997468ae0057d976cb660476d4
+    name: htpasswd function parameter (false positive)
+  - match: 98b89d711ad62963babbeaeea0338e5135405e24a61e2b3e7b30d881a61d60cb
+    name: reviewed false positive (env-ref / port / url / test vector)
+  - match: 7fc680553759eaa7718506dee299edbec50c167cdbcad9974432ab56ba90e779
+    name: reviewed false positive (env-ref / port / url / test vector)
+  - match: 3263305dd365e8d07a7ee6a59f5511dd318b804d23bda1152b2f9b2dbcb7dad3
+    name: reviewed false positive (env-ref / port / url / test vector)
+  - match: bff353b0ac73a023c7bf03a97f138cb28fe344be7edacf715b40458c975e7bd6
+    name: reviewed false positive (env-ref / port / url / test vector)
+  - match: 7f054ae832854e779a2eb3e7a40398db141ebb6b795c2f2188df25564612a9b2
+    name: reviewed false positive (env-ref / port / url / test vector)
+  - match: c39b337aba9762f0ede857f0c798d34f1e5a8abae7b0d535cb4cdd46c8e509d7
+    name: reviewed false positive (env-ref / port / url / test vector)
+  - match: e7fa721e48a5d8660f51e79a6c81451601fe342e266641e110c7502fa23e8b5b
+    name: reviewed false positive (env-ref / port / url / test vector)
+  - match: 272e51f8028935cc5a77586efb3fcdd480242df55bfd0535ba3bce8e7d79dd7c
+    name: reviewed false positive (env-ref / port / url / test vector)
+  - match: 85864781951497145e2218eb52e3b1ec8d90626b2fcb0a1e62c59b9b83c3291c
+    name: reviewed false positive (env-ref / port / url / test vector)
+  - match: ea3fc4e9b3f9b6b8ed8781c82592f2f3dedb6d4c5bc70becb598b720e6609f38
+    name: reviewed false positive (env-ref / port / url / test vector)
+  - match: 8167f3d084344ada8680e485e381c90c7568fc00b2fa10246d4c3726cb312bca
+    name: reviewed false positive (env-ref / port / url / test vector)
+  - match: 5cb57dcbfb87080235fa11c22b5156fa7a049701e3ad0e336646c680000f5328
+    name: reviewed false positive (env-ref / port / url / test vector)
+  - match: f72604dd44c2e3286f94dbfc9a66be60d679022b3eac252b07ced5cdb67f6b63
+    name: reviewed false positive (env-ref / port / url / test vector)
+  - match: 1f9042c82cf50b0f33264f66dc139024a48d515b50d5c1d6b1f86bc89126f7fd
+    name: reviewed false positive (env-ref / port / url / test vector)
+  - match: e84c64650950ddf50adaf681e728c6adecf1bbc1e9906141ba0d50c82f696cec
+    name: reviewed false positive (env-ref / port / url / test vector)
+  - match: 2e1b3675a4049cd39fe6db081735f747730969071528270800f00fa98720d198
+    name: keycloak webAuthn passwordless policy config (false positive)
+  - match: 3f452196ecd65c17ab4f02191b987dfa7d58c3164721064bec4a3d9cf6bd6253
+    name: docker-compose env-var credential in URI (betbr, false positive)
+  - match: a17d13c4e793c24f2d81ab3bf1a74dee0ae44ea9610d7f290b450f92fe12bb61
+    name: docker-compose env-var credential in URI (betbr, false positive)
+  - match: b2ebb5ab6a6850aedff1e3d92558e617a1599c2edcec067f2a2ba120fb7fb824
+    name: docker-compose env-var credential in URI (betbr, false positive)
+  - match: e1f03a0a1e3c15a4b751d3d7c67f400933320709fa2b0dccd16b3c3c20e788e2
+    name: docker-compose env-var credential in URI (betbr, false positive)
+  ignored_paths:
+  - '**/23-devsecops-igaming/**/test_secret_detection.py'
+  - '**/23-devsecops-igaming/**/test_files/secrets.py'
+  - '**/23-devsecops-igaming/**/simple_ml_detector.py'
+  - '**/23-devsecops-igaming/**/ml_secret_detector.py'
+version: 2

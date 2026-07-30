@@ -1,0 +1,189 @@
+# Companion code for "The Backend of Luck" - Chapter 25, GLI-GSF Compliance Framework.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# docker-compose.yml - Wazuh SIEM for iGaming (OGIS-3 Compliance)
+#
+# OGIS-3 requires:
+#   - SIEM with real-time alerting and behavioral analytics
+#   - Sub-15-minute mean time to detect (MTTD)
+#   - 24/7 SOC coverage
+#   - Threat intelligence feeds
+#   - Comprehensive audit logging
+#
+# This stack deploys:
+#   - Wazuh Manager: Central SIEM server with custom iGaming rules
+#   - Wazuh Dashboard: Kibana-based visualization
+#   - Wazuh Indexer: Elasticsearch-based log storage
+#   - Filebeat: Log shipping from game servers
+#
+# Custom iGaming detection rules are loaded from igaming-rules.xml
+#
+# Usage:
+#   docker-compose up -d
+#   # Dashboard: https://localhost:5601 (admin/SecretPassword)
+#   # API: https://localhost:55000 (wazuh/wazuh)
+#
+# Production Notes:
+#   - Minimum 16GB RAM for the indexer in production
+#   - Deploy Wazuh agents on all CSCs (game servers, payment gateways, etc.)
+#   - Configure PagerDuty integration for real-time alerting
+#   - Retention: integrate with MinIO for 5-year log retention
+
+version: "3.8"
+
+services:
+  # =========================================================================
+  # Wazuh Indexer (Elasticsearch-based)
+  # Stores all security events and audit logs
+  # =========================================================================
+  wazuh-indexer:
+    image: wazuh/wazuh-indexer:4.9.2
+    container_name: gsf-wazuh-indexer
+    hostname: wazuh-indexer
+    environment:
+      - "OPENSEARCH_JAVA_OPTS=-Xms2g -Xmx2g"
+      - "bootstrap.memory_lock=true"
+      - "discovery.type=single-node"
+      - "plugins.security.ssl.http.enabled=true"
+      - "compatibility.override_main_response_version=true"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - wazuh-indexer-data:/var/lib/wazuh-indexer
+    ports:
+      - "127.0.0.1:9200:9200"
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 3G
+          cpus: "2.0"
+    networks:
+      - gsf-siem
+    restart: unless-stopped
+    labels:
+      com.gsf.component: "siem-indexer"
+      com.gsf.reference: "OGIS-3"
+
+  # =========================================================================
+  # Wazuh Manager
+  # Central SIEM engine with iGaming-specific detection rules
+  # =========================================================================
+  wazuh-manager:
+    image: wazuh/wazuh-manager:4.9.2
+    container_name: gsf-wazuh-manager
+    hostname: wazuh-manager
+    environment:
+      - INDEXER_URL=https://wazuh-indexer:9200
+      - INDEXER_USERNAME=admin
+      - INDEXER_PASSWORD=${INDEXER_PASSWORD:?INDEXER_PASSWORD must be set}
+      - FILEBEAT_SSL_VERIFICATION_MODE=full
+      - API_USERNAME=wazuh
+      - API_PASSWORD=${WAZUH_API_PASSWORD:?WAZUH_API_PASSWORD must be set}
+    volumes:
+      - wazuh-api-configuration:/var/ossec/api/configuration
+      - wazuh-etc:/var/ossec/etc
+      - wazuh-logs:/var/ossec/logs
+      - wazuh-queue:/var/ossec/queue
+      - wazuh-var-multigroups:/var/ossec/var/multigroups
+      - wazuh-integrations:/var/ossec/integrations
+      - wazuh-active-response:/var/ossec/active-response/bin
+      - wazuh-agentless:/var/ossec/agentless
+      - wazuh-wodles:/var/ossec/wodles
+      - filebeat-etc:/etc/filebeat
+      - filebeat-var:/var/lib/filebeat
+      # Custom iGaming detection rules
+      - ./igaming-rules.xml:/var/ossec/etc/rules/igaming-rules.xml:ro
+    ports:
+      - "127.0.0.1:1514:1514"    # Agent communication
+      - "127.0.0.1:1515:1515"    # Agent enrollment
+      - "127.0.0.1:514:514/udp"  # Syslog collection
+      - "127.0.0.1:55000:55000"  # Wazuh API
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "1.0"
+    networks:
+      - gsf-siem
+    depends_on:
+      - wazuh-indexer
+    restart: unless-stopped
+    labels:
+      com.gsf.component: "siem-manager"
+      com.gsf.reference: "OGIS-3"
+      com.gsf.criticality: "critical"
+
+  # =========================================================================
+  # Wazuh Dashboard (Kibana-based)
+  # Security visualization and SOC interface
+  # =========================================================================
+  wazuh-dashboard:
+    image: wazuh/wazuh-dashboard:4.9.2
+    container_name: gsf-wazuh-dashboard
+    hostname: wazuh-dashboard
+    environment:
+      - INDEXER_USERNAME=admin
+      - INDEXER_PASSWORD=${INDEXER_PASSWORD:?INDEXER_PASSWORD must be set}
+      - WAZUH_API_URL=https://wazuh-manager
+      - DASHBOARD_USERNAME=kibanaserver
+      - DASHBOARD_PASSWORD=${DASHBOARD_PASSWORD:?DASHBOARD_PASSWORD must be set}
+      - API_USERNAME=wazuh
+      - API_PASSWORD=${WAZUH_API_PASSWORD:?WAZUH_API_PASSWORD must be set}
+    volumes:
+      - wazuh-dashboard-config:/usr/share/wazuh-dashboard/data/wazuh/config
+      - wazuh-dashboard-custom:/usr/share/wazuh-dashboard/plugins/wazuh/public/assets/custom
+    ports:
+      - "127.0.0.1:5601:5601"
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "1.0"
+    networks:
+      - gsf-siem
+    depends_on:
+      - wazuh-indexer
+      - wazuh-manager
+    restart: unless-stopped
+    labels:
+      com.gsf.component: "siem-dashboard"
+      com.gsf.reference: "OGIS-3"
+
+volumes:
+  wazuh-indexer-data:
+  wazuh-api-configuration:
+  wazuh-etc:
+  wazuh-logs:
+  wazuh-queue:
+  wazuh-var-multigroups:
+  wazuh-integrations:
+  wazuh-active-response:
+  wazuh-agentless:
+  wazuh-wodles:
+  wazuh-dashboard-config:
+  wazuh-dashboard-custom:
+  filebeat-etc:
+  filebeat-var:
+
+networks:
+  gsf-siem:
+    driver: bridge
+    name: gsf-siem

@@ -1,0 +1,32 @@
+name = "bet-brazil-pix-webhook"
+main = "src/pix-webhook.ts"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Never expose a public *.workers.dev subdomain — the /qrcode endpoint must only
+# be reachable internally via the gateway service binding.
+workers_dev = false
+
+[vars]
+ENVIRONMENT = "staging"
+PLATFORM_NAME = "AcmeToCasino Brasil"
+AWS_CORE_API_URL = "https://core-staging.example.internal"
+SIGAP_API_URL = "https://homolog.sigap.gov.br/v1"
+SIGAP_OPERATOR_ID = "DEMO-001"
+PIX_PSP_BASE_URL = "https://sandbox.psp.example.com.br/pix/v2"
+JWT_ISSUER = "cloud-acmetocasino.com"
+
+# ── Secrets (set via `wrangler secret put <NAME>`) ───────────────────────────
+# PIX_HMAC_SECRET              — inbound only: validates PSP webhook signatures
+# PIX_PSP_API_KEY              — outbound only: bearer credential for PSP API calls (distinct from PIX_HMAC_SECRET)
+# AWS_CORE_HMAC_SECRET         — signs requests sent to the authoritative AWS core
+# GATEWAY_INTERNAL_HMAC_SECRET — verifies internal gateway→pix-webhook calls (/qrcode);
+#                                MUST match the value set on bet-brazil-api-gateway
+
+[[d1_databases]]
+binding = "DB"
+database_name = "bet_brazil_db"
+database_id = "9086c214-4376-462d-a97c-8522204349fd"
+
+[triggers]
+crons = ["* * * * *"]

@@ -1,0 +1,1 @@
+tid=UC098FE1F95DA0D2B849&mc=886&mc_desc=zip;state;last;first_i;address;mmddyyyy;ssn4;city&dead=N&watch   =N&PEP=N&err_code=0&err_desc=&Return_SSN5={{regexExtract (regexExtract request.body 'address=kyc_ssn_\d{5}') '\d{5}'}}

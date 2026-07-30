@@ -1,0 +1,255 @@
+# Companion code for "The Backend of Luck" - Chapter 22, Internal Docker Registry.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# Harbor Registry - Production Helm Values for iGaming Platform
+# Deploy: helm install harbor harbor/harbor -f harbor-helm-values.yaml -n registry --create-namespace
+# Prereqs: helm repo add harbor https://helm.goharbor.io && helm repo update
+# Version: Harbor 2.11+
+
+expose:
+  type: ingress
+  tls:
+    enabled: true
+    certSource: secret
+    secret:
+      secretName: harbor-tls
+  ingress:
+    hosts:
+      core: registry.casino-platform.internal
+      notary: notary.casino-platform.internal
+    className: nginx
+    annotations:
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+      nginx.ingress.kubernetes.io/proxy-body-size: "0"
+      nginx.ingress.kubernetes.io/proxy-read-timeout: "900"
+      nginx.ingress.kubernetes.io/proxy-send-timeout: "900"
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+
+externalURL: https://registry.casino-platform.internal
+
+# Persistence — S3-compatible for production
+persistence:
+  enabled: true
+  resourcePolicy: "keep"
+  persistentVolumeClaim:
+    registry:
+      storageClass: gp3-encrypted
+      size: 500Gi
+    database:
+      storageClass: gp3-encrypted
+      size: 50Gi
+    redis:
+      storageClass: gp3-encrypted
+      size: 10Gi
+    trivy:
+      storageClass: gp3-encrypted
+      size: 20Gi
+  imageChartStorage:
+    type: s3
+    s3:
+      region: eu-west-1
+      bucket: casino-harbor-registry
+      encrypt: true
+      secure: true
+      # Use IRSA (IAM Roles for Service Accounts) — no static keys
+      # accesskey and secretkey left empty for IRSA
+      rootdirectory: /harbor
+
+# Internal database (PostgreSQL)
+database:
+  type: internal
+  internal:
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+      limits:
+        cpu: 2
+        memory: 4Gi
+    nodeSelector:
+      workload-type: registry
+
+# Redis for session/cache
+redis:
+  type: internal
+  internal:
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: 1
+        memory: 2Gi
+
+# Harbor Core
+core:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: 2
+      memory: 2Gi
+  # Secret key for encrypting — generate with: openssl rand -hex 16
+  secret: ""  # REQUIRED: set via --set core.secret=<value>
+  secretName: harbor-core-secret
+  xsrfKey: ""  # REQUIRED: set via --set core.xsrfKey=<value>
+
+# Job Service
+jobservice:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 1
+      memory: 1Gi
+  jobLoggers:
+    - database
+  maxJobWorkers: 10
+
+# Registry
+registry:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: 2
+      memory: 2Gi
+  credentials:
+    username: harbor_registry_user
+    password: ""  # REQUIRED: set via --set registry.credentials.password=<value>
+
+# Trivy vulnerability scanner (built-in)
+trivy:
+  enabled: true
+  replicas: 2
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 2
+      memory: 4Gi
+  gitHubToken: ""  # Optional: avoids rate limiting on vuln DB updates
+  severity: "CRITICAL,HIGH,MEDIUM"
+  vulnType: "os,library"
+  insecure: false
+  # Auto-scan on push
+  autoScan: true
+  # Trivy DB update schedule (every 6 hours)
+  skipUpdate: false
+
+# Notary (Docker Content Trust)
+notary:
+  enabled: true
+  server:
+    replicas: 2
+    resources:
+      requests:
+        cpu: 250m
+        memory: 256Mi
+      limits:
+        cpu: 1
+        memory: 1Gi
+  signer:
+    replicas: 2
+    resources:
+      requests:
+        cpu: 250m
+        memory: 256Mi
+      limits:
+        cpu: 1
+        memory: 1Gi
+
+# Portal (Web UI)
+portal:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# Metrics for Prometheus
+metrics:
+  enabled: true
+  core:
+    path: /metrics
+    port: 8001
+  registry:
+    path: /metrics
+    port: 8001
+  jobservice:
+    path: /metrics
+    port: 8001
+  exporter:
+    path: /metrics
+    port: 8001
+  serviceMonitor:
+    enabled: true
+    namespace: monitoring
+    additionalLabels:
+      release: kube-prometheus-stack
+
+# Update strategy
+updateStrategy:
+  type: RollingUpdate
+
+# RBAC Projects (configured post-install via API)
+# See: signing/content-trust-setup.sh for automated project/RBAC setup
+#
+# Projects to create:
+#   - casino-base        (base images, pull-only for most teams)
+#   - casino-games       (game service images)
+#   - casino-platform    (platform services)
+#   - casino-backoffice  (backoffice services)
+#   - casino-monitoring  (monitoring/observability images)
+#   - casino-third-party (mirrored third-party images)
+
+# Harbor admin password — set externally
+harborAdminPassword: ""  # REQUIRED: set via --set harborAdminPassword=<value>
+
+# Node affinity
+nodeSelector:
+  workload-type: registry
+
+tolerations:
+  - key: "dedicated"
+    operator: "Equal"
+    value: "registry"
+    effect: "NoSchedule"
+
+# Pod disruption budgets
+portal:
+  podDisruptionBudget:
+    minAvailable: 1
+core:
+  podDisruptionBudget:
+    minAvailable: 1
+registry:
+  podDisruptionBudget:
+    minAvailable: 1
+
+# Log level
+logLevel: info
+
+# Garbage collection schedule (runs daily at 2 AM UTC)
+# Also configured externally via maintenance/garbage-collection.sh
+gc:
+  enabled: true
+  schedule: "0 2 * * *"
+  deleteUntagged: true

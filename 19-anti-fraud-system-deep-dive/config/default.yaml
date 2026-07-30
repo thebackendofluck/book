@@ -1,0 +1,236 @@
+# Companion code for "The Backend of Luck" - Chapter 19, Anti-Fraud System Deep Dive.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# Fraud Detection System Configuration
+# Default configuration for development environment
+
+# Application settings
+environment: development
+log_level: INFO
+service_name: fraud-detection-system
+
+# Server settings
+host: 0.0.0.0
+port: 8080
+
+# Kafka settings
+kafka:
+  bootstrap_servers: localhost:9092
+  security_protocol: PLAINTEXT
+  topics:
+    transactions: transactions
+    user_events: user-events
+    game_events: game-events
+    alerts: fraud-alerts
+
+# Schema Registry settings
+schema_registry:
+  url: http://localhost:8081
+
+# Database settings
+database:
+  host: localhost
+  port: 5432
+  name: fraud_detection
+  user: fraud_user
+  password: fraud_password_2024!
+  ssl_mode: prefer
+  pool_size: 20
+  max_overflow: 30
+
+# Redis settings
+redis:
+  host: localhost
+  port: 6379
+  db: 0
+  max_connections: 20
+  password: ""
+  ssl: false
+
+# External API settings
+external_apis:
+  maxmind:
+    api_key: ""
+    enabled: false
+  fingerprintjs:
+    api_key: ""
+    enabled: false
+
+# Security settings
+security:
+  jwt_secret_key: change-me-in-production
+  jwt_algorithm: HS256
+  jwt_expiration_hours: 24
+  bcrypt_rounds: 12
+
+# Rate limiting
+rate_limiting:
+  requests_per_minute: 1000
+  burst_limit: 2000
+  window_seconds: 60
+
+# Data validation settings
+data_validation:
+  max_transaction_amount: 1000000.0
+  min_transaction_amount: 0.01
+  allowed_currencies: [ USD, EUR, GBP, CAD, AUD, CHF, JPY ]
+  max_string_length: 1000
+  max_list_length: 100
+
+# Feature engineering settings
+feature_engineering:
+  enable_data_enrichment: true
+  enable_ip_geolocation: true
+  enable_device_fingerprinting: true
+  polars_max_threads: 4
+  window_sizes:
+  - 10
+  - 50
+  - 100
+  - 500
+
+# ML model settings
+ml_models:
+  isolation_forest:
+    contamination: 0.1
+    n_estimators: 100
+    random_state: 42
+  xgboost:
+    max_depth: 6
+    learning_rate: 0.1
+    n_estimators: 500
+    scale_pos_weight: 10
+    random_state: 42
+  random_forest:
+    n_estimators: 200
+    max_depth: 20
+    class_weight: balanced
+    random_state: 42
+  lstm:
+    sequence_length: 50
+    lstm_units: 64
+    dropout_rate: 0.2
+    epochs: 50
+    batch_size: 32
+
+# Alerting settings
+alerting:
+  channels:
+    email:
+      smtp_server: localhost
+      smtp_port: 1025
+      username: ""
+      password: ""
+      from_address: alerts@fraud-detection.local
+    slack:
+      webhook_url: ""
+      channel: "#fraud-alerts"
+    sms:
+      provider: twilio
+      account_sid: ""
+      auth_token: ""
+      from_number: ""
+  rules:
+    fraud_score_high:
+      threshold: 0.9
+      severity: critical
+      channels: [ email, slack, sms ]
+    velocity_high:
+      threshold: 50
+      severity: high
+      channels: [ email, slack ]
+    amount_outlier:
+      threshold: 10000
+      severity: medium
+      channels: [ email ]
+
+# Monitoring settings
+monitoring:
+  enabled: true
+  prometheus:
+    port: 9090
+    scrape_interval: 15s
+  grafana:
+    port: 3000
+    admin_user: admin
+    # Injected at deploy time. There is no default on purpose.
+    admin_password: ${GRAFANA_ADMIN_PASSWORD}
+  metrics:
+    request_duration_buckets: [ 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 2.0, 5.0 ]
+    event_processing_buckets: [ 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0 ]
+    kafka_publish_buckets: [ 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0 ]
+
+# Performance settings
+performance:
+  targets:
+    latency_p50: 10
+    latency_p95: 50
+    latency_p99: 100
+    throughput: 100000
+    availability: 99.99
+    error_rate: 0.01
+  optimization:
+    enable_caching: true
+    cache_ttl_seconds: 300
+    enable_connection_pooling: true
+    max_connections: 100
+
+# Compliance settings
+compliance:
+  gdpr:
+    enabled: true
+    data_retention_days: 2555 # 7 years
+    consent_required: true
+  aml:
+    enabled: true
+    sanctions_check: true
+    pep_check: true
+    kyc_required: true
+  pci_dss:
+    enabled: true
+    encryption_required: true
+    tokenization_enabled: true
+
+# Cost optimization settings
+cost_optimization:
+  cloud:
+    spot_instances: true
+    auto_scaling: true
+    min_instances: 2
+    max_instances: 50
+    target_utilization: 0.7
+  on_premises:
+    resource_pooling: true
+    workload_scheduling: true
+    storage_tiering: true
+
+# Backup and recovery settings
+backup_recovery:
+  database:
+    schedule: "0 2 * * *" # Daily at 2 AM
+    retention_days: 30
+    compression: true
+    encryption: true
+  redis:
+    schedule: "0 */4 * * *" # Every 4 hours
+    retention_hours: 24
+  logs:
+    retention_days: 90
+    compression: true
+    archival: true
+
+# Development settings
+development:
+  debug_mode: true
+  enable_swagger: true
+  enable_cors: true
+  allowed_origins: [ "*" ]
+  log_requests: true
+  mock_external_apis: true

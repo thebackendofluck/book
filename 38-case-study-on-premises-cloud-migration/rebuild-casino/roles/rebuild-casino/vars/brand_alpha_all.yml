@@ -1,0 +1,132 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 38, Case Study.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# vars file for rebuild-casino
+# All brands on the primary (alpha) cluster
+casinos:
+  - host: acme_do_stage
+    repos:
+      - name: site-shared
+        branch: master
+        location: /var/www/html/cms/shared
+        domain: None
+      - name: site-acme_shared
+        branch: master
+        location: /var/www/html/cms/acme_shared
+        domain: None
+      - name: site-scontent
+        branch: master
+        location: /var/www/html/scontent
+        domain: None
+      - name: stage-system
+        branch: master
+        location: /etc/git-repo
+        domain: None
+      - name: site-brand-alpha
+        branch: master
+        location: /var/www/html/cms/brand-alpha
+        domain: brand-alpha
+      - name: landing-brand-alpha
+        branch: master
+        location: /var/www/html/cms/landing-brand-alpha
+        domain: None
+      - name: site-brand-bravo
+        branch: master
+        location: /var/www/html/cms/brand-bravo
+        domain: brand-bravo
+      - name: landing-brand-bravo
+        branch: master
+        location: /var/www/html/cms/landing-brand-bravo
+        domain: None
+      - name: site-brand-charlie
+        branch: master
+        location: /var/www/html/cms/brand-charlie
+        domain: brand-charlie
+      - name: landing-brand-charlie
+        branch: master
+        location: /var/www/html/cms/landing-brand-charlie
+        domain: None
+      - name: site-brand-delta
+        branch: master
+        location: /var/www/html/cms/brand-delta
+        domain: brand-delta
+      - name: landing-brand-delta
+        branch: master
+        location: /var/www/html/cms/landing-brand-delta
+        domain: None
+      - name: site-brand-echo
+        branch: master
+        location: /var/www/html/cms/brand-echo
+        domain: brand-echo
+      - name: landing-brand-echo
+        branch: master
+        location: /var/www/html/cms/landing-brand-echo
+        domain: None
+      - name: acmetocasino-com
+        branch: master
+        location: /var/www/html/acmetocasino-com
+        domain: acmetocasino
+      - name: dev-test-tools
+        branch: master
+        location: /var/www/html/dev-tools
+        domain: acmetocasino
+      - name: site-wz_shared
+        branch: master
+        location: /var/www/html/cms/wz_shared
+        domain: None
+      - name: site-sc_shared
+        branch: master
+        location: /var/www/html/cms/sc_shared
+        domain: None
+      - name: site-admin
+        branch: master
+        location: /var/www/html/cms/site-admin
+        domain: None
+      - name: ng-brand-alpha
+        branch: master
+        location: /var/www/html/cms/ng-brand-alpha
+        domain: brand-alpha
+      - name: ng-brand-bravo
+        branch: master
+        location: /var/www/html/cms/ng-brand-bravo
+        domain: brand-bravo
+      - name: ng-brand-charlie
+        branch: master
+        location: /var/www/html/cms/ng-brand-charlie
+        domain: brand-charlie
+      - name: ng-brand-delta
+        branch: master
+        location: /var/www/html/cms/ng-brand-delta
+        domain: brand-delta
+      - name: ng-brand-echo
+        branch: master
+        location: /var/www/html/cms/ng-brand-echo
+        domain: brand-echo
+      - name: ng-shared
+        branch: master
+        location: /var/www/html/cms/ng-shared
+        domain: None
+      - name: ng-shared-library
+        branch: master
+        location: /var/www/html/cms/ng-shared-library
+        domain: None
+      - name: ng-interactions
+        branch: master
+        location: /var/www/html/cms/interactions
+        domain: none
+      - name: affiliate-acme-affiliates
+        branch: master
+        location: /var/www/html/cms/acme-affiliates
+        domain: None
+      - name: promo-calendar-gui
+        branch: master
+        location: /var/www/html/cms/promo-calendar-gui
+        domain: promo-calendar

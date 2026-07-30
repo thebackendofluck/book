@@ -1,0 +1,60 @@
+{
+  "_fetchTime": "2025-10-14T10:02:47.381Z",
+  "total": 4872341.50,
+  "jackpots": {
+    "mega-moolah": {
+      "name": "Mega Moolah",
+      "value": 2341205.00,
+      "isMobile": true,
+      "isRestricted": false
+    },
+    "mega-moolah-isis": {
+      "name": "Mega Moolah Isis",
+      "value": 1156820.25,
+      "isMobile": true,
+      "isRestricted": false
+    },
+    "divine-fortune": {
+      "name": "Divine Fortune",
+      "value": 487632.50,
+      "isMobile": true,
+      "isRestricted": false
+    },
+    "age-of-the-gods": {
+      "name": "Age of the Gods",
+      "value": 312450.75,
+      "isMobile": true,
+      "isRestricted": false
+    },
+    "age-of-the-gods-god-of-storms": {
+      "name": "Age of the Gods: God of Storms",
+      "value": 201876.00,
+      "isMobile": true,
+      "isRestricted": false
+    },
+    "lucky-streak": {
+      "name": "Lucky Streak",
+      "value": 147230.50,
+      "isMobile": true,
+      "isRestricted": false
+    },
+    "arabian-nights": {
+      "name": "Arabian Nights",
+      "value": 98456.00,
+      "isMobile": false,
+      "isRestricted": false
+    },
+    "cash-splash-5-reel": {
+      "name": "Cash Splash 5-Reel",
+      "value": 75432.25,
+      "isMobile": false,
+      "isRestricted": false
+    },
+    "king-cashalot": {
+      "name": "King Cashalot",
+      "value": 51238.25,
+      "isMobile": false,
+      "isRestricted": true
+    }
+  }
+}

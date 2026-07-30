@@ -1,0 +1,117 @@
+{
+  "_doc": "Deterministic IP intelligence fixtures for geofence tests. Each key is an IP address; value maps to GeoSignal fields.",
+
+  "border_nj_pa": {
+    "ip": "203.0.113.10",
+    "description": "Border case: IP resolves to NJ/PA boundary area (Trenton). Lat/lon near state line.",
+    "signal": {
+      "source": "IP",
+      "latitude": 40.2171,
+      "longitude": -74.7429,
+      "accuracy_meters": 25000,
+      "country_code": "US",
+      "region_code": "NJ",
+      "city": "Trenton",
+      "isp": "Comcast Cable",
+      "is_vpn": false,
+      "is_proxy": false,
+      "is_datacenter": false,
+      "is_tor": false
+    }
+  },
+
+  "vpn_detected": {
+    "ip": "198.51.100.20",
+    "description": "Commercial VPN exit node (NordVPN). IP geo says US-NJ but VPN flag is set.",
+    "signal": {
+      "source": "IP",
+      "latitude": 40.7128,
+      "longitude": -74.0060,
+      "accuracy_meters": 50000,
+      "country_code": "US",
+      "region_code": "NJ",
+      "city": "Newark",
+      "isp": "NordVPN Inc.",
+      "is_vpn": true,
+      "is_proxy": false,
+      "is_datacenter": false,
+      "is_tor": false
+    }
+  },
+
+  "proxy_detected": {
+    "ip": "192.0.2.30",
+    "description": "Anonymous HTTP proxy. IP geo says GB but proxy flag is set.",
+    "signal": {
+      "source": "IP",
+      "latitude": 51.5074,
+      "longitude": -0.1278,
+      "accuracy_meters": 100000,
+      "country_code": "GB",
+      "region_code": "",
+      "city": "London",
+      "isp": "Anonymous Proxy Ltd",
+      "is_vpn": false,
+      "is_proxy": true,
+      "is_datacenter": false,
+      "is_tor": false
+    }
+  },
+
+  "datacenter_ip": {
+    "ip": "198.51.100.40",
+    "description": "AWS us-east-1 datacenter IP. Hosting provider flag is set.",
+    "signal": {
+      "source": "IP",
+      "latitude": 39.0438,
+      "longitude": -77.4874,
+      "accuracy_meters": 200000,
+      "country_code": "US",
+      "region_code": "VA",
+      "city": "Ashburn",
+      "isp": "Amazon.com Inc.",
+      "is_vpn": false,
+      "is_proxy": false,
+      "is_datacenter": true,
+      "is_tor": false
+    }
+  },
+
+  "tor_exit_node": {
+    "ip": "203.0.113.50",
+    "description": "Tor exit node. IP geo unreliable; Tor flag is set.",
+    "signal": {
+      "source": "IP",
+      "latitude": 52.5200,
+      "longitude": 13.4050,
+      "accuracy_meters": 500000,
+      "country_code": "DE",
+      "region_code": "",
+      "city": "Berlin",
+      "isp": "Tor Exit Node",
+      "is_vpn": false,
+      "is_proxy": false,
+      "is_datacenter": false,
+      "is_tor": true
+    }
+  },
+
+  "clean_residential": {
+    "ip": "203.0.113.60",
+    "description": "Clean residential IP in central New Jersey. No threat flags.",
+    "signal": {
+      "source": "IP",
+      "latitude": 40.4774,
+      "longitude": -74.2591,
+      "accuracy_meters": 5000,
+      "country_code": "US",
+      "region_code": "NJ",
+      "city": "New Brunswick",
+      "isp": "Verizon Fios",
+      "is_vpn": false,
+      "is_proxy": false,
+      "is_datacenter": false,
+      "is_tor": false
+    }
+  }
+}

@@ -1,0 +1,8 @@
+<group name="local,filesystem,">
+  <rule id="100700" level="10">
+    <if_sid>1002</if_sid>
+    <match>DISK STILL HIGH</match>
+    <description>Host disk pressure — maintenance script reports >85% after run</description>
+    <group>disk_pressure,</group>
+  </rule>
+</group>

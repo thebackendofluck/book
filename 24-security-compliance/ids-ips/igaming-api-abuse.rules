@@ -1,0 +1,188 @@
+# ==============================================================================
+# igaming-api-abuse.rules
+# API Abuse Detection Rules for iGaming Platforms
+# SID Range: 9000100 - 9000199
+#
+# Coverage:
+#   - Odds scraping (competitor intelligence / arbitrage enablement)
+#   - Automated bet placement (superhuman velocity)
+#   - Admin API access from external networks
+#   - X-Forwarded-For header manipulation (IP spoofing)
+#   - WebSocket connection flooding
+#   - Sequential endpoint enumeration
+#   - Suspicious identical bet sizing
+#   - Oversized API responses (data exfiltration)
+#
+# Deployment notes:
+#   - $INTERNAL_NET should be defined to match your RFC 1918 space
+#   - Adjust odds scraping threshold to match legitimate aggregator traffic
+#   - WebSocket rules require Suricata app-layer-protocol detection enabled
+#   - Rule 9000107 inspects response size; tune the byte_test value to your
+#     largest legitimate API payload before enabling in IPS mode
+# ==============================================================================
+
+
+# ------------------------------------------------------------------------------
+# Section 1: Odds Scraping
+# ------------------------------------------------------------------------------
+
+# SID 9000100 - Odds scraping - high frequency GET on /odds endpoint
+# Legitimate users browse odds; automated scrapers hit /odds at machine speed.
+# 60 requests in 60 seconds from a single IP indicates a scraping bot used
+# to enable arbitrage betting or competitor intelligence gathering.
+alert http $EXTERNAL_NET any -> $HTTP_SERVERS $HTTP_PORTS \
+    (msg:"IGAMING API ABUSE Odds Scraping - High Frequency GET on /odds"; \
+     flow:established,to_server; \
+     http.method; content:"GET"; \
+     http.uri; content:"/odds"; \
+     threshold:type threshold, track by_src, count 60, seconds 60; \
+     classtype:policy-violation; \
+     sid:9000100; rev:1; \
+     metadata:affected_product iGaming_Platform, attack_target Sportsbook_API, \
+               created_at 2024_01_01, deployment Perimeter, \
+               performance_impact Low, signature_severity High, tag Scraping;)
+
+
+# ------------------------------------------------------------------------------
+# Section 2: Automated Bet Placement
+# ------------------------------------------------------------------------------
+
+# SID 9000101 - Automated bet placement - superhuman velocity
+# Human bettors cannot physically place 15 bets in 60 seconds. This rate
+# indicates a bot exploiting a pricing error, arbitrage window, or bonus abuse.
+alert http $EXTERNAL_NET any -> $HTTP_SERVERS $HTTP_PORTS \
+    (msg:"IGAMING API ABUSE Automated Bet Placement - Superhuman Velocity"; \
+     flow:established,to_server; \
+     http.method; content:"POST"; \
+     http.uri; pcre:"/\/(bet|wager|place.bet|betslip)/"; \
+     threshold:type threshold, track by_src, count 15, seconds 60; \
+     classtype:policy-violation; \
+     sid:9000101; rev:1; \
+     metadata:affected_product iGaming_Platform, attack_target Sportsbook_API, \
+               created_at 2024_01_01, deployment Perimeter, \
+               performance_impact Low, signature_severity Major, tag BotBetting;)
+
+
+# ------------------------------------------------------------------------------
+# Section 3: Admin API External Access
+# ------------------------------------------------------------------------------
+
+# SID 9000102 - Admin API access from external network
+# Administrative API endpoints should never be reachable from external IPs.
+# External access may indicate credential theft, SSRF pivot, or misconfiguration.
+alert http $EXTERNAL_NET any -> $HTTP_SERVERS $HTTP_PORTS \
+    (msg:"IGAMING API ABUSE Admin API Access From External Network"; \
+     flow:established,to_server; \
+     http.uri; pcre:"/\/(admin|backoffice|management|internal|ops)\//"; \
+     classtype:web-application-attack; \
+     sid:9000102; rev:1; \
+     metadata:affected_product iGaming_Platform, attack_target Admin_Panel, \
+               created_at 2024_01_01, deployment Perimeter, \
+               performance_impact Low, signature_severity Critical, tag AdminAccess;)
+
+
+# ------------------------------------------------------------------------------
+# Section 4: X-Forwarded-For Header Manipulation
+# ------------------------------------------------------------------------------
+
+# SID 9000103 - X-Forwarded-For header manipulation (>3 IPs in chain)
+# A chain of more than 3 IPs in X-Forwarded-For is unusual in legitimate traffic
+# and commonly used to spoof geolocation, bypass IP-based rate limits, or
+# circumvent geo-restrictions (jurisdictional compliance evasion).
+alert http $EXTERNAL_NET any -> $HTTP_SERVERS $HTTP_PORTS \
+    (msg:"IGAMING API ABUSE X-Forwarded-For Header Manipulation - IP Chain Spoofing"; \
+     flow:established,to_server; \
+     http.header_names; content:"X-Forwarded-For"; \
+     http.header; content:"X-Forwarded-For"; \
+     pcre:"/X-Forwarded-For\s*:\s*[^,\r\n]+,[^,\r\n]+,[^,\r\n]+,[^,\r\n]+/Hi"; \
+     classtype:policy-violation; \
+     sid:9000103; rev:1; \
+     metadata:affected_product iGaming_Platform, attack_target All_Endpoints, \
+               created_at 2024_01_01, deployment Perimeter, \
+               performance_impact Low, signature_severity Medium, tag IPSpoofing;)
+
+
+# ------------------------------------------------------------------------------
+# Section 5: WebSocket Abuse
+# ------------------------------------------------------------------------------
+
+# SID 9000104 - WebSocket abuse - excessive connection attempts
+# WebSocket connections are long-lived; excessive reconnect attempts from a
+# single source indicate a bot hammering live odds feeds or chat services,
+# or attempting to exhaust server connection limits (DoS vector).
+alert http $EXTERNAL_NET any -> $HTTP_SERVERS $HTTP_PORTS \
+    (msg:"IGAMING API ABUSE WebSocket Excessive Connection Attempts"; \
+     flow:established,to_server; \
+     http.method; content:"GET"; \
+     http.header; content:"Upgrade"; content:"websocket"; within:20; \
+     threshold:type threshold, track by_src, count 20, seconds 60; \
+     classtype:attempted-dos; \
+     sid:9000104; rev:1; \
+     metadata:affected_product iGaming_Platform, attack_target WebSocket_Service, \
+               created_at 2024_01_01, deployment Perimeter, \
+               performance_impact Low, signature_severity High, tag WebSocketAbuse;)
+
+
+# ------------------------------------------------------------------------------
+# Section 6: API Endpoint Enumeration
+# ------------------------------------------------------------------------------
+
+# SID 9000105 - API enumeration - sequential endpoint probing
+# Systematic crawling of API paths (incremented IDs, alphabetical scanning)
+# is a precursor to IDOR attacks, privilege escalation, or data harvesting.
+# Triggers on 20+ distinct API requests within 30 seconds from one source.
+alert http $EXTERNAL_NET any -> $HTTP_SERVERS $HTTP_PORTS \
+    (msg:"IGAMING API ABUSE Sequential Endpoint Enumeration - API Probing"; \
+     flow:established,to_server; \
+     http.method; content:"GET"; \
+     http.uri; content:"/api/v"; \
+     threshold:type threshold, track by_src, count 20, seconds 30; \
+     classtype:web-application-attack; \
+     sid:9000105; rev:1; \
+     metadata:affected_product iGaming_Platform, attack_target REST_API, \
+               created_at 2024_01_01, deployment Perimeter, \
+               performance_impact Low, signature_severity High, tag Enumeration;)
+
+
+# ------------------------------------------------------------------------------
+# Section 7: Suspicious Identical Bet Sizing
+# ------------------------------------------------------------------------------
+
+# SID 9000106 - Suspicious bet sizing - identical amounts rapid fire
+# Ten identical bet amounts from the same source within 30 seconds indicates
+# a bot exploiting a guaranteed-profit arbitrage window or bonus abuse script.
+# The pcre matches a fixed numeric stake field in the JSON body.
+alert http $EXTERNAL_NET any -> $HTTP_SERVERS $HTTP_PORTS \
+    (msg:"IGAMING API ABUSE Suspicious Bet Sizing - Identical Amount Rapid Fire"; \
+     flow:established,to_server; \
+     http.method; content:"POST"; \
+     http.uri; pcre:"/\/(bet|wager|stake)/"; \
+     http.request_body; content:"stake"; \
+     pcre:"/\"stake\"\s*:\s*[0-9]+(\.[0-9]{1,2})?/"; \
+     threshold:type threshold, track by_src, count 10, seconds 30; \
+     classtype:policy-violation; \
+     sid:9000106; rev:1; \
+     metadata:affected_product iGaming_Platform, attack_target Sportsbook_API, \
+               created_at 2024_01_01, deployment Perimeter, \
+               performance_impact Low, signature_severity High, tag ArbitrageFraud;)
+
+
+# ------------------------------------------------------------------------------
+# Section 8: Oversized API Response (Data Exfiltration)
+# ------------------------------------------------------------------------------
+
+# SID 9000107 - Oversized API response (possible data exfiltration, >10MB)
+# Legitimate API responses are typically kilobytes. A response exceeding 10MB
+# from a player-facing API endpoint may indicate a bulk data export, a mass
+# account data dump, or exploitation of a missing pagination control.
+alert http $HTTP_SERVERS $HTTP_PORTS -> $EXTERNAL_NET any \
+    (msg:"IGAMING API ABUSE Oversized API Response - Possible Data Exfiltration"; \
+     flow:established,to_client; \
+     http.uri; content:"/api/"; \
+     http.response_body; \
+     byte_test:4,>,10485760,0,relative; \
+     classtype:policy-violation; \
+     sid:9000107; rev:1; \
+     metadata:affected_product iGaming_Platform, attack_target REST_API, \
+               created_at 2024_01_01, deployment Internal, \
+               performance_impact High, signature_severity High, tag DataExfil;)

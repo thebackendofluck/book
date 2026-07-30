@@ -1,0 +1,381 @@
+# Companion code for "The Backend of Luck" - Chapter 10, Complete Platform Architecture.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+"""
+gameservice.accounts.wallet_service — WalletService
+=====================================================
+
+Manages the lifecycle of wallet funds through a **reservation pattern**:
+
+1. ``reserve`` — atomically hold funds before a game round starts.
+2. ``commit`` — convert a reservation into a permanent debit on settlement.
+3. ``release`` — cancel a reservation (e.g. round interrupted) and return
+   funds to the available balance.
+4. ``credit`` — add a win payout directly to the wallet.
+5. ``get_balance`` — read the current wallet state.
+
+The reservation pattern
+-----------------------
+Without reservations, a player could theoretically spend the same funds
+across two concurrent game rounds (TOCTOU race condition).  By moving funds
+into a "reserved" state before the round starts, we ensure:
+
+* The player cannot spend reserved funds elsewhere.
+* If the round is interrupted, the release operation cleanly reverses the
+  hold with no net balance effect.
+* Settlement (commit) is idempotent — double-commits return the existing
+  result.
+
+In-memory implementation
+------------------------
+:class:`InMemoryWalletStore` is provided for unit tests and local dev.
+Production deployments should replace it with a database-backed store
+that uses row-level locking or optimistic concurrency control.
+
+Example::
+
+    svc = WalletService(store=InMemoryWalletStore())
+    reservation_id = svc.reserve("p-1", Decimal("5.00"), "round-1")
+    snapshot = svc.commit(reservation_id)
+    print(snapshot.cash_balance)  # original_balance - 5.00
+"""
+
+from __future__ import annotations
+
+import threading
+import uuid
+from dataclasses import dataclass, field
+from decimal import Decimal
+from typing import Protocol
+
+from acmetocasino.gameservice.errors import InsufficientFundsError, RoundClosedError
+from acmetocasino.gameservice.models.wallet_snapshot import WalletSnapshot
+
+
+# ---------------------------------------------------------------------------
+# Store protocol + in-memory implementation
+# ---------------------------------------------------------------------------
+
+
+class WalletStore(Protocol):
+    """Structural contract for wallet persistence back-ends.
+
+    Concrete implementations include:
+    * :class:`InMemoryWalletStore` — for testing.
+    * A PostgreSQL-backed store for production (not in this package).
+    """
+
+    def load(self, player_id: str) -> WalletSnapshot:
+        """Fetch the current wallet snapshot for *player_id*.
+
+        Raises
+        ------
+        KeyError
+            If *player_id* does not exist in the store.
+        """
+        ...
+
+    def save(self, player_id: str, snapshot: WalletSnapshot) -> None:
+        """Persist an updated snapshot for *player_id*."""
+        ...
+
+    def create(self, player_id: str, currency: str, initial_cash: Decimal = Decimal("0")) -> WalletSnapshot:
+        """Create a new wallet for *player_id* and return the initial snapshot."""
+        ...
+
+
+@dataclass
+class InMemoryWalletStore:
+    """Thread-safe in-memory wallet store for testing.
+
+    All state is lost when the process exits.  Do not use in production.
+    """
+
+    _wallets: dict[str, WalletSnapshot] = field(default_factory=dict)
+    _lock: threading.Lock = field(default_factory=threading.Lock)
+
+    def load(self, player_id: str) -> WalletSnapshot:
+        with self._lock:
+            snapshot = self._wallets.get(player_id)
+            if snapshot is None:
+                raise KeyError(f"No wallet found for player_id={player_id!r}")
+            return snapshot
+
+    def save(self, player_id: str, snapshot: WalletSnapshot) -> None:
+        with self._lock:
+            self._wallets[player_id] = snapshot
+
+    def create(
+        self,
+        player_id: str,
+        currency: str,
+        initial_cash: Decimal = Decimal("0"),
+    ) -> WalletSnapshot:
+        snapshot = WalletSnapshot(
+            cash_balance=initial_cash,
+            bonus_balance=Decimal("0"),
+            currency=currency,
+        )
+        with self._lock:
+            self._wallets[player_id] = snapshot
+        return snapshot
+
+
+# ---------------------------------------------------------------------------
+# Reservation
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class _Reservation:
+    """Internal record for a pending fund hold.
+
+    Attributes
+    ----------
+    reservation_id:
+        Unique identifier generated by :meth:`WalletService.reserve`.
+    player_id:
+        The player whose funds are being held.
+    amount:
+        The reserved amount.
+    round_id:
+        Supplier round identifier for audit linkage.
+    committed:
+        Set to ``True`` by :meth:`WalletService.commit`.
+    released:
+        Set to ``True`` by :meth:`WalletService.release`.
+    """
+
+    reservation_id: str
+    player_id: str
+    amount: Decimal
+    round_id: str
+    committed: bool = False
+    released: bool = False
+
+    @property
+    def is_terminal(self) -> bool:
+        """Return True if this reservation has already been settled."""
+        return self.committed or self.released
+
+
+# ---------------------------------------------------------------------------
+# WalletService
+# ---------------------------------------------------------------------------
+
+
+class WalletService:
+    """Orchestrates fund reservations and balance mutations.
+
+    Parameters
+    ----------
+    store:
+        The persistence back-end satisfying :class:`WalletStore`.
+    """
+
+    def __init__(self, store: WalletStore) -> None:
+        self._store = store
+        self._reservations: dict[str, _Reservation] = {}
+        self._res_lock = threading.Lock()
+
+    # ------------------------------------------------------------------
+    # Reservation lifecycle
+    # ------------------------------------------------------------------
+
+    def reserve(
+        self,
+        player_id: str,
+        amount: Decimal,
+        round_id: str,
+    ) -> str:
+        """Hold *amount* from *player_id*'s cash balance.
+
+        The funds are deducted from the *available* balance immediately
+        but are not yet recorded as a completed debit.  Call :meth:`commit`
+        to finalise or :meth:`release` to cancel.
+
+        Parameters
+        ----------
+        player_id:
+            Target player.
+        amount:
+            Amount to hold.  Must be >= 0.
+        round_id:
+            Supplier round identifier for audit linkage.
+
+        Returns
+        -------
+        str
+            A ``reservation_id`` to pass to :meth:`commit` or :meth:`release`.
+
+        Raises
+        ------
+        InsufficientFundsError
+            If *player_id* does not have enough cash to cover *amount*.
+        ValueError
+            If *amount* is negative.
+        """
+        if amount < Decimal("0"):
+            raise ValueError(f"Reservation amount must be non-negative, got {amount}")
+
+        snapshot = self._store.load(player_id)
+        if snapshot.cash_balance < amount:
+            raise InsufficientFundsError(
+                message="Insufficient cash balance for reservation",
+                player_id=player_id,
+                requested_amount=str(amount),
+                available_balance=str(snapshot.cash_balance),
+            )
+
+        # Deduct immediately from the available balance.
+        updated = snapshot.with_cash_delta(-amount)
+        self._store.save(player_id, updated)
+
+        reservation_id = str(uuid.uuid4())
+        with self._res_lock:
+            self._reservations[reservation_id] = _Reservation(
+                reservation_id=reservation_id,
+                player_id=player_id,
+                amount=amount,
+                round_id=round_id,
+            )
+        return reservation_id
+
+    def commit(self, reservation_id: str) -> WalletSnapshot:
+        """Finalise a pending reservation as a completed debit.
+
+        The funds remain deducted from the balance (they were moved on
+        :meth:`reserve`).  This method just marks the reservation as
+        committed so :meth:`release` can no longer reverse it.
+
+        Parameters
+        ----------
+        reservation_id:
+            The ID returned by :meth:`reserve`.
+
+        Returns
+        -------
+        WalletSnapshot
+            Current balance after commitment (unchanged from the reserved state).
+
+        Raises
+        ------
+        KeyError
+            If *reservation_id* is unknown.
+        RoundClosedError
+            If the reservation was already committed or released.
+        """
+        with self._res_lock:
+            res = self._reservations.get(reservation_id)
+            if res is None:
+                raise KeyError(f"Unknown reservation_id: {reservation_id!r}")
+            if res.is_terminal:
+                state = "committed" if res.committed else "released"
+                raise RoundClosedError(
+                    message=f"Reservation {reservation_id!r} already {state}",
+                    player_id=res.player_id,
+                    round_id=res.round_id,
+                )
+            res.committed = True
+
+        return self._store.load(res.player_id)
+
+    def release(self, reservation_id: str) -> WalletSnapshot:
+        """Cancel a pending reservation and return the held funds.
+
+        Parameters
+        ----------
+        reservation_id:
+            The ID returned by :meth:`reserve`.
+
+        Returns
+        -------
+        WalletSnapshot
+            Current balance after funds are restored.
+
+        Raises
+        ------
+        KeyError
+            If *reservation_id* is unknown.
+        RoundClosedError
+            If the reservation was already committed or released.
+        """
+        with self._res_lock:
+            res = self._reservations.get(reservation_id)
+            if res is None:
+                raise KeyError(f"Unknown reservation_id: {reservation_id!r}")
+            if res.is_terminal:
+                state = "committed" if res.committed else "released"
+                raise RoundClosedError(
+                    message=f"Reservation {reservation_id!r} already {state}",
+                    player_id=res.player_id,
+                    round_id=res.round_id,
+                )
+            res.released = True
+
+        # Restore the held funds.
+        snapshot = self._store.load(res.player_id)
+        restored = snapshot.with_cash_delta(res.amount)
+        self._store.save(res.player_id, restored)
+        return restored
+
+    # ------------------------------------------------------------------
+    # Direct operations
+    # ------------------------------------------------------------------
+
+    def credit(
+        self,
+        player_id: str,
+        amount: Decimal,
+        round_id: str,
+    ) -> WalletSnapshot:
+        """Add a win payout directly to the player's cash balance.
+
+        Unlike :meth:`reserve`/:meth:`commit`, there is no reservation step
+        for credits — they are applied immediately.
+
+        Parameters
+        ----------
+        player_id:
+            Target player.
+        amount:
+            Amount to credit.  Must be >= 0.
+        round_id:
+            Supplier round identifier for audit linkage.
+
+        Returns
+        -------
+        WalletSnapshot
+            Updated balance snapshot.
+        """
+        if amount < Decimal("0"):
+            raise ValueError(f"Credit amount must be non-negative, got {amount}")
+        snapshot = self._store.load(player_id)
+        updated = snapshot.with_cash_delta(amount)
+        self._store.save(player_id, updated)
+        return updated
+
+    def get_balance(self, player_id: str) -> WalletSnapshot:
+        """Return the current balance for *player_id*.
+
+        Parameters
+        ----------
+        player_id:
+            Target player.
+
+        Returns
+        -------
+        WalletSnapshot
+            Current balance snapshot.
+        """
+        return self._store.load(player_id)
+
+
+__all__ = ["InMemoryWalletStore", "WalletService", "WalletStore"]

@@ -1,0 +1,48 @@
+# Companion code for "The Backend of Luck" - Chapter 47, Platform Onboarding.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# config/operators/acme-casino/settings.yml
+#
+# Chapter 47: Platform Onboarding — From Contract to First Real-Money Bet
+# Operator-specific feature flags and configuration.
+#
+# Consumed by the deploy-operator.yml CI/CD pipeline and the provisioning
+# script. Controls which platform features are enabled per operator,
+# per jurisdiction.
+#
+# Script reference: scripts/chapter-47/config/operators/acme-casino/settings.yml
+operator:
+  slug: acme-casino
+  name: "Acme Casino"
+  jurisdiction: mga
+
+features:
+  live_casino: true
+  sports_betting: false
+  crypto_payments: true
+  vip_program: true
+  affiliate_system: true
+
+responsible_gaming:
+  deposit_limit_mandatory: true
+  session_time_alerts: true
+  reality_check_interval_minutes: 60
+  self_exclusion_provider: gamstop
+
+payment:
+  providers: [stripe, skrill, neteller, btc, eth]
+  min_deposit: 10
+  max_deposit: 10000
+  withdrawal_review_threshold: 5000
+
+games:
+  providers: [pragmatic, evolution, netent, playngo]
+  rtp_minimum: 0.94
+  max_bet_limit: 500

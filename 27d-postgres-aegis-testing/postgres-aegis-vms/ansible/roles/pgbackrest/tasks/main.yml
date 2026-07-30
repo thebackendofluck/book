@@ -1,0 +1,132 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 27d, PostgreSQL Aegis.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# pgbackrest — deferred-compression, encrypted S3 backups with stanza-level
+# retention. Credentials come from Bao (via Vault Agent, same AppRole
+# pattern as the LUKS role).
+
+- name: Fetch pgbackrest S3 creds from Bao (on controller)
+  when: not (pgbackrest_s3_key is defined)
+  delegate_to: localhost
+  run_once: true
+  become: false
+  ansible.builtin.shell: |
+    T=$(sudo -n cat /opt/dashboard-keys/bao_token 2>/dev/null || echo "${BAO_TOKEN:-}")
+    if [ -z "$T" ]; then
+      echo "NO_TOKEN" ; exit 0
+    fi
+    export BAO_ADDR=https://127.0.0.1:8200 BAO_TOKEN=$T
+    J=$(bao kv get -format=json secret/casino/postgres-aegis/pgbackrest_s3 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin)['data']['data']; print(d.get('s3_key','NA')); print(d.get('s3_secret','NA')); print(d.get('cipher_pass','NA'))")
+    echo "$J"
+  register: _pgbr_creds
+  no_log: true
+  changed_when: false
+
+- name: Set pgbackrest cred facts
+  when:
+    - not (pgbackrest_s3_key is defined)
+    - "'NO_TOKEN' not in (_pgbr_creds.stdout | default(''))"
+  ansible.builtin.set_fact:
+    pgbackrest_s3_key:    "{{ _pgbr_creds.stdout_lines[0] }}"
+    pgbackrest_s3_secret: "{{ _pgbr_creds.stdout_lines[1] }}"
+    pgbackrest_cipher_pass: "{{ _pgbr_creds.stdout_lines[2] }}"
+  no_log: true
+
+- name: Skip pgbackrest entirely if no creds resolved
+  ansible.builtin.meta: end_host
+  when: pgbackrest_s3_key is not defined
+
+- name: Install pgbackrest
+  ansible.builtin.apt:
+    name: pgbackrest
+    state: present
+    update_cache: true
+
+- name: Ensure /etc/pgbackrest dir
+  ansible.builtin.file:
+    path: /etc/pgbackrest
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: "0750"
+
+- name: Ensure /var/log/pgbackrest dir
+  ansible.builtin.file:
+    path: /var/log/pgbackrest
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: "0750"
+
+- name: Render pgbackrest.conf
+  ansible.builtin.template:
+    src: pgbackrest.conf.j2
+    dest: /etc/pgbackrest/pgbackrest.conf
+    owner: postgres
+    group: postgres
+    mode: "0640"
+
+- name: Create stanza (only on the writer)
+  when: "'writers' in group_names"
+  become: true
+  become_user: postgres
+  ansible.builtin.command: "pgbackrest --stanza={{ pgbackrest_stanza }} stanza-create"
+  register: stanza_create
+  changed_when: "'stanza already exists' not in stanza_create.stderr | default('')"
+  failed_when:
+    - stanza_create.rc != 0
+    - "'stanza already exists' not in stanza_create.stderr | default('')"
+
+- name: systemd timer — daily full, hourly diff
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/pgbackrest-{{ item.name }}.service
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=pgbackrest {{ item.name }} backup
+      [Service]
+      Type=oneshot
+      User=postgres
+      ExecStart=/usr/bin/pgbackrest --stanza={{ pgbackrest_stanza }} --type={{ item.type }} backup
+  loop:
+    - { name: full, type: full }
+    - { name: diff, type: diff }
+
+- name: systemd timers
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/pgbackrest-{{ item.name }}.timer
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=pgbackrest {{ item.name }} schedule
+      [Timer]
+      OnCalendar={{ item.sched }}
+      Persistent=true
+      RandomizedDelaySec={{ item.delay }}
+      [Install]
+      WantedBy=timers.target
+  loop:
+    - { name: full, sched: "*-*-* 02:00:00", delay: 1800 }
+    - { name: diff, sched: "hourly",         delay: 300  }
+
+- name: Enable timers
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+    daemon_reload: true
+  loop:
+    - pgbackrest-full.timer
+    - pgbackrest-diff.timer

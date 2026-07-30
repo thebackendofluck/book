@@ -1,0 +1,39 @@
+name = "bet-brazil-sigap-reporter"
+main = "src/sigap-reporter.ts"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = false
+
+[vars]
+ENVIRONMENT = "staging"
+PLATFORM_NAME = "AcmeToCasino Brasil"
+SIGAP_API_URL = "https://homolog.sigap.gov.br/v1"
+SIGAP_OPERATOR_ID = "DEMO-001"
+JWT_ISSUER = "cloud-acmetocasino.com"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "bet_brazil_db"
+database_id = "9086c214-4376-462d-a97c-8522204349fd"
+
+[[queues.producers]]
+binding = "SIGAP_BATCH_QUEUE"
+queue = "sigap-batch-delivery"
+
+[[queues.consumers]]
+queue = "sigap-batch-delivery"
+max_batch_size = 10
+max_batch_timeout = 5
+max_retries = 10
+dead_letter_queue = "sigap-batch-dead-letter"
+
+[[mtls_certificates]]
+binding = "SIGAP_MTLS"
+certificate_id = "REPLACE_WITH_SIGAP_MTLS_CERTIFICATE_ID"
+
+# Configure the temporary reception JWT through the deployment secret manager:
+# wrangler secret put SIGAP_BEARER_TOKEN
+#
+# Configure the compliance-origin HMAC secret shared with the AWS pipeline.
+# Every POST /batches must be signed with it or the request is rejected 401:
+# wrangler secret put SIGAP_COMPLIANCE_HMAC_SECRET

@@ -1,0 +1,12 @@
+# /etc/systemd/system/casino-cluster-switchover.timer
+[Unit]
+Description=Daily Casino K3s Cluster Switchover
+Requires=casino-cluster-switchover.service
+
+[Timer]
+OnCalendar=*-*-* 03:00:00 UTC
+Persistent=true
+RandomizedDelaySec=0
+
+[Install]
+WantedBy=timers.target

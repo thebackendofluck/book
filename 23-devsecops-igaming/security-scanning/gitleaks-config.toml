@@ -1,0 +1,296 @@
+# =============================================================================
+# Gitleaks Configuration for iGaming Platform
+# =============================================================================
+# Chapter 23: DevSecOps - Security Scanning
+#
+# WHY: iGaming platforms are high-value targets. A single leaked database
+# credential grants access to player balances, personal data, and payment
+# information. This configuration defines custom rules targeting secrets
+# specific to gambling platform infrastructure.
+#
+# USAGE:
+#   gitleaks detect --config gitleaks-config.toml
+#   gitleaks detect --config gitleaks-config.toml --log-opts="--all"
+#
+# =============================================================================
+
+title = "iGaming Platform Gitleaks Configuration"
+
+# =============================================================================
+# PostgreSQL Connection Strings
+# WHY: The player database contains PII, financial records, and responsible
+# gaming flags. A leaked connection string bypasses all application-layer
+# access controls. Common formats: postgresql://user:pass@host/db
+# =============================================================================
+[[rules]]
+id = "postgresql-connection-string"
+description = "PostgreSQL connection string with embedded credentials"
+regex = '''(?i)postgres(?:ql)?:\/\/[^:]+:[^@]+@[^\/]+\/\w+'''
+tags = ["database", "postgresql", "credentials"]
+keywords = ["postgres", "postgresql"]
+
+[[rules]]
+id = "postgresql-password-env"
+description = "PostgreSQL password in environment variable or config"
+regex = '''(?i)(?:PGPASSWORD|PG_PASSWORD|POSTGRES_PASSWORD|DB_PASSWORD)\s*[=:]\s*['"]?[^\s'"]{8,}['"]?'''
+tags = ["database", "postgresql", "credentials"]
+keywords = ["PGPASSWORD", "PG_PASSWORD", "POSTGRES_PASSWORD", "DB_PASSWORD"]
+
+# =============================================================================
+# Redis Connection Strings
+# WHY: Redis stores session tokens, rate limiting counters, and cached player
+# balances. A leaked Redis URI allows session hijacking and balance
+# manipulation in real-time.
+# =============================================================================
+[[rules]]
+id = "redis-connection-string"
+description = "Redis connection string with password"
+regex = '''(?i)redis(?:s)?:\/\/[^:]*:[^@]+@[^\/]+(?::\d+)?'''
+tags = ["database", "redis", "credentials"]
+keywords = ["redis"]
+
+[[rules]]
+id = "redis-password"
+description = "Redis password in configuration"
+regex = '''(?i)(?:REDIS_PASSWORD|REDIS_AUTH|requirepass)\s*[=:]\s*['"]?[^\s'"]{6,}['"]?'''
+tags = ["database", "redis", "credentials"]
+keywords = ["REDIS_PASSWORD", "REDIS_AUTH", "requirepass"]
+
+# =============================================================================
+# Payment Gateway Credentials
+# WHY: Payment credentials provide direct access to player funds. Stripe
+# secret keys can initiate refunds/charges. PayPal client secrets can
+# capture authorized payments. Crypto wallet keys = irreversible theft.
+# =============================================================================
+[[rules]]
+id = "stripe-secret-key"
+description = "Stripe secret API key"
+regex = '''sk_live_[a-zA-Z0-9]{24,}'''
+tags = ["payment", "stripe", "api-key"]
+keywords = ["sk_live_"]
+
+[[rules]]
+id = "stripe-restricted-key"
+description = "Stripe restricted API key"
+regex = '''rk_live_[a-zA-Z0-9]{24,}'''
+tags = ["payment", "stripe", "api-key"]
+keywords = ["rk_live_"]
+
+[[rules]]
+id = "paypal-client-secret"
+description = "PayPal client secret or access token"
+regex = '''(?i)(?:paypal[_-]?(?:client[_-]?)?secret|PAYPAL_SECRET)\s*[=:]\s*['"]?[A-Za-z0-9_-]{20,}['"]?'''
+tags = ["payment", "paypal", "credentials"]
+keywords = ["paypal", "PAYPAL_SECRET"]
+
+[[rules]]
+id = "crypto-private-key"
+description = "Cryptocurrency private key (hex format)"
+regex = '''(?i)(?:private[_-]?key|WALLET_KEY|HOT_WALLET_KEY)\s*[=:]\s*['"]?(?:0x)?[a-fA-F0-9]{64}['"]?'''
+tags = ["payment", "crypto", "private-key"]
+keywords = ["private_key", "WALLET_KEY", "HOT_WALLET_KEY"]
+
+[[rules]]
+id = "crypto-mnemonic"
+description = "Cryptocurrency mnemonic/seed phrase (12 or 24 words)"
+regex = '''(?i)(?:mnemonic|seed[_-]?phrase)\s*[=:]\s*['"]?(?:[a-z]+\s+){11,23}[a-z]+['"]?'''
+tags = ["payment", "crypto", "mnemonic"]
+keywords = ["mnemonic", "seed_phrase", "seed phrase"]
+
+# =============================================================================
+# Gaming License Keys
+# WHY: Gaming license validation keys prove platform legitimacy to regulators.
+# If leaked, a rogue operator could impersonate a licensed platform or
+# tamper with compliance reporting.
+# =============================================================================
+[[rules]]
+id = "gaming-license-key"
+description = "Gaming license API key or validation token"
+regex = '''(?i)(?:GAMING_LICENSE_KEY|MGA_API_KEY|UKGC_KEY|LICENSE_SECRET|GLI_TOKEN|CURACAO_KEY)\s*[=:]\s*['"]?[^\s'"]{16,}['"]?'''
+tags = ["compliance", "gaming-license", "credentials"]
+keywords = ["GAMING_LICENSE_KEY", "MGA_API_KEY", "UKGC_KEY", "LICENSE_SECRET", "GLI_TOKEN", "CURACAO_KEY"]
+
+[[rules]]
+id = "rng-certification-key"
+description = "RNG certification or audit signing key"
+regex = '''(?i)(?:RNG_CERT_KEY|RNG_SIGNING_KEY|RNG_SECRET|AUDIT_SIGNING_KEY)\s*[=:]\s*['"]?[^\s'"]{16,}['"]?'''
+tags = ["compliance", "rng", "credentials"]
+keywords = ["RNG_CERT_KEY", "RNG_SIGNING_KEY", "RNG_SECRET", "AUDIT_SIGNING_KEY"]
+
+# =============================================================================
+# HSM PINs and Wrap Keys
+# WHY: Hardware Security Modules protect the most sensitive cryptographic
+# material (RNG seeds, payment signing keys). HSM PINs and wrap keys are
+# the keys to the kingdom -- compromise means total platform takeover.
+# =============================================================================
+[[rules]]
+id = "hsm-pin"
+description = "HSM PIN or partition password"
+regex = '''(?i)(?:HSM_PIN|HSM_PASSWORD|PARTITION_PIN|SO_PIN|CO_PIN|CU_PIN|CRYPTO_OFFICER_PIN)\s*[=:]\s*['"]?[^\s'"]{4,}['"]?'''
+tags = ["hsm", "cryptography", "credentials"]
+keywords = ["HSM_PIN", "HSM_PASSWORD", "PARTITION_PIN", "SO_PIN", "CO_PIN", "CU_PIN", "CRYPTO_OFFICER_PIN"]
+
+[[rules]]
+id = "hsm-wrap-key"
+description = "HSM key wrapping material"
+regex = '''(?i)(?:WRAP_KEY|WRAPPING_KEY|KEK_KEY|KEY_ENCRYPTION_KEY|HSM_WRAP)\s*[=:]\s*['"]?[A-Fa-f0-9]{32,}['"]?'''
+tags = ["hsm", "cryptography", "key-material"]
+keywords = ["WRAP_KEY", "WRAPPING_KEY", "KEK_KEY", "KEY_ENCRYPTION_KEY", "HSM_WRAP"]
+
+# =============================================================================
+# AWS Credentials
+# WHY: AWS hosts game servers, databases, and S3 buckets with player data.
+# Leaked AWS keys have led to crypto-mining on company accounts and
+# data exfiltration from S3 buckets containing player records.
+# =============================================================================
+[[rules]]
+id = "aws-access-key"
+description = "AWS Access Key ID"
+regex = '''(?:A3T[A-Z0-9]|AKIA|AGPA|AROA|AIPA|ANPA|ANVA|ASIA)[A-Z0-9]{16}'''
+tags = ["cloud", "aws", "credentials"]
+keywords = ["AKIA", "ASIA", "AGPA", "AROA", "AIPA", "ANPA", "ANVA", "A3T"]
+
+[[rules]]
+id = "aws-secret-key"
+description = "AWS Secret Access Key"
+regex = '''(?i)(?:aws_secret_access_key|aws_secret_key)\s*[=:]\s*['"]?[A-Za-z0-9/+=]{40}['"]?'''
+tags = ["cloud", "aws", "credentials"]
+keywords = ["aws_secret_access_key", "aws_secret_key"]
+
+# =============================================================================
+# GCP Credentials
+# WHY: GCP service account keys in JSON format are common in iGaming
+# platforms using BigQuery for analytics or Cloud KMS for key management.
+# =============================================================================
+[[rules]]
+id = "gcp-service-account-key"
+description = "GCP service account private key"
+regex = '''"private_key"\s*:\s*"-----BEGIN (?:RSA )?PRIVATE KEY-----'''
+tags = ["cloud", "gcp", "credentials"]
+keywords = ["private_key", "BEGIN RSA PRIVATE KEY", "BEGIN PRIVATE KEY"]
+
+[[rules]]
+id = "gcp-api-key"
+description = "GCP API key"
+regex = '''AIza[0-9A-Za-z_-]{35}'''
+tags = ["cloud", "gcp", "api-key"]
+keywords = ["AIza"]
+
+# =============================================================================
+# Azure Credentials
+# WHY: Azure hosts many European iGaming platforms due to GDPR compliance
+# features. Storage account keys grant access to blob storage potentially
+# containing player documents (KYC scans, ID photos).
+# =============================================================================
+[[rules]]
+id = "azure-storage-key"
+description = "Azure Storage Account key"
+regex = '''(?i)(?:AccountKey|AZURE_STORAGE_KEY)\s*[=:]\s*['"]?[A-Za-z0-9+/]{86}==['"]?'''
+tags = ["cloud", "azure", "credentials"]
+keywords = ["AccountKey", "AZURE_STORAGE_KEY"]
+
+[[rules]]
+id = "azure-client-secret"
+description = "Azure AD client secret"
+regex = '''(?i)(?:AZURE_CLIENT_SECRET|AZURE_SECRET)\s*[=:]\s*['"]?[A-Za-z0-9_~.-]{34,}['"]?'''
+tags = ["cloud", "azure", "credentials"]
+keywords = ["AZURE_CLIENT_SECRET", "AZURE_SECRET"]
+
+# =============================================================================
+# JWT Secrets
+# WHY: JWT signing secrets allow forging authentication tokens. An attacker
+# with the JWT secret can impersonate any player, any admin, and any
+# internal service -- accessing balances, initiating withdrawals, and
+# modifying game outcomes.
+# =============================================================================
+[[rules]]
+id = "jwt-secret"
+description = "JWT signing secret"
+regex = '''(?i)(?:JWT_SECRET|JWT_SIGNING_KEY|JWT_KEY|TOKEN_SECRET|AUTH_SECRET|SESSION_SECRET)\s*[=:]\s*['"]?[^\s'"]{16,}['"]?'''
+tags = ["authentication", "jwt", "credentials"]
+keywords = ["JWT_SECRET", "JWT_SIGNING_KEY", "JWT_KEY", "TOKEN_SECRET", "AUTH_SECRET", "SESSION_SECRET"]
+
+[[rules]]
+id = "jwt-private-key-inline"
+description = "JWT RS256/ES256 private key embedded inline"
+regex = '''-----BEGIN (?:RSA |EC )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC )?PRIVATE KEY-----'''
+tags = ["authentication", "jwt", "private-key"]
+keywords = ["BEGIN RSA PRIVATE KEY", "BEGIN EC PRIVATE KEY", "BEGIN PRIVATE KEY"]
+
+# =============================================================================
+# Kafka SASL Credentials
+# WHY: Kafka carries real-time bet events, wallet transactions, and
+# compliance audit logs. SASL credentials grant read/write access to
+# all topics -- an attacker could inject fake bets, modify transaction
+# logs, or exfiltrate the entire event stream.
+# =============================================================================
+[[rules]]
+id = "kafka-sasl-password"
+description = "Kafka SASL/SCRAM password"
+regex = '''(?i)(?:KAFKA_SASL_PASSWORD|KAFKA_PASSWORD|SASL_PASSWORD|sasl\.password)\s*[=:]\s*['"]?[^\s'"]{8,}['"]?'''
+tags = ["messaging", "kafka", "credentials"]
+keywords = ["KAFKA_SASL_PASSWORD", "KAFKA_PASSWORD", "SASL_PASSWORD", "sasl.password"]
+
+[[rules]]
+id = "kafka-jaas-config"
+description = "Kafka JAAS configuration with embedded credentials"
+regex = '''(?i)sasl\.jaas\.config\s*=.*password\s*=\s*['"]?[^\s'"]+['"]?'''
+tags = ["messaging", "kafka", "credentials"]
+keywords = ["sasl.jaas.config"]
+
+# =============================================================================
+# Generic Patterns
+# WHY: Catch-all patterns for secrets that don't match specific formats
+# but follow common naming conventions in configuration files.
+# =============================================================================
+[[rules]]
+id = "generic-api-key"
+description = "Generic API key pattern"
+regex = '''(?i)(?:api[_-]?key|apikey)\s*[=:]\s*['"]?[A-Za-z0-9_-]{20,}['"]?'''
+tags = ["generic", "api-key"]
+keywords = ["api_key", "apikey", "api-key", "API_KEY"]
+
+[[rules]]
+id = "generic-secret"
+description = "Generic secret pattern"
+regex = '''(?i)(?:secret|password|passwd|pwd)\s*[=:]\s*['"]?[^\s'"]{8,}['"]?'''
+tags = ["generic", "credentials"]
+keywords = ["secret", "password", "passwd", "pwd"]
+[rules.allowlist]
+regexes = [
+    '''(?i)password\s*[=:]\s*['"]?\$\{''',         # Variable references ${...}
+    '''(?i)password\s*[=:]\s*['"]?<''',             # Placeholder <password>
+    '''(?i)password\s*[=:]\s*['"]?changeme['"]?''', # Known placeholder
+    '''(?i)password\s*[=:]\s*['"]?example['"]?''',  # Documentation example
+    '''(?i)password\s*[=:]\s*['"]?your[_-]''',      # Placeholder your_password
+    '''(?i)password\s*[=:]\s*['"]?CHANGE[_-]ME''',  # Placeholder CHANGE_ME
+]
+
+# =============================================================================
+# Allowlists
+# WHY: Test fixtures and documentation intentionally contain example
+# credentials. Without allowlists, every test run generates false
+# positives that train developers to ignore findings.
+# =============================================================================
+[allowlist]
+description = "Global allowlist for test fixtures and documentation"
+paths = [
+    '''tests/fixtures/.*''',
+    '''tests/conftest\.py''',
+    '''docs/examples/.*''',
+    '''\.pre-commit-config\.yaml''',
+    '''README\.md''',
+    '''CONTRIBUTING\.md''',
+    '''docker-compose\.test\.ya?ml''',
+    '''\.github/workflows/.*\.ya?ml''',
+    '''scripts/chapter-23/security-scanning/.*''',
+]
+regexes = [
+    '''(?i)example[_-]?(?:password|secret|key|token)''',
+    '''(?i)test[_-]?(?:password|secret|key|token)''',
+    '''(?i)fake[_-]?(?:password|secret|key|token)''',
+    '''(?i)dummy[_-]?(?:password|secret|key|token)''',
+    '''(?i)placeholder''',
+    '''sk_test_[a-zA-Z0-9]+''',    # Stripe test keys are safe
+    '''pk_test_[a-zA-Z0-9]+''',    # Stripe test publishable keys
+]

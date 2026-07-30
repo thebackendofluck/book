@@ -1,0 +1,23 @@
+[Unit]
+Description=Jurisdiction Transfer Gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=gateway
+Group=gateway
+WorkingDirectory=/opt/jurisdiction-gateway
+Environment=JGW_PORT=8210
+Environment=JGW_REDIS_URL=redis://127.0.0.1:6379/3
+Environment=JGW_RULES=/etc/jurisdiction-gateway/rules.yaml
+Environment=JGW_SQLITE=/var/lib/jurisdiction-gateway/audit.db
+Environment=JGW_LOG_DIR=/var/log/jurisdiction-gateway
+ExecStart=/opt/jurisdiction-gateway/.venv/bin/python -m app.main
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

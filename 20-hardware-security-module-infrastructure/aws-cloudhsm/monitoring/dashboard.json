@@ -1,0 +1,288 @@
+{
+  "widgets": [
+    {
+      "type": "text",
+      "x": 0,
+      "y": 0,
+      "width": 24,
+      "height": 1,
+      "properties": {
+        "markdown": "## CloudHSM + OpenBao — Security Operations Dashboard\n_PCI DSS 4.0.1 · FIPS 140-2 Level 3 · iGaming Platform_"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 1,
+      "width": 6,
+      "height": 6,
+      "properties": {
+        "title": "HSM Count (Active HSMs in Cluster)",
+        "view": "singleValue",
+        "metrics": [
+          [
+            "AWS/CloudHSM",
+            "HsmCount",
+            "ClusterId",
+            "${CLUSTER_ID}",
+            {
+              "stat": "Average",
+              "period": 300,
+              "color": "#2ca02c"
+            }
+          ]
+        ],
+        "period": 300,
+        "annotations": {
+          "horizontal": [
+            {
+              "label": "Minimum for HA",
+              "value": 2,
+              "color": "#d62728"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 6,
+      "y": 1,
+      "width": 6,
+      "height": 6,
+      "properties": {
+        "title": "HSM Request Rate (Operations/min)",
+        "view": "timeSeries",
+        "metrics": [
+          [
+            "AWS/CloudHSM",
+            "RequestCount",
+            "ClusterId",
+            "${CLUSTER_ID}",
+            {
+              "stat": "Sum",
+              "period": 60,
+              "label": "Total Requests"
+            }
+          ]
+        ],
+        "period": 60,
+        "view": "timeSeries",
+        "stacked": false
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 1,
+      "width": 6,
+      "height": 6,
+      "properties": {
+        "title": "HSM Failed Requests",
+        "view": "timeSeries",
+        "metrics": [
+          [
+            "AWS/CloudHSM",
+            "FailedRequestCount",
+            "ClusterId",
+            "${CLUSTER_ID}",
+            {
+              "stat": "Sum",
+              "period": 60,
+              "label": "Failed Requests",
+              "color": "#d62728"
+            }
+          ]
+        ],
+        "period": 60,
+        "annotations": {
+          "horizontal": [
+            {
+              "label": "Alert threshold",
+              "value": 10,
+              "color": "#ff7f0e"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 18,
+      "y": 1,
+      "width": 6,
+      "height": 6,
+      "properties": {
+        "title": "OpenBao NLB — Healthy Hosts",
+        "view": "singleValue",
+        "metrics": [
+          [
+            "AWS/NetworkELB",
+            "HealthyHostCount",
+            "LoadBalancer",
+            "${NLB_ARN_SUFFIX}",
+            "TargetGroup",
+            "${TG_ARN_SUFFIX}",
+            {
+              "stat": "Average",
+              "period": 60
+            }
+          ]
+        ],
+        "annotations": {
+          "horizontal": [
+            {
+              "label": "Minimum (quorum)",
+              "value": 3,
+              "color": "#d62728"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 7,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "OpenBao NLB — Request Latency (p50/p95/p99)",
+        "view": "timeSeries",
+        "metrics": [
+          [
+            "AWS/NetworkELB",
+            "TargetResponseTime",
+            "LoadBalancer",
+            "${NLB_ARN_SUFFIX}",
+            {
+              "stat": "p50",
+              "period": 60,
+              "label": "p50",
+              "color": "#2ca02c"
+            }
+          ],
+          [
+            ".",
+            ".",
+            ".",
+            ".",
+            {
+              "stat": "p95",
+              "period": 60,
+              "label": "p95",
+              "color": "#ff7f0e"
+            }
+          ],
+          [
+            ".",
+            ".",
+            ".",
+            ".",
+            {
+              "stat": "p99",
+              "period": 60,
+              "label": "p99",
+              "color": "#d62728"
+            }
+          ]
+        ],
+        "period": 60,
+        "yAxis": {
+          "left": {
+            "label": "Seconds",
+            "showUnits": false
+          }
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 7,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "OpenBao ASG — Instance Count",
+        "view": "timeSeries",
+        "metrics": [
+          [
+            "AWS/AutoScaling",
+            "GroupInServiceInstances",
+            "AutoScalingGroupName",
+            "${ASG_NAME}",
+            {
+              "stat": "Average",
+              "period": 60,
+              "label": "In Service",
+              "color": "#2ca02c"
+            }
+          ],
+          [
+            ".",
+            "GroupDesiredCapacity",
+            ".",
+            ".",
+            {
+              "stat": "Average",
+              "period": 60,
+              "label": "Desired",
+              "color": "#1f77b4"
+            }
+          ]
+        ],
+        "annotations": {
+          "horizontal": [
+            {
+              "label": "Minimum",
+              "value": 3,
+              "color": "#d62728"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "log",
+      "x": 0,
+      "y": 13,
+      "width": 24,
+      "height": 6,
+      "properties": {
+        "title": "OpenBao Audit Log — Recent Key Operations",
+        "query": "SOURCE '/igaming/${ENV}/openbao/audit' | fields @timestamp, request.operation, request.path, response.data.key_version, auth.display_name\n| filter request.path like /transit/ or request.path like /pki/\n| sort @timestamp desc\n| limit 50",
+        "region": "${REGION}",
+        "view": "table"
+      }
+    },
+    {
+      "type": "log",
+      "x": 0,
+      "y": 19,
+      "width": 24,
+      "height": 6,
+      "properties": {
+        "title": "OpenBao Audit Log — Failed Operations (Security Alert)",
+        "query": "SOURCE '/igaming/${ENV}/openbao/audit' | fields @timestamp, request.operation, request.path, response.data.error, request.remote_address\n| filter type = 'response' and response.data.error != null\n| sort @timestamp desc\n| limit 100",
+        "region": "${REGION}",
+        "view": "table"
+      }
+    },
+    {
+      "type": "alarm",
+      "x": 0,
+      "y": 25,
+      "width": 24,
+      "height": 4,
+      "properties": {
+        "title": "Active Alarms — CloudHSM and OpenBao",
+        "alarms": [
+          "${ALARM_HSM_COUNT_ARN}",
+          "${ALARM_HSM_FAILURES_ARN}",
+          "${ALARM_OPENBAO_UNHEALTHY_ARN}",
+          "${ALARM_OPENBAO_ASG_ARN}"
+        ]
+      }
+    }
+  ]
+}

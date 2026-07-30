@@ -1,0 +1,9 @@
+# Managed by Ansible — network-tuning role.
+# Sets MTU on the primary interface to {{ network_mtu }}.
+# For on-premises Proxmox/KVM clusters: 9000.
+# For cloud/hybrid: override network_mtu=1500 in host_vars.
+network:
+  version: 2
+  ethernets:
+    {{ network_iface }}:
+      mtu: {{ network_mtu }}

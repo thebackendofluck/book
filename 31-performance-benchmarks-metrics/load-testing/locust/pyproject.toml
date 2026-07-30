@@ -1,0 +1,44 @@
+[tool.poetry]
+name = "acmetocasino-load-testing"
+version = "0.1.0"
+description = ""
+authors = ["AcmeToCasino Engineering <engineering@acmetocasino.com>"]
+
+[tool.poetry.dependencies]
+python = ">=3.10,<4.0"
+Faker = "^6.6.0"
+numpy = "^1.20.1"
+locust = ">=2.20.0,<3.0.0"
+Flask = ">=3.1.3,<4.0.0"
+sentry-sdk = ">=2.19.0"
+datadog = "^0.40.1"
+PyYAML = "^6.0.2"
+seaborn = "^0.11.1"
+psycopg2-binary = "^2.8.6"
+boto3 = "^1.17.25"
+mistune = "^3.2.1"
+urllib3 = "^2.7.0"  # CVE-fix; force transitive upgrade
+# Transitive pins to clear Dependabot advisories (locust -> socketio stack,
+# jupyter -> bleach): keep these floors even if unpinned above.
+python-socketio = ">=5.16.2"
+python-engineio = ">=4.13.2"
+msgpack = ">=1.2.1"
+bleach = ">=6.4.0"
+
+[tool.poetry.dev-dependencies]
+jupyter = "^1.0.0"
+pandas = "^2.2.3"
+seaborn = "^0.11.1"
+black = ">=26.3.1"
+plotly = "^4.14.3"
+rope = "^0.18.0"
+boto3 = "^1.17.26"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[dependency-groups]
+dev = [
+    "jupyter-server (>=2.20.0,<3.0.0)"
+]

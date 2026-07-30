@@ -1,0 +1,358 @@
+# Companion code for "The Backend of Luck" - Chapter 24, Security and Compliance.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# =============================================================================
+# ci-pqc-gate.yml — GitHub Actions workflow: PQC compliance gate
+# Chapter 24g: Post-Quantum Cryptography for iGaming
+#
+# Purpose:
+#   Runs gustcol/post-quantum-check on every pull request to main.
+#   - FAILS   the PR if any scan result is ACTION_REQUIRED
+#   - WARNS   (non-blocking) if any result is NEEDS_ATTENTION
+#   - Posts a structured summary comment on the PR with findings
+#
+# Scans:
+#   - Python code (crypto library usage)
+#   - JavaScript / TypeScript (WebCrypto, jose, node-forge, etc.)
+#   - Helm charts (TLS configuration values)
+#   - Kubernetes manifests (cert-manager, TLS secrets, ingress annotations)
+#
+# Prerequisites:
+#   - Repository must have the gustcol/post-quantum-check action available
+#   - GITHUB_TOKEN permissions: pull-requests: write, contents: read
+# =============================================================================
+
+name: PQC Compliance Gate
+
+on:
+  pull_request:
+    branches:
+      - main
+    # Run on any file change — cryptographic usage can appear anywhere
+    # Narrow this if the repo is very large and scan time is a concern
+    paths:
+      - '**/*.py'
+      - '**/*.js'
+      - '**/*.ts'
+      - '**/*.jsx'
+      - '**/*.tsx'
+      - '**/*.yaml'
+      - '**/*.yml'
+      - '**/*.json'
+      - '**/Chart.yaml'
+      - '**/values*.yaml'
+      - '**/k8s/**'
+      - '**/kubernetes/**'
+      - '**/helm/**'
+      - '**/manifests/**'
+      - '**/*.tf'
+      - '**/*.tfvars'
+
+# Minimal permissions — only write to PRs and read code
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
+# Cancel in-progress runs on the same PR to avoid redundant scans
+concurrency:
+  group: pqc-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Job 1: PQC scan — Python
+  # ---------------------------------------------------------------------------
+  pqc-scan-python:
+    name: PQC Scan — Python
+    runs-on: ubuntu-latest
+    outputs:
+      result: ${{ steps.scan.outputs.result }}
+      summary: ${{ steps.scan.outputs.summary }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for accurate diff-based scanning
+
+      - name: Run post-quantum-check on Python files
+        id: scan
+        uses: gustcol/post-quantum-check@v1
+        with:
+          scan-path: '.'
+          language: python
+          output-format: github-actions
+          fail-on: ACTION_REQUIRED
+          # Set to 'true' to also fail on NEEDS_ATTENTION (stricter mode)
+          strict: false
+
+      - name: Upload Python scan results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pqc-scan-python-${{ github.event.pull_request.number }}
+          path: pqc-results-python.json
+          retention-days: 30
+
+
+  # ---------------------------------------------------------------------------
+  # Job 2: PQC scan — JavaScript / TypeScript
+  # ---------------------------------------------------------------------------
+  pqc-scan-javascript:
+    name: PQC Scan — JavaScript/TypeScript
+    runs-on: ubuntu-latest
+    outputs:
+      result: ${{ steps.scan.outputs.result }}
+      summary: ${{ steps.scan.outputs.summary }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run post-quantum-check on JavaScript/TypeScript files
+        id: scan
+        uses: gustcol/post-quantum-check@v1
+        with:
+          scan-path: '.'
+          language: javascript
+          output-format: github-actions
+          fail-on: ACTION_REQUIRED
+          strict: false
+
+      - name: Upload JS/TS scan results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pqc-scan-javascript-${{ github.event.pull_request.number }}
+          path: pqc-results-javascript.json
+          retention-days: 30
+
+
+  # ---------------------------------------------------------------------------
+  # Job 3: PQC scan — Helm charts
+  # ---------------------------------------------------------------------------
+  pqc-scan-helm:
+    name: PQC Scan — Helm Charts
+    runs-on: ubuntu-latest
+    outputs:
+      result: ${{ steps.scan.outputs.result }}
+      summary: ${{ steps.scan.outputs.summary }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run post-quantum-check on Helm charts
+        id: scan
+        uses: gustcol/post-quantum-check@v1
+        with:
+          scan-path: '.'
+          language: helm
+          output-format: github-actions
+          fail-on: ACTION_REQUIRED
+          strict: false
+
+      - name: Upload Helm scan results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pqc-scan-helm-${{ github.event.pull_request.number }}
+          path: pqc-results-helm.json
+          retention-days: 30
+
+
+  # ---------------------------------------------------------------------------
+  # Job 4: PQC scan — Kubernetes manifests
+  # ---------------------------------------------------------------------------
+  pqc-scan-k8s:
+    name: PQC Scan — Kubernetes Manifests
+    runs-on: ubuntu-latest
+    outputs:
+      result: ${{ steps.scan.outputs.result }}
+      summary: ${{ steps.scan.outputs.summary }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run post-quantum-check on Kubernetes manifests
+        id: scan
+        uses: gustcol/post-quantum-check@v1
+        with:
+          scan-path: '.'
+          language: kubernetes
+          output-format: github-actions
+          fail-on: ACTION_REQUIRED
+          strict: false
+
+      - name: Upload K8s scan results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pqc-scan-k8s-${{ github.event.pull_request.number }}
+          path: pqc-results-kubernetes.json
+          retention-days: 30
+
+
+  # ---------------------------------------------------------------------------
+  # Job 5: Aggregate results and post PR comment
+  # Depends on all scan jobs; always runs to post the comment
+  # ---------------------------------------------------------------------------
+  pqc-report:
+    name: PQC Compliance Report
+    runs-on: ubuntu-latest
+    needs:
+      - pqc-scan-python
+      - pqc-scan-javascript
+      - pqc-scan-helm
+      - pqc-scan-k8s
+    # Always run so we can post results even if a scan job failed
+    if: always()
+
+    steps:
+      - name: Download all scan artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: pqc-scan-*-${{ github.event.pull_request.number }}
+          merge-multiple: true
+          path: pqc-results/
+
+      - name: Aggregate results and determine gate status
+        id: aggregate
+        run: |
+          set -euo pipefail
+
+          ACTION_REQUIRED=false
+          NEEDS_ATTENTION=false
+          REPORT=""
+
+          for result_file in pqc-results/*.json; do
+            [[ -f "$result_file" ]] || continue
+            lang=$(basename "$result_file" | sed 's/pqc-results-\(.*\)\.json/\1/')
+
+            # Parse result status from JSON
+            status=$(jq -r '.overall_status // "UNKNOWN"' "$result_file" 2>/dev/null || echo "UNKNOWN")
+            findings=$(jq -r '.findings | length // 0' "$result_file" 2>/dev/null || echo "0")
+            action_count=$(jq -r '[.findings[] | select(.severity=="ACTION_REQUIRED")] | length' "$result_file" 2>/dev/null || echo "0")
+            attention_count=$(jq -r '[.findings[] | select(.severity=="NEEDS_ATTENTION")] | length' "$result_file" 2>/dev/null || echo "0")
+
+            if [[ "$status" == "ACTION_REQUIRED" ]]; then
+              ACTION_REQUIRED=true
+              REPORT+="| $lang | ❌ ACTION_REQUIRED | $action_count | $attention_count |\n"
+            elif [[ "$status" == "NEEDS_ATTENTION" ]]; then
+              NEEDS_ATTENTION=true
+              REPORT+="| $lang | ⚠️ NEEDS_ATTENTION | $action_count | $attention_count |\n"
+            elif [[ "$status" == "COMPLIANT" || "$status" == "OK" ]]; then
+              REPORT+="| $lang | ✅ COMPLIANT | 0 | 0 |\n"
+            else
+              REPORT+="| $lang | ❓ UNKNOWN | - | - |\n"
+            fi
+          done
+
+          echo "action_required=$ACTION_REQUIRED" >> "$GITHUB_OUTPUT"
+          echo "needs_attention=$NEEDS_ATTENTION" >> "$GITHUB_OUTPUT"
+
+          # Write report to a file for the PR comment step
+          {
+            echo "## PQC Compliance Gate Results"
+            echo ""
+            if [[ "$ACTION_REQUIRED" == "true" ]]; then
+              echo "### ❌ FAILED — Action Required"
+              echo ""
+              echo "This PR introduces or retains cryptographic usage that requires remediation"
+              echo "before merging. Please review the findings below and update to PQC-safe"
+              echo "alternatives or add migration tracking issues."
+            elif [[ "$NEEDS_ATTENTION" == "true" ]]; then
+              echo "### ⚠️ WARNING — Attention Needed"
+              echo ""
+              echo "This PR contains cryptographic patterns that will require migration."
+              echo "This is non-blocking but should be tracked in your PQC migration backlog."
+            else
+              echo "### ✅ PASSED — PQC Compliant"
+              echo ""
+              echo "No quantum-vulnerable cryptographic patterns requiring immediate action were found."
+            fi
+            echo ""
+            echo "| Language | Status | Action Required | Needs Attention |"
+            echo "|----------|--------|-----------------|-----------------|"
+            printf "%b" "$REPORT"
+            echo ""
+            echo "**Scan powered by [gustcol/post-quantum-check](https://github.com/gustcol/post-quantum-check)**"
+            echo ""
+            echo "<details>"
+            echo "<summary>What does each status mean?</summary>"
+            echo ""
+            echo "- **ACTION_REQUIRED** — Cryptographic usage that is quantum-vulnerable and has a"
+            echo "  PQC replacement available today. Must be remediated before the migration deadline."
+            echo "- **NEEDS_ATTENTION** — Usage that is quantum-vulnerable but migration path is still"
+            echo "  being standardised, or the dependency is external (e.g. a third-party CA)."
+            echo "- **COMPLIANT** — No quantum-vulnerable patterns found in scanned files."
+            echo ""
+            echo "</details>"
+          } > pr-comment.md
+
+          cat pr-comment.md
+
+      - name: Post results as PR comment
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const comment = fs.readFileSync('pr-comment.md', 'utf8');
+            const prNumber = context.payload.pull_request.number;
+
+            // Find existing PQC gate comment and update it (avoid comment spam)
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+            });
+
+            const existingComment = comments.data.find(c =>
+              c.body.includes('PQC Compliance Gate Results') &&
+              c.user.login === 'github-actions[bot]'
+            );
+
+            if (existingComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existingComment.id,
+                body: comment,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body: comment,
+              });
+            }
+
+      - name: Fail if ACTION_REQUIRED findings exist
+        if: steps.aggregate.outputs.action_required == 'true'
+        run: |
+          echo "::error::PQC gate FAILED — ACTION_REQUIRED findings detected."
+          echo "::error::Review the PQC Compliance Gate Results comment on this PR."
+          exit 1
+
+      - name: Warn if NEEDS_ATTENTION findings exist
+        if: steps.aggregate.outputs.needs_attention == 'true' && steps.aggregate.outputs.action_required == 'false'
+        run: |
+          echo "::warning::PQC gate WARNING — NEEDS_ATTENTION findings detected."
+          echo "::warning::These are non-blocking but should be tracked in your PQC migration backlog."

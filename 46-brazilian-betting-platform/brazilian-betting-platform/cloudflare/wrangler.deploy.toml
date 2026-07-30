@@ -1,0 +1,60 @@
+# Deployment config — cloud-acmetocasino.com custom domain
+name = "bet-brazil-api-gateway"
+main = "src/api-gateway.ts"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Never expose a public *.workers.dev subdomain — traffic must enter through the
+# routed custom domain so the gateway security checks cannot be bypassed.
+workers_dev = false
+
+routes = [
+  { pattern = "api.cloud-acmetocasino.com/*", zone_name = "cloud-acmetocasino.com" }
+]
+
+[vars]
+ENVIRONMENT = "staging"
+PLATFORM_NAME = "AcmeToCasino Brasil"
+AWS_CORE_API_URL = "https://core-staging.example.internal"
+SIGAP_API_URL = "https://homolog.sigap.gov.br/v1"
+SIGAP_OPERATOR_ID = "DEMO-001"
+PIX_PSP_BASE_URL = "https://sandbox.psp.example.com.br/pix/v2"
+JWT_ISSUER = "cloud-acmetocasino.com"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "bet_brazil_db"
+database_id = "9086c214-4376-462d-a97c-8522204349fd"
+
+[[kv_namespaces]]
+binding = "PLAYER_SESSIONS"
+id = "9ca24326370a4cc9ac8f8b063e9b7fb3"
+
+[[kv_namespaces]]
+binding = "ODDS_CACHE"
+id = "4f6ff8523a8945d6be4b7699cac89f66"
+
+[[kv_namespaces]]
+binding = "RATE_LIMITS"
+id = "34ff14d7023a4372a3db51ac6ba881bb"
+
+[[r2_buckets]]
+binding = "KYC_DOCUMENTS"
+bucket_name = "kyc-documents-br"
+
+[durable_objects]
+bindings = [
+  { name = "BETTING_SESSION", class_name = "BettingSession", script_name = "bet-brazil-session-manager" }
+]
+
+[[services]]
+binding = "PIX_WEBHOOK_SVC"
+service = "bet-brazil-pix-webhook"
+
+[[services]]
+binding = "SIGAP_REPORTER_SVC"
+service = "bet-brazil-sigap-reporter"
+
+[[services]]
+binding = "ODDS_FEED_SVC"
+service = "bet-brazil-odds-feed"

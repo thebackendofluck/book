@@ -1,0 +1,30 @@
+name = "betbr-sports-engine"
+main = "src/index.ts"
+compatibility_date = "2024-09-25"
+workers_dev = false  # served via custom route; do not expose the *.workers.dev preview
+
+[triggers]
+crons = ["*/30 * * * *"]  # Every 30 minutes (48/day — stays well under 7,500/day Pro tier)
+
+[[kv_namespaces]]
+binding = "SPORTS_DATA"
+id = "REPLACE_WITH_ACTUAL_SPORTS_DATA_KV_ID"
+# After running: wrangler kv namespace create SPORTS_DATA
+# Copy the id here and also add preview_id for local dev:
+# preview_id = "TO_BE_CREATED_PREVIEW"
+
+[vars]
+# Legacy — kept so the Env interface compiles; not used for live fixtures
+API_FOOTBALL_BASE = "https://v3.football.api-sports.io"
+# Brasileirão A (71), Serie B (72), Copa BR (73), Libertadores (13), Sul-Americana (11),
+# UCL (2), EPL (39), La Liga (140), Serie A IT (135), Paulista A1 (475), Carioca 1 (624), Copa do Nordeste (612)
+DEFAULT_LEAGUE_IDS = "71,72,73,13,11,2,39,140,135,475,624,612"
+
+# API keys must be set as Worker secrets (never in wrangler.toml). Two distinct keys:
+# wrangler secret put RAPIDAPI_KEY       # live fixtures (free-api-live-football-data)
+# wrangler secret put API_FOOTBALL_KEY   # API-Football v3 (upcoming, standings, scorers)
+
+# Route to custom domain on cloud-acmetocasino.com zone
+[[routes]]
+pattern = "sports-api.cloud-acmetocasino.com/*"
+zone_name = "cloud-acmetocasino.com"

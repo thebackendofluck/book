@@ -1,0 +1,113 @@
+name                = "acmetocasino-gdpr-test"
+main                = "gdpr-worker-entry.ts"
+compatibility_date  = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Restrict Worker execution to EU datacenters only.
+# This is the strongest available GDPR Art.32 control at the Workers layer.
+# Cloudflare guarantees all request processing happens within the EU.
+# Reference: https://developers.cloudflare.com/workers/configuration/smart-placement/
+#
+# Workers paid plan only. Remove for free plan deployments.
+# smart_placement = { mode = "off" }  # Disable smart placement for EU-only
+
+[vars]
+ENVIRONMENT   = "production"
+PLATFORM_NAME = "AcmeToCasino GDPR Test"
+# CF_ANALYTICS_TOKEN stored as a Secret (see below)
+
+# Secrets (set via `wrangler secret put` — NEVER add actual values here):
+#
+#   npx wrangler secret put ENCRYPTION_KEY
+#     — AES-256 base64 (32 bytes): openssl rand -base64 32
+#     — Used by FieldCipher for PII column encryption (Art.32)
+#
+#   npx wrangler secret put HMAC_KEY
+#     — HMAC-SHA-256 base64 (32 bytes): openssl rand -base64 32
+#     — Used by computeSearchToken for deterministic email lookup
+#     — NEVER rotate without re-computing all email_hash values
+#
+#   npx wrangler secret put JWT_SECRET
+#     — JWT signing secret
+#
+# Verification:
+#   npx wrangler secret list
+#   # Should show: ENCRYPTION_KEY, HMAC_KEY, JWT_SECRET
+
+# ── D1 Database (EU jurisdiction) ──────────────────────────────────────────
+# Database created with WEUR location_hint for GDPR compliance.
+# Creation command:
+#   npx wrangler d1 create acmetocasino-gdpr-test-db --location=weur
+#
+# The --location=weur flag restricts database storage to Western Europe
+# (Amsterdam, Paris, Frankfurt). This satisfies GDPR Art.44 for EU players.
+#
+# Note: location_hint is honoured on a best-effort basis. For legally binding
+# data residency guarantees, Cloudflare's Enterprise Data Localisation Suite
+# provides contractual assurances. The DPA at cloudflare.com/dpa covers
+# Cloudflare's role as a data processor (GDPR Art.28).
+[[d1_databases]]
+binding       = "DB"
+database_name = "acmetocasino-gdpr-test-db"
+database_id   = "a2a40f31-e9c4-49fb-96a8-1c2ef8b8d70c"
+# Note: this database is in ENAM (Eastern North America) — the free plan limit
+# of 10 databases was reached, so the existing acmetocasino-db is reused here.
+# For a production EU deployment, create a dedicated database with:
+#   npx wrangler d1 create acmetocasino-gdpr-eu-db --location=weur
+# Then update this database_id accordingly.
+
+# ── DEK Store (KV) ─────────────────────────────────────────────────────────
+# Stores per-player Data Encryption Keys (DEKs), encrypted under the KEK.
+# DEK deletion = crypto-shredding (GDPR Art.17 erasure).
+[[kv_namespaces]]
+binding    = "DEK_STORE"
+id         = "REPLACE_WITH_ACTUAL_DEK_STORE_KV_ID"
+preview_id = "REPLACE_WITH_ACTUAL_DEK_STORE_KV_ID"
+
+# ── Sessions KV ────────────────────────────────────────────────────────────
+[[kv_namespaces]]
+binding    = "SESSIONS"
+id         = "REPLACE_WITH_ACTUAL_SESSIONS_KV_ID"
+preview_id = "REPLACE_WITH_ACTUAL_SESSIONS_KV_PREVIEW_ID"
+
+# ── R2 Bucket (KYC documents) ──────────────────────────────────────────────
+# For GDPR data residency, create the bucket with location_hint:
+#   npx wrangler r2 bucket create acmetocasino-kyc-docs-eu \
+#     --location=weur
+[[r2_buckets]]
+binding     = "STORAGE"
+bucket_name = "acmetocasino-kyc-docs-eu"
+
+# ── Worker route ───────────────────────────────────────────────────────────
+[[routes]]
+pattern   = "gdpr-test.cloud-acmetocasino.com/*"
+zone_name = "cloud-acmetocasino.com"
+
+# ── Scheduled cron (key rotation) ──────────────────────────────────────────
+# Triggers the DEK rotation job on the first day of each month.
+# The cron handler re-wraps all active DEKs under the current KEK,
+# which can be rotated separately via `wrangler secret put ENCRYPTION_KEY`.
+[triggers]
+crons = ["0 2 1 * *"]  # 02:00 UTC on the 1st of each month
+
+# ── Production environment ─────────────────────────────────────────────────
+# The [env.production] block overrides vars for the production deployment.
+# Deploy to production with: npx wrangler deploy --env production
+[env.production]
+name = "acmetocasino-gdpr-production"
+
+[env.production.vars]
+ENVIRONMENT = "production"
+
+# Production D1 (separate from test database)
+[[env.production.d1_databases]]
+binding       = "DB"
+database_name = "acmetocasino-db"
+database_id   = "a2a40f31-e9c4-49fb-96a8-1c2ef8b8d70c"
+
+# ── Staging environment ────────────────────────────────────────────────────
+[env.staging]
+name = "acmetocasino-gdpr-staging"
+
+[env.staging.vars]
+ENVIRONMENT = "staging"

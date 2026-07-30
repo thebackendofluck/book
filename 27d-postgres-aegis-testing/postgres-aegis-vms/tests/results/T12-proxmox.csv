@@ -1,0 +1,10 @@
+2026-04-23T11:00:10Z,shard-b,failover_seconds,123
+2026-04-23T11:29:15Z,shard-b,failover_seconds,122
+2026-04-23T11:32:57Z,shard-b,failover_seconds,122
+2026-04-23T11:36:51Z,shard-b,failover_seconds,122
+2026-04-23T11:40:45Z,shard-b,failover_seconds,122
+2026-04-23T11:44:41Z,shard-b,failover_seconds,123
+2026-04-23T11:48:34Z,shard-b,failover_seconds,122
+2026-04-23T12:24:52Z,shard-b,failover_seconds,182
+2026-04-23T12:24:52Z,shard-b,availability_pct,51.25
+2026-04-23T12:24:52Z,shard-b,failed_writes,78

@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Traffic Classifier Dashboard</title>
+  <!-- DOMPurify for safe HTML sanitisation before any innerHTML assignment -->
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.5/dist/purify.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --card: #1a1d27;
+      --border: #2a2d3e;
+      --text: #e2e8f0;
+      --muted: #8892a4;
+      --accent: #6366f1;
+      --green: #10b981;
+      --yellow: #f59e0b;
+      --red: #ef4444;
+      --blue: #3b82f6;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      font-size: 14px;
+      min-height: 100vh;
+    }
+    .dashboard {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 16px;
+      padding: 20px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+    }
+    .card-title {
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 16px;
+    }
+
+    /* Status banner */
+    .status-banner {
+      grid-column: 1 / -1;
+      padding: 16px 20px;
+      border-radius: 12px;
+      border: 2px solid;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .status-banner.normal   { border-color: var(--green); background: rgba(16,185,129,.08); }
+    .status-banner.campaign { border-color: var(--blue);  background: rgba(59,130,246,.08); }
+    .status-banner.attack   { border-color: var(--red);   background: rgba(239,68,68,.08);
+                               animation: pulse-red 1.5s infinite; }
+    .status-banner.unknown  { border-color: var(--yellow);background: rgba(245,158,11,.08); }
+    @keyframes pulse-red {
+      0%,100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.4); }
+      50%      { box-shadow: 0 0 0 8px rgba(239,68,68,0); }
+    }
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 18px;
+      font-weight: 700;
+    }
+    .dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      display: inline-block;
+      flex-shrink: 0;
+    }
+    .dot.green  { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .dot.blue   { background: var(--blue);  box-shadow: 0 0 6px var(--blue); }
+    .dot.red    { background: var(--red);   box-shadow: 0 0 6px var(--red);
+                  animation: blink 1s infinite; }
+    .dot.yellow { background: var(--yellow);box-shadow: 0 0 6px var(--yellow); }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+    .confidence-bar-wrap { display: flex; align-items: center; gap: 10px; }
+    .confidence-bar {
+      height: 8px; flex: 1; border-radius: 4px;
+      background: var(--border); overflow: hidden;
+    }
+    .confidence-bar-fill {
+      height: 100%; border-radius: 4px;
+      transition: width 0.6s ease, background 0.4s ease;
+    }
+    .confidence-label { font-size: 13px; color: var(--muted); min-width: 40px; text-align: right; }
+    .override-buttons { display: flex; gap: 10px; flex-wrap: wrap; }
+    .btn {
+      padding: 8px 14px; border-radius: 8px; border: 1px solid;
+      cursor: pointer; font-size: 12px; font-weight: 600;
+      transition: all 0.15s; background: transparent; color: inherit;
+    }
+    .btn:hover { transform: translateY(-1px); }
+    .btn-campaign { border-color: var(--blue);  color: var(--blue); }
+    .btn-campaign:hover { background: rgba(59,130,246,0.15); }
+    .btn-attack   { border-color: var(--red);   color: var(--red); }
+    .btn-attack:hover   { background: rgba(239,68,68,0.15); }
+    .btn-normal   { border-color: var(--green); color: var(--green); }
+    .btn-normal:hover   { background: rgba(16,185,129,0.15); }
+
+    /* Radar */
+    .radar-card { grid-row: span 1; }
+    canvas { max-width: 100%; }
+
+    /* Metrics */
+    .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .metric-value { font-size: 24px; font-weight: 700; line-height: 1; }
+    .metric-label { font-size: 11px; color: var(--muted); margin-top: 4px; }
+    .rps-sparkline {
+      display: flex; align-items: flex-end; gap: 2px;
+      height: 40px; margin-top: 8px;
+    }
+    .rps-bar {
+      flex: 1; background: var(--accent); border-radius: 2px 2px 0 0;
+      opacity: 0.7; transition: height 0.3s ease; min-height: 2px;
+    }
+
+    /* History */
+    .history-card { grid-column: 1 / -1; }
+    table { width: 100%; border-collapse: collapse; }
+    th {
+      text-align: left; font-size: 11px; text-transform: uppercase;
+      letter-spacing: 0.06em; color: var(--muted);
+      padding: 8px 10px; border-bottom: 1px solid var(--border);
+    }
+    td { padding: 10px; border-bottom: 1px solid rgba(42,45,62,0.5); vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    .badge {
+      display: inline-flex; align-items: center;
+      padding: 3px 8px; border-radius: 4px;
+      font-size: 11px; font-weight: 600;
+    }
+    .badge-attack   { background: rgba(239,68,68,.15);  color: var(--red); }
+    .badge-campaign { background: rgba(59,130,246,.15); color: var(--blue); }
+    .badge-organic  { background: rgba(16,185,129,.15); color: var(--green); }
+    .badge-unknown  { background: rgba(245,158,11,.15); color: var(--yellow); }
+    .badge-normal   { background: rgba(100,116,139,.15);color: var(--muted); }
+
+    /* Calendar */
+    .campaign-list { display: flex; flex-direction: column; gap: 10px; }
+    .campaign-item {
+      padding: 12px; border-radius: 8px;
+      border-left: 3px solid var(--accent);
+      background: rgba(99,102,241,.06);
+    }
+    .campaign-item.active   { border-left-color: var(--green); background: rgba(16,185,129,.06); }
+    .campaign-item.upcoming { border-left-color: var(--yellow);background: rgba(245,158,11,.06); }
+    .campaign-name { font-weight: 600; margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
+    .campaign-meta { font-size: 12px; color: var(--muted); }
+    .campaign-geo {
+      display: inline-block; margin: 0 3px; padding: 1px 6px;
+      border-radius: 3px; background: var(--border); font-size: 11px;
+    }
+
+    /* Explanation */
+    .explanation-list { list-style: none; }
+    .explanation-list li {
+      padding: 6px 0; border-bottom: 1px solid var(--border);
+      font-size: 13px; color: var(--muted);
+    }
+    .explanation-list li:last-child { border-bottom: none; }
+    .connecting { color: var(--muted); font-size: 12px; animation: fade 1s infinite alternate; }
+    @keyframes fade { from {opacity:1} to {opacity:0.4} }
+  </style>
+</head>
+<body>
+<div class="dashboard">
+
+  <!-- Status Banner -->
+  <div class="status-banner normal" id="statusBanner">
+    <div>
+      <div class="status-pill">
+        <span class="dot green" id="statusDot"></span>
+        <span id="statusLabel">NORMAL</span>
+      </div>
+      <div style="margin-top:6px;font-size:13px;color:var(--muted)" id="statusSub">
+        Connecting to classifier…
+      </div>
+    </div>
+    <div>
+      <div style="margin-bottom:8px;font-size:12px;color:var(--muted)">Confidence</div>
+      <div class="confidence-bar-wrap">
+        <div class="confidence-bar">
+          <div class="confidence-bar-fill" id="confidenceBar" style="width:0%;background:var(--green)"></div>
+        </div>
+        <span class="confidence-label" id="confidenceLabel">0%</span>
+      </div>
+    </div>
+    <div class="override-buttons">
+      <button class="btn btn-campaign" onclick="override('MARKETING_CAMPAIGN')">This is a Campaign</button>
+      <button class="btn btn-attack"   onclick="override('ATTACK')">This is an Attack</button>
+      <button class="btn btn-normal"   onclick="override('NORMAL')">False Alarm</button>
+    </div>
+  </div>
+
+  <!-- Radar chart -->
+  <div class="card radar-card">
+    <div class="card-title">Traffic Fingerprint</div>
+    <canvas id="radarChart" height="280"></canvas>
+  </div>
+
+  <!-- Live metrics -->
+  <div class="card">
+    <div class="card-title">Live Metrics</div>
+    <div class="metrics-grid">
+      <div><div class="metric-value" id="metRps">—</div><div class="metric-label">Requests / sec</div></div>
+      <div><div class="metric-value" id="metUniqueIps">—</div><div class="metric-label">Unique IPs</div></div>
+      <div><div class="metric-value" id="metConversion">—</div><div class="metric-label">Conversion rate</div></div>
+      <div><div class="metric-value" id="metDcRatio">—</div><div class="metric-label">Datacenter IPs</div></div>
+    </div>
+    <div class="rps-sparkline" id="rpsSparkline"></div>
+  </div>
+
+  <!-- Explanation -->
+  <div class="card">
+    <div class="card-title">Why this Classification?</div>
+    <ul class="explanation-list" id="explanationList">
+      <li class="connecting">Connecting…</li>
+    </ul>
+  </div>
+
+  <!-- Calendar -->
+  <div class="card" style="grid-column: span 2">
+    <div class="card-title">Marketing Calendar</div>
+    <div class="campaign-list" id="campaignList">
+      <span class="connecting">Loading campaigns…</span>
+    </div>
+  </div>
+
+  <!-- History -->
+  <div class="card history-card">
+    <div class="card-title">Recent Classification Decisions</div>
+    <table>
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Classification</th>
+          <th>Confidence</th>
+          <th>Campaign</th>
+        </tr>
+      </thead>
+      <tbody id="historyBody"></tbody>
+    </table>
+  </div>
+
+</div>
+<script>
+/* -------------------------------------------------------------------------
+   Configuration — can be overridden before load via window.TC_*
+   ---------------------------------------------------------------------- */
+const API_BASE      = window.TC_API_BASE      || 'http://localhost:8080';
+const CALENDAR_BASE = window.TC_CALENDAR_BASE || 'http://localhost:8081';
+const POLL_INTERVAL = window.TC_POLL_INTERVAL || 5000;
+const HISTORY_ROWS  = 15;
+
+/* Sanitiser shorthand — ALL HTML that enters innerHTML passes through this */
+const safe = (html) => DOMPurify.sanitize(String(html), { ALLOWED_TAGS: [], ALLOWED_ATTR: [] });
+const safeHtml = (html) => DOMPurify.sanitize(String(html));
+
+/* -------------------------------------------------------------------------
+   Radar chart
+   ---------------------------------------------------------------------- */
+let radarChart = null;
+let rpsHistory = new Array(30).fill(0);
+
+function initRadar() {
+  const ctx = document.getElementById('radarChart').getContext('2d');
+  radarChart = new Chart(ctx, {
+    type: 'radar',
+    data: {
+      labels: [
+        'UA Diversity','Path Diversity','Session Depth',
+        'TLS Diversity','Referrer','Conversion',
+        '~DC Ratio','~Timing Reg','~New IPs'
+      ],
+      datasets: [{
+        label: 'Current',
+        data: new Array(9).fill(0),
+        backgroundColor: 'rgba(99,102,241,0.15)',
+        borderColor: '#6366f1',
+        borderWidth: 2,
+        pointBackgroundColor: '#6366f1',
+        pointRadius: 4,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        r: {
+          min: 0, max: 1,
+          ticks: { display: false, stepSize: 0.25 },
+          grid: { color: 'rgba(255,255,255,0.07)' },
+          angleLines: { color: 'rgba(255,255,255,0.07)' },
+          pointLabels: { color: '#8892a4', font: { size: 11 } }
+        }
+      }
+    }
+  });
+}
+
+function updateRadar(fp) {
+  if (!radarChart || !fp) return;
+  const n = (v, fallback=0) => typeof v === 'number' ? v : fallback;
+  radarChart.data.datasets[0].data = [
+    n(fp.ua_diversity),
+    n(fp.path_diversity),
+    n(fp.session_depth),
+    n(fp.tls_fingerprint_diversity),
+    n(fp.referrer_presence),
+    n(fp.conversion_signals),
+    1 - n(fp.datacenter_ip_ratio),
+    1 - n(fp.request_timing_regularity),
+    1 - n(fp.new_ip_ratio),
+  ];
+  const score = n(fp.normalized_score, 0.5);
+  const colour = score > 0.65 ? '#ef4444' : score > 0.35 ? '#f59e0b' : '#10b981';
+  radarChart.data.datasets[0].borderColor = colour;
+  radarChart.data.datasets[0].backgroundColor = colour + '26';
+  radarChart.update('none');
+}
+
+/* -------------------------------------------------------------------------
+   Status banner — uses textContent only; no HTML injection
+   ---------------------------------------------------------------------- */
+const STATUS_CONFIG = {
+  ATTACK:             { cls: 'attack',   dot: 'red',    bar: '#ef4444' },
+  MARKETING_CAMPAIGN: { cls: 'campaign', dot: 'blue',   bar: '#3b82f6' },
+  ORGANIC_SURGE:      { cls: 'campaign', dot: 'blue',   bar: '#10b981' },
+  UNKNOWN:            { cls: 'unknown',  dot: 'yellow', bar: '#f59e0b' },
+  NORMAL:             { cls: 'normal',   dot: 'green',  bar: '#10b981' },
+};
+
+function updateBanner(data) {
+  const cls = data.traffic_class || 'NORMAL';
+  const cfg = STATUS_CONFIG[cls] || STATUS_CONFIG.NORMAL;
+
+  document.getElementById('statusBanner').className = 'status-banner ' + cfg.cls;
+  document.getElementById('statusDot').className    = 'dot ' + cfg.dot;
+  document.getElementById('statusLabel').textContent = cls.replace(/_/g, ' ');
+
+  const ts      = new Date((data.timestamp || Date.now()/1000) * 1000).toLocaleTimeString();
+  const camp    = data.campaign_name ? ` — Campaign: "${data.campaign_name}"` : '';
+  document.getElementById('statusSub').textContent = `Last update: ${ts}${camp}`;
+
+  const pct = Math.round((data.confidence || 0) * 100);
+  const bar = document.getElementById('confidenceBar');
+  bar.style.width      = pct + '%';
+  bar.style.background = cfg.bar;
+  document.getElementById('confidenceLabel').textContent = pct + '%';
+}
+
+/* -------------------------------------------------------------------------
+   Live metrics — textContent only
+   ---------------------------------------------------------------------- */
+function updateMetrics(m) {
+  if (!m) return;
+  document.getElementById('metRps').textContent       = m.requests_per_second != null ? Math.round(m.requests_per_second).toLocaleString() : '—';
+  document.getElementById('metUniqueIps').textContent  = m.unique_ips != null ? m.unique_ips.toLocaleString() : '—';
+  document.getElementById('metConversion').textContent = m.conversion_rate != null ? (m.conversion_rate * 100).toFixed(2) + '%' : '—';
+  document.getElementById('metDcRatio').textContent    = m.datacenter_ip_ratio != null ? (m.datacenter_ip_ratio * 100).toFixed(1) + '%' : '—';
+
+  rpsHistory.shift();
+  rpsHistory.push(m.requests_per_second || 0);
+  const max   = Math.max(...rpsHistory, 1);
+  const spark = document.getElementById('rpsSparkline');
+  /* Build sparkline via DOM — no innerHTML with user data */
+  spark.replaceChildren();
+  rpsHistory.forEach(v => {
+    const bar = document.createElement('div');
+    bar.className = 'rps-bar';
+    bar.style.height = Math.max(4, (v / max) * 100) + '%';
+    spark.appendChild(bar);
+  });
+}
+
+/* -------------------------------------------------------------------------
+   Explanation list — text only
+   ---------------------------------------------------------------------- */
+function updateExplanation(items) {
+  const el = document.getElementById('explanationList');
+  el.replaceChildren();
+  if (!items || !items.length) {
+    const li = document.createElement('li');
+    li.textContent = 'No explanation available.';
+    el.appendChild(li);
+    return;
+  }
+  items.forEach(text => {
+    const li = document.createElement('li');
+    li.textContent = text;   // safe: textContent, not innerHTML
+    el.appendChild(li);
+  });
+}
+
+/* -------------------------------------------------------------------------
+   History table — DOM construction, no innerHTML with untrusted data
+   ---------------------------------------------------------------------- */
+function badgeClass(cls) {
+  const m = { ATTACK:'badge-attack', MARKETING_CAMPAIGN:'badge-campaign',
+              ORGANIC_SURGE:'badge-organic', UNKNOWN:'badge-unknown', NORMAL:'badge-normal' };
+  return m[cls] || 'badge-normal';
+}
+function barColour(cls) {
+  const m = { ATTACK:'#ef4444', MARKETING_CAMPAIGN:'#3b82f6',
+              ORGANIC_SURGE:'#10b981', UNKNOWN:'#f59e0b', NORMAL:'#64748b' };
+  return m[cls] || '#64748b';
+}
+
+function updateHistory(history) {
+  const tbody = document.getElementById('historyBody');
+  tbody.replaceChildren();
+
+  if (!history || !history.length) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 4;
+    td.textContent = 'No history yet.';
+    td.style.cssText = 'text-align:center;color:var(--muted);padding:16px';
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+    return;
+  }
+
+  history.slice(0, HISTORY_ROWS).forEach(row => {
+    const cls  = row.traffic_class || 'UNKNOWN';
+    const pct  = Math.round((row.confidence || 0) * 100);
+    const ts   = new Date((row.timestamp || 0) * 1000).toLocaleTimeString();
+
+    const tr = document.createElement('tr');
+
+    // Time
+    const tdTs = document.createElement('td');
+    tdTs.textContent = ts;
+    tdTs.style.cssText = 'color:var(--muted);font-size:12px';
+    tr.appendChild(tdTs);
+
+    // Classification badge
+    const tdCls = document.createElement('td');
+    const badge = document.createElement('span');
+    badge.className   = 'badge ' + badgeClass(cls);
+    badge.textContent = cls.replace(/_/g, ' ');
+    tdCls.appendChild(badge);
+    tr.appendChild(tdCls);
+
+    // Confidence bar
+    const tdConf = document.createElement('td');
+    const wrap   = document.createElement('div');
+    wrap.style.cssText = 'display:flex;align-items:center;gap:8px';
+    const barWrap = document.createElement('div');
+    barWrap.className = 'confidence-bar';
+    barWrap.style.width = '80px';
+    barWrap.style.height = '6px';
+    const fill = document.createElement('div');
+    fill.className        = 'confidence-bar-fill';
+    fill.style.width      = pct + '%';
+    fill.style.background = barColour(cls);
+    barWrap.appendChild(fill);
+    const pctLabel = document.createElement('span');
+    pctLabel.textContent = pct + '%';
+    pctLabel.style.fontSize = '12px';
+    wrap.appendChild(barWrap);
+    wrap.appendChild(pctLabel);
+    tdConf.appendChild(wrap);
+    tr.appendChild(tdConf);
+
+    // Campaign
+    const tdCamp = document.createElement('td');
+    tdCamp.textContent = row.campaign_name || '—';
+    tdCamp.style.color = row.campaign_name ? 'var(--blue)' : 'var(--muted)';
+    tr.appendChild(tdCamp);
+
+    tbody.appendChild(tr);
+  });
+}
+
+/* -------------------------------------------------------------------------
+   Marketing calendar — DOM construction for untrusted strings
+   ---------------------------------------------------------------------- */
+function fmtDuration(s) {
+  if (!s || s < 0) return '—';
+  if (s < 60)   return Math.round(s) + 's';
+  if (s < 3600) return Math.floor(s/60) + 'm';
+  return Math.floor(s/3600) + 'h ' + Math.floor((s%3600)/60) + 'm';
+}
+
+function appendCampaignItem(container, c, type) {
+  const div = document.createElement('div');
+  div.className = 'campaign-item ' + type;
+
+  const nameDiv = document.createElement('div');
+  nameDiv.className = 'campaign-name';
+
+  if (type === 'active') {
+    const dot = document.createElement('span');
+    dot.className = 'dot green';
+    nameDiv.appendChild(dot);
+  }
+
+  const nameSpan = document.createElement('span');
+  nameSpan.textContent = c.name || c.id || 'Unnamed campaign';
+  nameDiv.appendChild(nameSpan);
+
+  if (type === 'active') {
+    const pill = document.createElement('span');
+    pill.textContent = 'LIVE';
+    pill.style.cssText = 'font-size:11px;color:var(--green);margin-left:8px;';
+    nameDiv.appendChild(pill);
+  }
+  div.appendChild(nameDiv);
+
+  const meta = document.createElement('div');
+  meta.className = 'campaign-meta';
+
+  const metaText = document.createTextNode(
+    [
+      c.campaign_type || '',
+      type === 'active'
+        ? 'Ends in ' + fmtDuration(c.ends_in_seconds)
+        : 'Starts in ' + fmtDuration((c.start_time || 0) - Date.now()/1000),
+      ((c.expected_multiplier || c.expected_traffic_multiplier) || '?') + 'x expected',
+    ].filter(Boolean).join(' · ')
+  );
+  meta.appendChild(metaText);
+
+  // Geo tags
+  const geos = c.target_geos || [];
+  if (geos.length) {
+    geos.forEach(g => {
+      const tag = document.createElement('span');
+      tag.className   = 'campaign-geo';
+      tag.textContent = g;   // ISO-3166 code — safe text
+      meta.appendChild(tag);
+    });
+  }
+  div.appendChild(meta);
+  container.appendChild(div);
+}
+
+function updateCalendar(active, upcoming) {
+  const el = document.getElementById('campaignList');
+  el.replaceChildren();
+
+  let count = 0;
+  (active || []).forEach(c => { appendCampaignItem(el, c, 'active'); count++; });
+  (upcoming || []).slice(0, 4).forEach(c => { appendCampaignItem(el, c, 'upcoming'); count++; });
+
+  if (!count) {
+    const msg = document.createElement('span');
+    msg.style.color   = 'var(--muted)';
+    msg.textContent   = 'No active or upcoming campaigns.';
+    el.appendChild(msg);
+  }
+}
+
+/* -------------------------------------------------------------------------
+   API polling
+   ---------------------------------------------------------------------- */
+async function fetchClassification() {
+  try {
+    const [statusResp, histResp] = await Promise.all([
+      fetch(`${API_BASE}/status`),
+      fetch(`${API_BASE}/history?n=${HISTORY_ROWS}`),
+    ]);
+    if (!statusResp.ok) throw new Error('Status HTTP ' + statusResp.status);
+    const status  = await statusResp.json();
+    const history = histResp.ok ? await histResp.json() : [];
+    const latest  = history[0] || {};
+
+    updateBanner({
+      traffic_class: status.current_classification,
+      confidence:    latest.confidence || 0,
+      timestamp:     latest.timestamp || Date.now()/1000,
+      campaign_name: latest.campaign_name || null,
+    });
+    updateRadar(latest.fingerprint || null);
+    updateMetrics(latest.metrics_snapshot || null);
+    updateExplanation(latest.explanation || []);
+    updateHistory(history);
+  } catch (err) {
+    document.getElementById('statusSub').textContent = 'API error: ' + err.message;
+  }
+}
+
+async function fetchCalendar() {
+  try {
+    const [a, u] = await Promise.all([
+      fetch(`${CALENDAR_BASE}/campaigns/active/summary`),
+      fetch(`${CALENDAR_BASE}/campaigns/upcoming?within_hours=48`),
+    ]);
+    updateCalendar(a.ok ? await a.json() : [], u.ok ? await u.json() : []);
+  } catch (_) { /* Silently degrade — classifier still works without calendar */ }
+}
+
+/* -------------------------------------------------------------------------
+   Override buttons
+   ---------------------------------------------------------------------- */
+async function override(classification) {
+  // Allowlist — never trust DOM/user input for classification values
+  const allowed = ['MARKETING_CAMPAIGN', 'ATTACK', 'NORMAL'];
+  if (!allowed.includes(classification)) return;
+  if (!confirm(`Override classification to "${classification}"?`)) return;
+
+  try {
+    await fetch(`${API_BASE}/override`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        classification,
+        operator: 'noc-dashboard',
+        timestamp: Date.now() / 1000,
+      }),
+    });
+  } catch (_) { /* Graceful — UI update regardless */ }
+
+  updateBanner({
+    traffic_class: classification,
+    confidence:    1.0,
+    timestamp:     Date.now() / 1000,
+    campaign_name: classification === 'MARKETING_CAMPAIGN' ? 'Manual override' : null,
+  });
+  updateExplanation([`NOC manual override: classified as ${classification}`]);
+}
+
+/* -------------------------------------------------------------------------
+   Init
+   ---------------------------------------------------------------------- */
+document.addEventListener('DOMContentLoaded', () => {
+  initRadar();
+  fetchClassification();
+  fetchCalendar();
+  setInterval(fetchClassification, POLL_INTERVAL);
+  setInterval(fetchCalendar, POLL_INTERVAL * 2);
+});
+</script>
+</body>
+</html>

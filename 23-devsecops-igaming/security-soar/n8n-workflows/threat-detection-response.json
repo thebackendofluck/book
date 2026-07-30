@@ -1,0 +1,780 @@
+{
+  "name": "AcmeToCasino - Threat Detection and Automated Response",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "security-events",
+        "responseMode": "onReceived",
+        "responseData": "firstEntryJson",
+        "options": {}
+      },
+      "id": "node-webhook-trigger",
+      "name": "Webhook: Receive Log Events",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [180, 300],
+      "webhookId": "acme-security-events-webhook"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "seconds",
+              "secondsInterval": 30
+            }
+          ]
+        }
+      },
+      "id": "node-schedule-trigger",
+      "name": "Schedule: Poll Logs Every 30s",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [180, 480]
+    },
+    {
+      "parameters": {
+        "operation": "consume",
+        "queue": "security-events",
+        "options": {
+          "contentIsMsgPack": false,
+          "jsonParseBody": true,
+          "onlyContent": false,
+          "parallelProcessing": 5
+        }
+      },
+      "id": "node-amqp-trigger",
+      "name": "AMQP: Consume security-events Topic",
+      "type": "n8n-nodes-base.amqpTrigger",
+      "typeVersion": 1,
+      "position": [180, 660],
+      "credentials": {
+        "amqp": {
+          "id": "amqp-security-creds",
+          "name": "RabbitMQ Security Broker"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "multiplex",
+        "options": {}
+      },
+      "id": "node-merge-triggers",
+      "name": "Merge: All Event Sources",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2,
+      "position": [420, 480]
+    },
+    {
+      "parameters": {
+        "jsCode": "// BRUTE FORCE DETECTION ENGINE - AcmeToCasino Security SOAR v1.0\n//\n// State is held in process memory. For multi-instance deployments,\n// replace global.bruteForceState reads/writes with HTTP calls to\n// an internal Redis cache service node.\n\nconst now = Date.now();\nconst WINDOW_MS = 5 * 60 * 1000;\nconst ALERT_THRESHOLD = 5;\nconst BLOCK_THRESHOLD = 10;\nconst SPRAY_THRESHOLD = 10;\n\nif (!global.bruteForceState) {\n  global.bruteForceState = {\n    failedLogins: {},\n    successAfterFail: {},\n    passwordSpray: {},\n    sprayTimestamps: {}\n  };\n}\n\nconst state = global.bruteForceState;\nconst detections = [];\nconst prune = (arr) => arr.filter(e => (now - e.ts) < WINDOW_MS);\n\nfor (const item of $input.all()) {\n  const log = item.json;\n  const eventType = (log.event_type || log.type || '').toLowerCase();\n  const sourceIp  = log.source_ip || log.ip || log.remote_addr || 'unknown';\n  const username  = log.username  || log.user || log.account   || 'unknown';\n  const success   = log.success === true || log.status === 'success' || log.result === 'ok';\n  const timestamp = log.timestamp ? new Date(log.timestamp).getTime() : now;\n\n  if (!['auth', 'login', 'authentication'].includes(eventType)) {\n    continue;\n  }\n\n  if (state.failedLogins[sourceIp]) {\n    state.failedLogins[sourceIp] = prune(state.failedLogins[sourceIp]);\n  }\n\n  if (!success) {\n    if (!state.failedLogins[sourceIp])   state.failedLogins[sourceIp]   = [];\n    if (!state.passwordSpray[sourceIp])  state.passwordSpray[sourceIp]  = new Set();\n    if (!state.sprayTimestamps[sourceIp]) state.sprayTimestamps[sourceIp] = [];\n    if (!state.successAfterFail[sourceIp]) state.successAfterFail[sourceIp] = { failCount: 0, lastFail: null };\n\n    state.failedLogins[sourceIp].push({ ts: timestamp, username });\n    state.successAfterFail[sourceIp].failCount++;\n    state.successAfterFail[sourceIp].lastFail = timestamp;\n    state.passwordSpray[sourceIp].add(username);\n    state.sprayTimestamps[sourceIp].push(timestamp);\n    state.sprayTimestamps[sourceIp] = prune(state.sprayTimestamps[sourceIp]);\n\n    const recentFails = state.failedLogins[sourceIp].length;\n\n    if (recentFails >= BLOCK_THRESHOLD) {\n      detections.push({ json: {\n        detection_type: 'BRUTE_FORCE',\n        action: 'BLOCK',\n        severity: 'CRITICAL',\n        confidence: 0.97,\n        source_ip: sourceIp,\n        username,\n        failed_attempts: recentFails,\n        window_minutes: 5,\n        timestamp: new Date(now).toISOString(),\n        ttl_seconds: 86400,\n        details: `${recentFails} failed login attempts from ${sourceIp} in 5 minutes`,\n        original_event: log\n      }});\n    } else if (recentFails >= ALERT_THRESHOLD) {\n      detections.push({ json: {\n        detection_type: 'BRUTE_FORCE',\n        action: 'ALERT',\n        severity: 'HIGH',\n        confidence: 0.90,\n        source_ip: sourceIp,\n        username,\n        failed_attempts: recentFails,\n        window_minutes: 5,\n        timestamp: new Date(now).toISOString(),\n        ttl_seconds: 86400,\n        details: `${recentFails} failed login attempts from ${sourceIp} in 5 minutes`,\n        original_event: log\n      }});\n    }\n\n    const uniqueAccounts = state.passwordSpray[sourceIp].size;\n    if (uniqueAccounts >= SPRAY_THRESHOLD) {\n      detections.push({ json: {\n        detection_type: 'PASSWORD_SPRAY',\n        action: 'BLOCK',\n        severity: 'CRITICAL',\n        confidence: 0.93,\n        source_ip: sourceIp,\n        unique_accounts_targeted: uniqueAccounts,\n        timestamp: new Date(now).toISOString(),\n        ttl_seconds: 86400,\n        details: `Password spray: ${sourceIp} targeted ${uniqueAccounts} unique accounts`,\n        original_event: log\n      }});\n    }\n  } else {\n    const entry = state.successAfterFail[sourceIp];\n    if (entry && entry.failCount >= ALERT_THRESHOLD) {\n      detections.push({ json: {\n        detection_type: 'CREDENTIAL_STUFFING',\n        action: 'BLOCK',\n        severity: 'CRITICAL',\n        confidence: 0.92,\n        source_ip: sourceIp,\n        username,\n        prior_failures: entry.failCount,\n        timestamp: new Date(now).toISOString(),\n        ttl_seconds: 86400,\n        details: `Successful login from ${sourceIp} after ${entry.failCount} failures (credential stuffing)`,\n        original_event: log\n      }});\n      state.successAfterFail[sourceIp] = { failCount: 0, lastFail: null };\n    }\n  }\n}\n\nif (detections.length === 0) {\n  return [{ json: { detection_type: 'NONE', source_ip: 'unknown' } }];\n}\nreturn detections;\n"
+      },
+      "id": "node-brute-force-detection",
+      "name": "Detect: Brute Force & Credential Stuffing",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [660, 220]
+    },
+    {
+      "parameters": {
+        "jsCode": "// DDoS DETECTION ENGINE - AcmeToCasino Security SOAR v1.0\n\nconst now = Date.now();\nconst WINDOW_MS       = 1000;\nconst SUSPICIOUS_RPS  = 100;\nconst BLOCK_RPS       = 500;\nconst SYN_THRESHOLD   = 1000;\nconst HTTP_FLOOD_RPS  = 200;\nconst SLOWLORIS_MS    = 30000;\nconst SLOWLORIS_BYTES = 512;\n\nif (!global.ddosState) {\n  global.ddosState = {\n    requestRate: {},\n    synHalfOpen: {},\n    httpFlood: {},\n    connections: {}\n  };\n}\n\nconst state = global.ddosState;\nconst detections = [];\nconst prune = (arr, w) => arr.filter(ts => (now - ts) < w);\n\nfor (const item of $input.all()) {\n  const log        = item.json;\n  const eventType  = (log.event_type || log.type || '').toLowerCase();\n  const sourceIp   = log.source_ip || log.ip || log.remote_addr || 'unknown';\n  const endpoint   = log.endpoint  || log.path || log.url || '/';\n  const userAgent  = log.user_agent || log.ua || '';\n  const connId     = log.connection_id || `${sourceIp}-${log.port || 0}`;\n  const bytesSent  = parseInt(log.bytes_sent || log.bytes || 0, 10);\n  const synState   = log.tcp_state || '';\n\n  if (['http', 'request', 'access'].includes(eventType)) {\n    if (!state.requestRate[sourceIp]) state.requestRate[sourceIp] = [];\n    state.requestRate[sourceIp].push(now);\n    state.requestRate[sourceIp] = prune(state.requestRate[sourceIp], WINDOW_MS);\n    const rps = state.requestRate[sourceIp].length;\n\n    if (rps >= BLOCK_RPS) {\n      detections.push({ json: {\n        detection_type: 'DDOS_VOLUMETRIC', action: 'BLOCK', severity: 'CRITICAL',\n        confidence: 0.98, source_ip: sourceIp, requests_per_second: rps,\n        timestamp: new Date(now).toISOString(), ttl_seconds: 3600,\n        details: `Volumetric DDoS: ${sourceIp} at ${rps} req/s (block threshold: ${BLOCK_RPS})`,\n        original_event: log\n      }});\n    } else if (rps >= SUSPICIOUS_RPS) {\n      detections.push({ json: {\n        detection_type: 'DDOS_SUSPICIOUS_RATE', action: 'ALERT', severity: 'HIGH',\n        confidence: 0.80, source_ip: sourceIp, requests_per_second: rps,\n        timestamp: new Date(now).toISOString(), ttl_seconds: 3600,\n        details: `Suspicious request rate from ${sourceIp}: ${rps} req/s`,\n        original_event: log\n      }});\n    }\n\n    const floodKey = `${sourceIp}|${endpoint}|${userAgent.substring(0, 64)}`;\n    if (!state.httpFlood[floodKey]) state.httpFlood[floodKey] = [];\n    state.httpFlood[floodKey].push(now);\n    state.httpFlood[floodKey] = prune(state.httpFlood[floodKey], WINDOW_MS);\n    const floodRps = state.httpFlood[floodKey].length;\n    if (floodRps >= HTTP_FLOOD_RPS) {\n      detections.push({ json: {\n        detection_type: 'HTTP_FLOOD', action: 'BLOCK', severity: 'CRITICAL',\n        confidence: 0.95, source_ip: sourceIp, endpoint, user_agent: userAgent,\n        requests_per_second: floodRps, timestamp: new Date(now).toISOString(), ttl_seconds: 3600,\n        details: `HTTP flood: ${sourceIp} targeting ${endpoint} at ${floodRps} req/s with identical UA`,\n        original_event: log\n      }});\n    }\n  }\n\n  if (eventType === 'tcp' || eventType === 'network') {\n    if (synState === 'SYN_RCVD' || synState === 'HALF_OPEN') {\n      state.synHalfOpen[sourceIp] = (state.synHalfOpen[sourceIp] || 0) + 1;\n    } else if (synState === 'ESTABLISHED' || synState === 'CLOSED') {\n      state.synHalfOpen[sourceIp] = Math.max(0, (state.synHalfOpen[sourceIp] || 0) - 1);\n    }\n    if ((state.synHalfOpen[sourceIp] || 0) >= SYN_THRESHOLD) {\n      detections.push({ json: {\n        detection_type: 'SYN_FLOOD', action: 'BLOCK', severity: 'CRITICAL',\n        confidence: 0.96, source_ip: sourceIp,\n        half_open_connections: state.synHalfOpen[sourceIp],\n        timestamp: new Date(now).toISOString(), ttl_seconds: 3600,\n        details: `SYN flood: ${state.synHalfOpen[sourceIp]} half-open connections from ${sourceIp}`,\n        original_event: log\n      }});\n    }\n  }\n\n  if (eventType === 'connection' || eventType === 'http') {\n    if (log.connection_start) {\n      state.connections[connId] = { startTs: new Date(log.connection_start).getTime(), bytes: bytesSent, ip: sourceIp };\n    } else if (state.connections[connId]) {\n      state.connections[connId].bytes += bytesSent;\n      const conn = state.connections[connId];\n      const duration = now - conn.startTs;\n      if (duration > SLOWLORIS_MS && conn.bytes < SLOWLORIS_BYTES) {\n        detections.push({ json: {\n          detection_type: 'SLOWLORIS', action: 'BLOCK', severity: 'HIGH',\n          confidence: 0.88, source_ip: sourceIp, connection_id: connId,\n          duration_ms: duration, bytes_sent: conn.bytes,\n          timestamp: new Date(now).toISOString(), ttl_seconds: 3600,\n          details: `Slowloris: connection from ${sourceIp} open ${Math.round(duration/1000)}s with ${conn.bytes} bytes`,\n          original_event: log\n        }});\n        delete state.connections[connId];\n      }\n    }\n  }\n}\n\nif (detections.length === 0) {\n  return [{ json: { detection_type: 'NONE', source_ip: 'unknown' } }];\n}\nreturn detections;\n"
+      },
+      "id": "node-ddos-detection",
+      "name": "Detect: DDoS & Flood Attacks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [660, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// SQL INJECTION DETECTION ENGINE - AcmeToCasino Security SOAR v1.0\n\nconst sqliPatterns = [\n  { pattern: /UNION\\s+(ALL\\s+)?SELECT/gi,          name: 'UNION_SELECT',         severity: 'CRITICAL', confidence: 0.97 },\n  { pattern: /OR\\s+['\"]?1['\"]?\\s*=\\s*['\"]?1/gi,    name: 'BOOLEAN_BLIND_OR',     severity: 'HIGH',     confidence: 0.92 },\n  { pattern: /AND\\s+['\"]?1['\"]?\\s*=\\s*['\"]?1/gi,   name: 'BOOLEAN_BLIND_AND',    severity: 'HIGH',     confidence: 0.90 },\n  { pattern: /DROP\\s+TABLE/gi,                      name: 'DDL_DROP_TABLE',       severity: 'CRITICAL', confidence: 0.99 },\n  { pattern: /DELETE\\s+FROM/gi,                     name: 'DDL_DELETE_FROM',      severity: 'HIGH',     confidence: 0.85 },\n  { pattern: /TRUNCATE\\s+TABLE/gi,                  name: 'DDL_TRUNCATE',         severity: 'CRITICAL', confidence: 0.98 },\n  { pattern: /;\\s*--/g,                             name: 'COMMENT_TERMINATOR',   severity: 'MEDIUM',   confidence: 0.75 },\n  { pattern: /;\\s*(SELECT|INSERT|UPDATE|DELETE)/gi, name: 'STACKED_QUERY',        severity: 'HIGH',     confidence: 0.88 },\n  { pattern: /SLEEP\\s*\\(\\s*\\d+\\s*\\)/gi,            name: 'TIME_BLIND_SLEEP',     severity: 'HIGH',     confidence: 0.93 },\n  { pattern: /WAITFOR\\s+DELAY/gi,                   name: 'TIME_BLIND_WAITFOR',   severity: 'HIGH',     confidence: 0.95 },\n  { pattern: /BENCHMARK\\s*\\(/gi,                    name: 'TIME_BLIND_BENCHMARK', severity: 'HIGH',     confidence: 0.91 },\n  { pattern: /LOAD_FILE\\s*\\(/gi,                    name: 'OOB_LOAD_FILE',        severity: 'CRITICAL', confidence: 0.96 },\n  { pattern: /INTO\\s+OUTFILE/gi,                    name: 'OOB_INTO_OUTFILE',     severity: 'CRITICAL', confidence: 0.97 },\n  { pattern: /0x[0-9a-fA-F]{8,}/g,                 name: 'HEX_ENCODED_PAYLOAD',  severity: 'MEDIUM',   confidence: 0.72 },\n  { pattern: /CHAR\\s*\\(\\s*\\d+/gi,                  name: 'CHAR_ENCODING',        severity: 'MEDIUM',   confidence: 0.78 }\n];\n\nconst BASE64_RE = /^[A-Za-z0-9+/]{20,}={0,2}$/;\n\nfunction checkBase64(value) {\n  try {\n    const decoded = Buffer.from(value, 'base64').toString('utf-8');\n    for (const p of sqliPatterns) {\n      if (p.pattern.test(decoded)) { p.pattern.lastIndex = 0; return { matched: true, pattern: p, decoded }; }\n      p.pattern.lastIndex = 0;\n    }\n  } catch (e) {}\n  return { matched: false };\n}\n\nconst detections = [];\n\nfor (const item of $input.all()) {\n  const log = item.json;\n  const sourceIp = log.source_ip || log.ip || log.remote_addr || 'unknown';\n  const endpoint = log.endpoint  || log.path || log.url || '/';\n  const method   = log.method || 'GET';\n  const timestamp = log.timestamp || new Date().toISOString();\n\n  const candidates = [\n    log.query_string, log.body, log.request_body, log.payload,\n    ...Object.values(log.params || {}),\n    ...Object.values(log.query  || {})\n  ].filter(v => typeof v === 'string' && v.length > 0);\n\n  let detected = false;\n  for (const value of candidates) {\n    if (detected) break;\n    for (const p of sqliPatterns) {\n      if (p.pattern.test(value)) {\n        p.pattern.lastIndex = 0;\n        detections.push({ json: {\n          detection_type: 'SQL_INJECTION', sub_type: p.name,\n          action: p.severity === 'CRITICAL' ? 'BLOCK' : 'ALERT',\n          severity: p.severity, confidence: p.confidence,\n          source_ip: sourceIp, endpoint, method,\n          matched_value: value.substring(0, 200),\n          timestamp, ttl_seconds: 86400,\n          details: `SQLi [${p.name}] from ${sourceIp} on ${method} ${endpoint}`,\n          original_event: log\n        }});\n        detected = true; break;\n      }\n      p.pattern.lastIndex = 0;\n    }\n    if (!detected && BASE64_RE.test(value)) {\n      const r = checkBase64(value);\n      if (r.matched) {\n        detections.push({ json: {\n          detection_type: 'SQL_INJECTION', sub_type: 'BASE64_' + r.pattern.name,\n          action: 'BLOCK', severity: 'CRITICAL', confidence: 0.94,\n          source_ip: sourceIp, endpoint, method,\n          encoded_value: value.substring(0, 200),\n          decoded_value: r.decoded.substring(0, 200),\n          timestamp, ttl_seconds: 86400,\n          details: `Base64-encoded SQLi from ${sourceIp} on ${method} ${endpoint}`,\n          original_event: log\n        }});\n        detected = true;\n      }\n    }\n  }\n}\n\nif (detections.length === 0) {\n  return [{ json: { detection_type: 'NONE', source_ip: 'unknown' } }];\n}\nreturn detections;\n"
+      },
+      "id": "node-sqli-detection",
+      "name": "Detect: SQL Injection",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [660, 580]
+    },
+    {
+      "parameters": {
+        "jsCode": "// XSS DETECTION ENGINE - AcmeToCasino Security SOAR v1.0\n\nconst xssPatterns = [\n  { pattern: /<script[\\s>]/gi,                                          name: 'SCRIPT_TAG',            severity: 'HIGH',   confidence: 0.95 },\n  { pattern: /<\\/script>/gi,                                           name: 'SCRIPT_CLOSE_TAG',      severity: 'HIGH',   confidence: 0.95 },\n  { pattern: /on(?:load|error|click|mouse\\w+|key\\w+|focus|blur|change|submit|reset|select|unload)\\s*=/gi,\n                                                                        name: 'EVENT_HANDLER',         severity: 'HIGH',   confidence: 0.90 },\n  { pattern: /javascript\\s*:/gi,                                        name: 'JAVASCRIPT_URI',        severity: 'HIGH',   confidence: 0.97 },\n  { pattern: /vbscript\\s*:/gi,                                          name: 'VBSCRIPT_URI',          severity: 'HIGH',   confidence: 0.97 },\n  { pattern: /data\\s*:[^,]*text\\/html/gi,                               name: 'DATA_URI_HTML',         severity: 'MEDIUM', confidence: 0.82 },\n  { pattern: /document\\.(?:write|writeln|cookie|domain)/gi,             name: 'DOM_WRITE',             severity: 'HIGH',   confidence: 0.88 },\n  { pattern: /\\.innerHTML\\s*=/gi,                                       name: 'INNER_HTML_ASSIGN',     severity: 'HIGH',   confidence: 0.87 },\n  { pattern: /eval\\s*\\(/gi,                                             name: 'EVAL_CALL',             severity: 'HIGH',   confidence: 0.85 },\n  { pattern: /setTimeout\\s*\\(\\s*['\"`]/gi,                               name: 'SETTIMEOUT_STRING',     severity: 'MEDIUM', confidence: 0.78 },\n  { pattern: /&#(?:x[0-9a-f]+|\\d+);/gi,                                name: 'HTML_ENTITY_ENCODED',   severity: 'MEDIUM', confidence: 0.72 },\n  { pattern: /%3c%73%63%72%69%70%74/gi,                                 name: 'URL_ENCODED_SCRIPT',    severity: 'HIGH',   confidence: 0.94 },\n  { pattern: /<svg[^>]*onload/gi,                                       name: 'SVG_ONLOAD',            severity: 'HIGH',   confidence: 0.93 },\n  { pattern: /<(?:img|body|input|iframe)[^>]*on\\w+\\s*=/gi,             name: 'TAG_EVENT_HANDLER',     severity: 'HIGH',   confidence: 0.91 }\n];\n\nconst detections = [];\n\nfor (const item of $input.all()) {\n  const log = item.json;\n  const sourceIp = log.source_ip || log.ip || log.remote_addr || 'unknown';\n  const endpoint = log.endpoint  || log.path || log.url || '/';\n  const method   = log.method || 'GET';\n  const timestamp = log.timestamp || new Date().toISOString();\n\n  const candidates = [\n    log.query_string, log.body, log.request_body, log.payload,\n    log.referer, log.user_agent,\n    ...Object.values(log.params  || {}),\n    ...Object.values(log.query   || {}),\n    ...Object.values(log.headers || {})\n  ].filter(v => typeof v === 'string' && v.length > 0);\n\n  let detected = false;\n  for (const value of candidates) {\n    if (detected) break;\n    for (const p of xssPatterns) {\n      if (p.pattern.test(value)) {\n        p.pattern.lastIndex = 0;\n        detections.push({ json: {\n          detection_type: 'XSS', sub_type: p.name,\n          action: p.severity === 'HIGH' ? 'BLOCK' : 'ALERT',\n          severity: p.severity, confidence: p.confidence,\n          source_ip: sourceIp, endpoint, method,\n          matched_value: value.substring(0, 200),\n          timestamp, ttl_seconds: 86400,\n          details: `XSS [${p.name}] from ${sourceIp} on ${method} ${endpoint}`,\n          original_event: log\n        }});\n        detected = true; break;\n      }\n      p.pattern.lastIndex = 0;\n    }\n  }\n}\n\nif (detections.length === 0) {\n  return [{ json: { detection_type: 'NONE', source_ip: 'unknown' } }];\n}\nreturn detections;\n"
+      },
+      "id": "node-xss-detection",
+      "name": "Detect: XSS Attacks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [660, 760]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ACCOUNT TAKEOVER DETECTION ENGINE - AcmeToCasino Security SOAR v1.0\n\nconst INACTIVITY_DAYS        = 30;\nconst MULTI_ACCOUNT_THRESHOLD = 3;\nconst RAPID_WITHDRAW_MINUTES  = 5;\nconst RAPID_WITHDRAW_AMOUNT   = 500;\nconst WINDOW_MS               = 60 * 60 * 1000;\n\nif (!global.atoState) {\n  global.atoState = {\n    loginsByIp: {},\n    recentLogins: {},\n    withdrawalCheck: {}\n  };\n}\n\nconst state = global.atoState;\nconst now = Date.now();\nconst detections = [];\n\nfor (const item of $input.all()) {\n  const log       = item.json;\n  const eventType = (log.event_type || log.type || '').toLowerCase();\n  const userId    = log.user_id || log.account_id || log.username || null;\n  const sourceIp  = log.source_ip || log.ip || 'unknown';\n  const country   = log.country || log.geo_country || log.geoip_country_code || 'XX';\n  const timestamp = log.timestamp ? new Date(log.timestamp).getTime() : now;\n\n  if ((eventType === 'login' || eventType === 'auth') && log.success === true && userId) {\n    if (!state.loginsByIp[sourceIp]) {\n      state.loginsByIp[sourceIp] = { accounts: new Set(), timestamps: [] };\n    }\n    state.loginsByIp[sourceIp].accounts.add(userId);\n    state.loginsByIp[sourceIp].timestamps.push(timestamp);\n    state.loginsByIp[sourceIp].timestamps = state.loginsByIp[sourceIp].timestamps\n      .filter(ts => (now - ts) < WINDOW_MS);\n\n    const accountCount = state.loginsByIp[sourceIp].accounts.size;\n    if (accountCount >= MULTI_ACCOUNT_THRESHOLD) {\n      detections.push({ json: {\n        detection_type: 'ATO_MULTI_ACCOUNT', action: 'ALERT', severity: 'HIGH',\n        confidence: 0.85, source_ip: sourceIp, unique_accounts: accountCount, user_id: userId,\n        timestamp: new Date(now).toISOString(), ttl_seconds: 86400,\n        details: `Multi-account ATO: ${sourceIp} accessed ${accountCount} accounts within 1 hour`,\n        original_event: log\n      }});\n    }\n\n    const lastLogin = state.recentLogins[userId];\n    if (lastLogin) {\n      const daysSinceLast = (timestamp - lastLogin.ts) / (1000 * 60 * 60 * 24);\n      if (daysSinceLast >= INACTIVITY_DAYS && lastLogin.country !== country && country !== 'XX') {\n        detections.push({ json: {\n          detection_type: 'ATO_NEW_COUNTRY_INACTIVITY', action: 'ALERT', severity: 'HIGH',\n          confidence: 0.83, source_ip: sourceIp, user_id: userId,\n          previous_country: lastLogin.country, current_country: country,\n          days_inactive: Math.round(daysSinceLast),\n          timestamp: new Date(now).toISOString(), ttl_seconds: 86400,\n          details: `ATO: user ${userId} from ${country} after ${Math.round(daysSinceLast)}d inactive (was ${lastLogin.country})`,\n          original_event: log\n        }});\n      }\n    }\n    state.recentLogins[userId] = { ts: timestamp, ip: sourceIp, country };\n    state.withdrawalCheck[userId] = timestamp;\n  }\n\n  if ((eventType === 'withdrawal' || eventType === 'transaction') && userId) {\n    const amount  = parseFloat(log.amount || log.value || 0);\n    const loginTs = state.withdrawalCheck[userId];\n    if (loginTs) {\n      const minsSinceLogin = (timestamp - loginTs) / 60000;\n      if (minsSinceLogin <= RAPID_WITHDRAW_MINUTES && amount >= RAPID_WITHDRAW_AMOUNT) {\n        detections.push({ json: {\n          detection_type: 'ATO_RAPID_WITHDRAWAL', action: 'BLOCK', severity: 'CRITICAL',\n          confidence: 0.91, source_ip: sourceIp, user_id: userId,\n          amount_usd: amount, minutes_since_login: Math.round(minsSinceLogin * 10) / 10,\n          timestamp: new Date(now).toISOString(), ttl_seconds: 86400,\n          details: `ATO rapid withdrawal: $${amount} by ${userId} only ${Math.round(minsSinceLogin * 10) / 10} min post-login`,\n          original_event: log\n        }});\n        delete state.withdrawalCheck[userId];\n      }\n    }\n  }\n}\n\nif (detections.length === 0) {\n  return [{ json: { detection_type: 'NONE', source_ip: 'unknown' } }];\n}\nreturn detections;\n"
+      },
+      "id": "node-ato-detection",
+      "name": "Detect: Account Takeover (ATO)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [660, 940]
+    },
+    {
+      "parameters": {
+        "jsCode": "// BOT DETECTION ENGINE - AcmeToCasino Security SOAR v1.0\n\nconst MIN_TIMING_SAMPLES = 10;\nconst MAX_HUMAN_RPS      = 10;\nconst CV_THRESHOLD       = 0.05;\nconst WINDOW_MS          = 60 * 1000;\n\nconst KNOWN_BAD_BOTS = [\n  'scrapy', 'python-requests', 'go-http-client', 'libwww-perl',\n  'masscan', 'nmap', 'sqlmap', 'nikto', 'dirbuster', 'gobuster',\n  'wfuzz', 'hydra', 'medusa', 'burpsuite', 'havij', 'acunetix',\n  'nessus', 'openvas', 'w3af', 'arachni', 'zgrab', 'shodan'\n];\n\nconst SUSPICIOUS_UA_PATTERNS = [\n  /^$/, /^-$/, /^Mozilla\\/[45]\\.0$/, /curl\\//i, /wget\\//i,\n  /python/i, /java\\//i, /ruby/i, /perl/i, /php/i,\n  /bot/i, /spider/i, /crawler/i\n];\n\nif (!global.botState) {\n  global.botState = { requestTimings: {}, suspiciousCounts: {} };\n}\n\nconst state = global.botState;\nconst now = Date.now();\nconst detections = [];\n\nfunction cv(values) {\n  if (values.length < 2) return 1;\n  const mean = values.reduce((a, b) => a + b, 0) / values.length;\n  if (mean === 0) return 0;\n  const variance = values.reduce((s, v) => s + Math.pow(v - mean, 2), 0) / values.length;\n  return Math.sqrt(variance) / mean;\n}\n\nfor (const item of $input.all()) {\n  const log       = item.json;\n  const eventType = (log.event_type || log.type || 'http').toLowerCase();\n  const sourceIp  = log.source_ip || log.ip || log.remote_addr || 'unknown';\n  const userAgent = log.user_agent || log.ua || '';\n  const timestamp = log.timestamp ? new Date(log.timestamp).getTime() : now;\n\n  if (!['http', 'request', 'access'].includes(eventType)) continue;\n\n  const uaLower = userAgent.toLowerCase();\n  const knownBot = KNOWN_BAD_BOTS.find(b => uaLower.includes(b));\n  if (knownBot) {\n    detections.push({ json: {\n      detection_type: 'BOT_KNOWN_SIGNATURE', action: 'BLOCK', severity: 'HIGH',\n      confidence: 0.97, source_ip: sourceIp, user_agent: userAgent,\n      matched_signature: knownBot, timestamp: new Date(now).toISOString(), ttl_seconds: 86400,\n      details: `Known bot/scanner signature [${knownBot}] from ${sourceIp}`,\n      original_event: log\n    }});\n    continue;\n  }\n\n  const suspiciousUa = SUSPICIOUS_UA_PATTERNS.find(p => p.test(userAgent));\n  if (suspiciousUa) {\n    state.suspiciousCounts[sourceIp] = (state.suspiciousCounts[sourceIp] || 0) + 1;\n    if (state.suspiciousCounts[sourceIp] >= 3) {\n      detections.push({ json: {\n        detection_type: 'BOT_SUSPICIOUS_UA', action: 'ALERT', severity: 'MEDIUM',\n        confidence: 0.78, source_ip: sourceIp, user_agent: userAgent || '(empty)',\n        occurrences: state.suspiciousCounts[sourceIp],\n        timestamp: new Date(now).toISOString(), ttl_seconds: 3600,\n        details: `Suspicious UA pattern from ${sourceIp}: \"${userAgent || '(empty)'}\"`,\n        original_event: log\n      }});\n    }\n    continue;\n  }\n\n  if (!state.requestTimings[sourceIp]) state.requestTimings[sourceIp] = [];\n  state.requestTimings[sourceIp].push(timestamp);\n  state.requestTimings[sourceIp] = state.requestTimings[sourceIp]\n    .filter(ts => (now - ts) < WINDOW_MS).sort((a, b) => a - b);\n\n  const tsList = state.requestTimings[sourceIp];\n  if (tsList.length >= MIN_TIMING_SAMPLES) {\n    const rps = tsList.length / (WINDOW_MS / 1000);\n    const intervals = [];\n    for (let i = 1; i < tsList.length; i++) intervals.push(tsList[i] - tsList[i - 1]);\n    const cvVal = cv(intervals);\n    if (cvVal < CV_THRESHOLD && rps > MAX_HUMAN_RPS) {\n      detections.push({ json: {\n        detection_type: 'BOT_REGULAR_TIMING', action: 'ALERT', severity: 'MEDIUM',\n        confidence: 0.82, source_ip: sourceIp, user_agent: userAgent,\n        requests_per_second: Math.round(rps * 10) / 10,\n        timing_cv: Math.round(cvVal * 1000) / 1000, sample_count: tsList.length,\n        timestamp: new Date(now).toISOString(), ttl_seconds: 3600,\n        details: `Bot-like timing from ${sourceIp}: ${Math.round(rps)} req/s, CV=${cvVal.toFixed(3)}`,\n        original_event: log\n      }});\n    }\n  }\n}\n\nif (detections.length === 0) {\n  return [{ json: { detection_type: 'NONE', source_ip: 'unknown' } }];\n}\nreturn detections;\n"
+      },
+      "id": "node-bot-detection",
+      "name": "Detect: Bot Traffic",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [660, 1120]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "multiplex",
+        "options": {}
+      },
+      "id": "node-merge-detections",
+      "name": "Merge: All Detection Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2,
+      "position": [920, 660]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.detection_type }}",
+              "operation": "notEqual",
+              "value2": "NONE"
+            }
+          ]
+        }
+      },
+      "id": "node-filter-none",
+      "name": "Filter: Remove NONE Detections",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1100, 660]
+    },
+    {
+      "parameters": {
+        "jsCode": "// SEVERITY CLASSIFICATION + GeoIP ENRICHMENT - AcmeToCasino Security SOAR v1.0\n//\n// In production, insert a MaxMind GeoIP2 HTTP Request node BEFORE this node.\n// Call: GET https://geoip.maxmind.com/geoip/v2.1/city/<ip>\n// Auth: Basic <account_id>:<license_key>\n// Then pass the response as log.geoip_data.\n\nconst KNOWN_MALICIOUS_ASNS = new Set(['AS209103', 'AS60781', 'AS16276', 'AS12876', 'AS14061']);\nconst HIGH_RISK_COUNTRIES  = new Set(['KP', 'IR', 'SY', 'CU', 'SD']);\nconst SEVERITY_LEVELS      = ['INFO', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];\n\nconst TYPE_SEVERITY_MAP = {\n  BRUTE_FORCE: 'HIGH',         CREDENTIAL_STUFFING: 'CRITICAL',\n  PASSWORD_SPRAY: 'CRITICAL',  DDOS_VOLUMETRIC: 'CRITICAL',\n  DDOS_SUSPICIOUS_RATE: 'HIGH', HTTP_FLOOD: 'CRITICAL',\n  SYN_FLOOD: 'CRITICAL',       SLOWLORIS: 'HIGH',\n  SQL_INJECTION: 'CRITICAL',   XSS: 'HIGH',\n  ATO_MULTI_ACCOUNT: 'HIGH',   ATO_NEW_COUNTRY_INACTIVITY: 'HIGH',\n  ATO_RAPID_WITHDRAWAL: 'CRITICAL', BOT_KNOWN_SIGNATURE: 'HIGH',\n  BOT_SUSPICIOUS_UA: 'MEDIUM', BOT_REGULAR_TIMING: 'MEDIUM'\n};\n\nfunction promoteOnce(severity) {\n  const idx = SEVERITY_LEVELS.indexOf(severity);\n  return idx >= 0 && idx < SEVERITY_LEVELS.length - 1\n    ? SEVERITY_LEVELS[idx + 1] : severity;\n}\n\nconst enriched = [];\n\nfor (const item of $input.all()) {\n  const event = { ...item.json };\n\n  if (!event.severity)  event.severity  = TYPE_SEVERITY_MAP[event.detection_type] || 'MEDIUM';\n  if (!event.confidence) event.confidence = 0.75;\n\n  const geoip = event.geoip_data || {\n    country_code:  event.country || 'XX',\n    country_name:  event.country_name || 'Unknown',\n    city:          event.city || 'Unknown',\n    asn:           event.asn || 'AS0',\n    asn_org:       event.asn_org || 'Unknown',\n    is_vpn:        event.is_vpn || false,\n    is_tor:        event.is_tor || false,\n    is_datacenter: event.is_datacenter || false,\n    risk_score:    event.geoip_risk_score || 0\n  };\n\n  if (HIGH_RISK_COUNTRIES.has(geoip.country_code)) {\n    event.severity   = promoteOnce(event.severity);\n    event.confidence = Math.min(event.confidence + 0.05, 1.0);\n  }\n  if (KNOWN_MALICIOUS_ASNS.has(geoip.asn)) {\n    event.severity   = 'CRITICAL';\n    event.confidence = Math.min(event.confidence + 0.10, 1.0);\n  }\n  if (geoip.is_vpn || geoip.is_tor) {\n    if (SEVERITY_LEVELS.indexOf(event.severity) < SEVERITY_LEVELS.indexOf('HIGH')) {\n      event.severity = 'HIGH';\n    }\n    const flags = event.threat_intelligence_flags || [];\n    if (geoip.is_vpn) flags.push('VPN_EXIT_NODE');\n    if (geoip.is_tor) flags.push('TOR_EXIT_NODE');\n    event.threat_intelligence_flags = flags;\n  }\n\n  event.enrichment = {\n    country_code: geoip.country_code, country_name: geoip.country_name,\n    city: geoip.city, asn: geoip.asn, asn_org: geoip.asn_org,\n    is_vpn: geoip.is_vpn, is_tor: geoip.is_tor, is_datacenter: geoip.is_datacenter,\n    risk_score: geoip.risk_score,\n    sanctioned_country: HIGH_RISK_COUNTRIES.has(geoip.country_code),\n    known_malicious_asn: KNOWN_MALICIOUS_ASNS.has(geoip.asn)\n  };\n\n  event.incident_id      = `INC-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;\n  event.workflow_version = '1.0';\n  event.platform         = 'AcmeToCasino';\n  event.environment      = $env.ENVIRONMENT || 'production';\n  event.deployment_type  = $env.DEPLOYMENT_TYPE || 'aws';\n\n  enriched.push({ json: event });\n}\n\nreturn enriched;\n"
+      },
+      "id": "node-classify-enrich",
+      "name": "Classify: Severity + GeoIP Enrichment",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1300, 580]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "rules": [
+            {
+              "value2": "CRITICAL",
+              "outputKey": "critical"
+            },
+            {
+              "value2": "HIGH",
+              "outputKey": "high"
+            },
+            {
+              "value2": "MEDIUM",
+              "outputKey": "medium"
+            },
+            {
+              "value2": "LOW",
+              "outputKey": "low"
+            }
+          ]
+        },
+        "fallbackOutput": "none",
+        "dataPropertyName": "={{ $json.severity }}"
+      },
+      "id": "node-severity-switch",
+      "name": "Switch: Route by Severity",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 2,
+      "position": [1500, 580]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "rules": [
+            { "value2": "aws",       "outputKey": "aws" },
+            { "value2": "onpremise", "outputKey": "onpremise" }
+          ]
+        },
+        "fallbackOutput": "aws",
+        "dataPropertyName": "={{ $json.deployment_type }}"
+      },
+      "id": "node-deploy-switch-critical",
+      "name": "Switch: CRITICAL - Deployment Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 2,
+      "position": [1720, 380]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "rules": [
+            { "value2": "aws",       "outputKey": "aws" },
+            { "value2": "onpremise", "outputKey": "onpremise" }
+          ]
+        },
+        "fallbackOutput": "aws",
+        "dataPropertyName": "={{ $json.deployment_type }}"
+      },
+      "id": "node-deploy-switch-high",
+      "name": "Switch: HIGH - Deployment Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 2,
+      "position": [1720, 580]
+    },
+    {
+      "parameters": {
+        "jsCode": "// AWS WAF BLOCK PAYLOAD BUILDER - AcmeToCasino Security SOAR v1.0\n//\n// Formats the payload consumed by the subsequent AWS WAF HTTP Request node.\n// The WAF UpdateIPSet API requires a LockToken obtained from GetIPSet first.\n// In production, add a GetIPSet HTTP Request node before this one and pass\n// the LockToken through via $json.aws_waf_lock_token.\n\nconst results = [];\nfor (const item of $input.all()) {\n  const event = item.json;\n  const ip    = event.source_ip;\n  if (!ip || ip === 'unknown') {\n    results.push({ json: { ...event, waf_action: 'SKIPPED', reason: 'no source IP' } });\n    continue;\n  }\n  const cidr = ip.includes('/') ? ip : `${ip}/32`;\n  results.push({ json: {\n    ...event,\n    waf_action: 'BLOCK_IP',\n    aws_waf_payload: {\n      Name:           'AcmeToCasino-BlockList',\n      Scope:          $env.AWS_WAF_SCOPE || 'REGIONAL',\n      IPSetId:        $env.AWS_WAF_IPSET_ID || 'REPLACE_WITH_IPSET_ID',\n      IPSetLockToken: event.aws_waf_lock_token || 'REPLACE_WITH_LOCK_TOKEN',\n      Addresses:      [cidr],\n      operation:      'ADD',\n      ttl_seconds:    event.ttl_seconds || 86400,\n      reason: `Auto-block: ${event.detection_type} (${event.severity}) - ${event.incident_id}`\n    },\n    aws_cloudwatch_metric: {\n      Namespace:  'AcmeToCasino/Security',\n      MetricName: `ThreatBlocked_${event.detection_type}`,\n      Value: 1,\n      Unit:  'Count',\n      Dimensions: [\n        { Name: 'Severity',      Value: event.severity },\n        { Name: 'DetectionType', Value: event.detection_type }\n      ]\n    }\n  }});\n}\nreturn results;\n"
+      },
+      "id": "node-aws-waf-prepare",
+      "name": "AWS WAF: Prepare Block Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1960, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://waf.{{ $env.AWS_REGION }}.amazonaws.com/2019-07-29/ipset/{{ $env.AWS_WAF_IPSET_ID }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "X-Amz-Target", "value": "AWSWAF_20190729.UpdateIPSet" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.aws_waf_payload) }}",
+        "options": {
+          "timeout": 10000,
+          "retry": { "enabled": true, "maxTries": 3, "waitBetweenTries": 1000 }
+        }
+      },
+      "id": "node-aws-waf-call",
+      "name": "AWS WAF: UpdateIPSet API Call",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [2180, 220],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "aws-waf-creds",
+          "name": "AWS WAF Credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://monitoring.{{ $env.AWS_REGION }}.amazonaws.com/",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.aws_cloudwatch_metric) }}",
+        "options": { "timeout": 5000 }
+      },
+      "id": "node-cloudwatch-metric",
+      "name": "AWS CloudWatch: Send Metric",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [2180, 380],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "aws-cloudwatch-creds",
+          "name": "AWS CloudWatch Credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://sns.{{ $env.AWS_REGION }}.amazonaws.com/",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/x-www-form-urlencoded" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "Action",   "value": "Publish" },
+            { "name": "TopicArn", "value": "={{ $env.AWS_SNS_SECURITY_TOPIC_ARN }}" },
+            { "name": "Subject",  "value": "=[{{ $json.severity }}] AcmeToCasino: {{ $json.detection_type }} - {{ $json.incident_id }}" },
+            { "name": "Message",  "value": "=Incident: {{ $json.incident_id }}\nSeverity: {{ $json.severity }}\nType: {{ $json.detection_type }}\nSource IP: {{ $json.source_ip }}\nCountry: {{ $json.enrichment.country_name }}\nDetails: {{ $json.details }}\nTimestamp: {{ $json.timestamp }}\nAction: {{ $json.action }}" }
+          ]
+        },
+        "options": { "timeout": 5000 }
+      },
+      "id": "node-aws-sns",
+      "name": "AWS SNS: Publish Security Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [2400, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "aws-sns-creds",
+          "name": "AWS SNS Credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ON-PREMISE FIREWALL COMMAND BUILDER - AcmeToCasino Security SOAR v1.0\n//\n// Builds iptables/nftables commands and ModSecurity rule payloads.\n// Set env var USE_NFTABLES=true for nftables-based systems.\n\nconst results = [];\nfor (const item of $input.all()) {\n  const event = item.json;\n  const ip    = event.source_ip;\n  if (!ip || ip === 'unknown') {\n    results.push({ json: { ...event, firewall_action: 'SKIPPED' } });\n    continue;\n  }\n  const useNftables = $env.USE_NFTABLES === 'true';\n  const expiresAt   = Date.now() + (event.ttl_seconds || 86400) * 1000;\n  let command;\n  if (useNftables) {\n    command = `nft add element inet filter acme_blocklist { ${ip} } && echo 'blocked ${ip} ${event.incident_id}'`;\n  } else {\n    command = [\n      `iptables -I INPUT   -s ${ip} -j DROP`,\n      `iptables -I FORWARD -s ${ip} -j DROP`,\n      `echo '${ip} ${event.incident_id} ${expiresAt}' >> /var/lib/acme-security/blocked_ips.txt`\n    ].join(' && ');\n  }\n  results.push({ json: {\n    ...event,\n    firewall_action: 'BLOCK',\n    firewall_type:   useNftables ? 'nftables' : 'iptables',\n    ssh_command: command,\n    modsecurity_rule: {\n      phase: 2, action: 'deny', status: 403, ip,\n      msg: `AcmeToCasino SOAR: ${event.detection_type} - ${event.incident_id}`\n    },\n    nginx_block_entry: `deny ${ip}; # ${event.incident_id} expires ${new Date(expiresAt).toISOString()}`\n  }});\n}\nreturn results;\n"
+      },
+      "id": "node-onprem-prepare",
+      "name": "On-Prem: Prepare Firewall Commands",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1960, 520]
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "host": "={{ $env.FIREWALL_HOST }}",
+        "port": 22,
+        "username": "={{ $env.FIREWALL_USER }}",
+        "command": "={{ $json.ssh_command }}"
+      },
+      "id": "node-ssh-iptables",
+      "name": "SSH: Execute iptables/nftables Block",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [2180, 520],
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "ssh-firewall-creds",
+          "name": "Firewall SSH Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.MODSECURITY_API_URL }}/rules",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.MODSECURITY_API_TOKEN }}" },
+            { "name": "Content-Type",  "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.modsecurity_rule) }}",
+        "options": { "timeout": 8000 }
+      },
+      "id": "node-modsecurity",
+      "name": "ModSecurity: Add Block Rule",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [2400, 520],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "modsecurity-creds",
+          "name": "ModSecurity API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.NGINX_BLOCKLIST_API_URL }}/blocklist",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.NGINX_API_TOKEN }}" },
+            { "name": "Content-Type",  "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ ip: $json.source_ip, action: 'deny', comment: $json.incident_id, expires_at: new Date(Date.now() + $json.ttl_seconds * 1000).toISOString() }) }}",
+        "options": { "timeout": 5000 }
+      },
+      "id": "node-nginx-blocklist",
+      "name": "nginx/HAProxy: Update Blocklist",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [2600, 520]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO security_incidents (\n  incident_id, detection_type, sub_type, severity, confidence,\n  source_ip, action_taken, details, enrichment_json, ttl_seconds,\n  expires_at, created_at, environment, platform\n) VALUES (\n  '{{ $json.incident_id }}',\n  '{{ $json.detection_type }}',\n  '{{ $json.sub_type || \"\" }}',\n  '{{ $json.severity }}',\n  {{ $json.confidence }},\n  '{{ $json.source_ip }}',\n  '{{ $json.action }}',\n  $body${{ $json.details }}$body$,\n  $body${{ JSON.stringify($json.enrichment) }}$body$,\n  {{ $json.ttl_seconds || 86400 }},\n  NOW() + INTERVAL '{{ $json.ttl_seconds || 86400 }} seconds',\n  NOW(),\n  '{{ $json.environment }}',\n  '{{ $json.platform }}'\n)\nON CONFLICT (incident_id) DO NOTHING\nRETURNING incident_id, created_at;",
+        "options": {}
+      },
+      "id": "node-postgres-incident",
+      "name": "PostgreSQL: Write Incident Record",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [2180, 740],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-security-db",
+          "name": "AcmeToCasino Security DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO blocked_ips (\n  ip_address, incident_id, detection_type, severity,\n  blocked_at, expires_at, deployment_type, is_active\n) VALUES (\n  '{{ $json.source_ip }}',\n  '{{ $json.incident_id }}',\n  '{{ $json.detection_type }}',\n  '{{ $json.severity }}',\n  NOW(),\n  NOW() + INTERVAL '{{ $json.ttl_seconds || 86400 }} seconds',\n  '{{ $json.deployment_type }}',\n  true\n)\nON CONFLICT (ip_address) DO UPDATE\n  SET expires_at  = GREATEST(blocked_ips.expires_at, EXCLUDED.expires_at),\n      severity    = CASE WHEN EXCLUDED.severity > blocked_ips.severity THEN EXCLUDED.severity ELSE blocked_ips.severity END,\n      updated_at  = NOW();",
+        "options": {}
+      },
+      "id": "node-postgres-blockedips",
+      "name": "PostgreSQL: Upsert Blocked IP",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [2400, 740],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-security-db",
+          "name": "AcmeToCasino Security DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "channel": "={{ $env.SLACK_SECURITY_CHANNEL || '#security-alerts' }}",
+        "text": "=*[{{ $json.severity }}] {{ $json.detection_type }}*\n*Incident:* `{{ $json.incident_id }}`\n*Platform:* AcmeToCasino | *Env:* {{ $json.environment }}\n*Source IP:* `{{ $json.source_ip }}` | *Country:* {{ $json.enrichment.city }}, {{ $json.enrichment.country_name }}\n*ASN:* {{ $json.enrichment.asn }} — {{ $json.enrichment.asn_org }}\n*Action:* {{ $json.action }} | *Confidence:* {{ Math.round(($json.confidence || 0) * 100) }}%\n*Details:* {{ $json.details }}\n*Flags:* VPN={{ $json.enrichment.is_vpn }} Tor={{ $json.enrichment.is_tor }} Sanctioned={{ $json.enrichment.sanctioned_country }}\n*TTL:* {{ Math.round(($json.ttl_seconds || 86400) / 3600) }}h auto-unblock",
+        "otherOptions": {
+          "icon_emoji": ":shield:",
+          "username": "AcmeToCasino SOAR"
+        }
+      },
+      "id": "node-slack-notify",
+      "name": "Slack: Security Alert Notification",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2,
+      "position": [2600, 740],
+      "credentials": {
+        "slackApi": {
+          "id": "slack-security-creds",
+          "name": "Slack Security Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $env.SECURITY_TEAM_EMAIL || 'security@acmetocasino.com' }}",
+        "subject": "=[{{ $json.severity }}] AcmeToCasino: {{ $json.detection_type }} - {{ $json.incident_id }}",
+        "emailType": "html",
+        "message": "=<html><body style=\"font-family:Arial,sans-serif;max-width:700px;margin:0 auto\">\n<h2 style=\"color:{{ $json.severity === 'CRITICAL' ? '#dc3545' : '#fd7e14' }}\">{{ $json.severity }}: {{ $json.detection_type }}</h2>\n<table style=\"width:100%;border-collapse:collapse;margin-bottom:20px\">\n  <tr><td style=\"padding:6px;background:#f8f9fa;font-weight:bold;width:40%\">Incident ID</td><td style=\"padding:6px\">{{ $json.incident_id }}</td></tr>\n  <tr><td style=\"padding:6px;background:#f8f9fa;font-weight:bold\">Severity</td><td style=\"padding:6px;font-weight:bold;color:{{ $json.severity === 'CRITICAL' ? '#dc3545' : '#fd7e14' }}\">{{ $json.severity }}</td></tr>\n  <tr><td style=\"padding:6px;background:#f8f9fa;font-weight:bold\">Confidence</td><td style=\"padding:6px\">{{ Math.round(($json.confidence || 0) * 100) }}%</td></tr>\n  <tr><td style=\"padding:6px;background:#f8f9fa;font-weight:bold\">Source IP</td><td style=\"padding:6px\"><code>{{ $json.source_ip }}</code></td></tr>\n  <tr><td style=\"padding:6px;background:#f8f9fa;font-weight:bold\">Location</td><td style=\"padding:6px\">{{ $json.enrichment.city }}, {{ $json.enrichment.country_name }}</td></tr>\n  <tr><td style=\"padding:6px;background:#f8f9fa;font-weight:bold\">Action</td><td style=\"padding:6px\">{{ $json.action }}</td></tr>\n  <tr><td style=\"padding:6px;background:#f8f9fa;font-weight:bold\">Auto-Unblock</td><td style=\"padding:6px\">{{ new Date(Date.now() + ($json.ttl_seconds || 86400) * 1000).toISOString() }}</td></tr>\n</table>\n<p><strong>Details:</strong><br>{{ $json.details }}</p>\n<p style=\"color:#666;font-size:12px\">AcmeToCasino Security SOAR | {{ new Date().toISOString() }}</p>\n</body></html>",
+        "options": {}
+      },
+      "id": "node-email-notify",
+      "name": "Email: Security Alert",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [2800, 740],
+      "credentials": {
+        "smtp": {
+          "id": "smtp-security-creds",
+          "name": "Security SMTP"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.JIRA_BASE_URL }}/rest/api/3/issue",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Basic {{ Buffer.from($env.JIRA_USER + ':' + $env.JIRA_API_TOKEN).toString('base64') }}" },
+            { "name": "Content-Type",  "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ fields: { project: { key: $env.JIRA_SECURITY_PROJECT || 'SEC' }, summary: `[${$json.severity}] ${$json.detection_type} from ${$json.source_ip} - ${$json.incident_id}`, description: { type: 'doc', version: 1, content: [{ type: 'paragraph', content: [{ type: 'text', text: `${$json.details}\\n\\nGeoIP: ${$json.enrichment.city}, ${$json.enrichment.country_name}\\nASN: ${$json.enrichment.asn}\\nAction: ${$json.action}\\nTTL: ${$json.ttl_seconds}s` }] }] }, issuetype: { name: 'Security Incident' }, priority: { name: $json.severity === 'CRITICAL' ? 'Highest' : $json.severity === 'HIGH' ? 'High' : 'Medium' }, labels: ['security', 'soar', $json.detection_type.toLowerCase(), 'acmetocasino'] } }) }}",
+        "options": { "timeout": 15000 }
+      },
+      "id": "node-jira-ticket",
+      "name": "JIRA: Create Security Incident Ticket",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [2600, 940]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.THREAT_INTEL_FEED_URL }}/indicators",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.THREAT_INTEL_API_TOKEN }}" },
+            { "name": "Content-Type",  "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ type: 'ipv4-addr', value: $json.source_ip, confidence: Math.round(($json.confidence || 0.75) * 100), labels: ['malicious-activity', $json.detection_type.toLowerCase()], description: $json.details, valid_from: new Date().toISOString(), valid_until: new Date(Date.now() + ($json.ttl_seconds || 86400) * 1000).toISOString(), created_by: 'AcmeToCasino-SOAR', external_references: [{ source_name: 'AcmeToCasino', external_id: $json.incident_id }] }) }}",
+        "options": { "timeout": 8000, "ignoreResponseCode": true }
+      },
+      "id": "node-threat-intel",
+      "name": "Threat Intel: Submit IOC",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [2800, 940]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ESCALATION TIMER - AcmeToCasino Security SOAR v1.0\n//\n// Tracks first-seen timestamp per attacking IP.\n// If the same IP is still generating alerts after 10 minutes,\n// severity is promoted to CRITICAL and the escalated flag is set,\n// which downstream triggers a PagerDuty page.\n\nif (!global.escalationState) {\n  global.escalationState = { firstSeen: {} };\n}\n\nconst state   = global.escalationState;\nconst ESCALATION_MS = 10 * 60 * 1000;\nconst now     = Date.now();\nconst results = [];\n\nfor (const item of $input.all()) {\n  const event = { ...item.json };\n  const ip = event.source_ip;\n  if (!ip || ip === 'unknown') { results.push({ json: event }); continue; }\n\n  if (!state.firstSeen[ip]) state.firstSeen[ip] = now;\n\n  const durationMs = now - state.firstSeen[ip];\n  event.attack_duration_ms      = durationMs;\n  event.attack_duration_minutes = Math.round(durationMs / 60000 * 10) / 10;\n\n  if (durationMs > ESCALATION_MS && event.severity !== 'CRITICAL') {\n    event.severity          = 'CRITICAL';\n    event.escalated         = true;\n    event.escalation_reason = `Attack from ${ip} persisting ${event.attack_duration_minutes} minutes`;\n    event.details           = `${event.details} | ESCALATED: ongoing ${event.attack_duration_minutes}min`;\n  }\n\n  results.push({ json: event });\n}\n\nreturn results;\n"
+      },
+      "id": "node-escalation-check",
+      "name": "Escalation: Check Attack Duration",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2180, 940]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://events.pagerduty.com/v2/enqueue",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ routing_key: $env.PAGERDUTY_INTEGRATION_KEY, event_action: 'trigger', dedup_key: $json.incident_id, payload: { summary: `[CRITICAL] AcmeToCasino ${$json.detection_type}: ${$json.source_ip} - ${$json.incident_id}`, severity: 'critical', source: $json.source_ip, timestamp: $json.timestamp, component: 'AcmeToCasino Security SOAR', group: 'security', class: $json.detection_type, custom_details: { incident_id: $json.incident_id, detection_type: $json.detection_type, source_ip: $json.source_ip, country: $json.enrichment.country_name, asn: $json.enrichment.asn, action_taken: $json.action, confidence: $json.confidence, details: $json.details } }, links: [{ href: $env.JIRA_BASE_URL + '/browse/' + ($env.JIRA_SECURITY_PROJECT || 'SEC'), text: 'JIRA Security Board' }] }) }}",
+        "options": {
+          "timeout": 10000,
+          "retry": { "enabled": true, "maxTries": 3, "waitBetweenTries": 2000 }
+        }
+      },
+      "id": "node-pagerduty",
+      "name": "PagerDuty: Page On-Call Engineer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [2400, 1100]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.escalated }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "node-escalation-filter",
+      "name": "Filter: Only Escalated Events",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [2400, 1280]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://events.pagerduty.com/v2/enqueue",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ routing_key: $env.PAGERDUTY_INTEGRATION_KEY, event_action: 'trigger', dedup_key: `ESCALATED-${$json.source_ip}-${Math.floor(Date.now() / 600000)}`, payload: { summary: `[ESCALATED] Ongoing attack from ${$json.source_ip} for ${$json.attack_duration_minutes} minutes`, severity: 'critical', source: $json.source_ip, component: 'AcmeToCasino Security SOAR', class: `ESCALATED_${$json.detection_type}`, custom_details: { attack_duration_minutes: $json.attack_duration_minutes, original_incident: $json.incident_id, escalation_reason: $json.escalation_reason } } }) }}",
+        "options": { "timeout": 10000 }
+      },
+      "id": "node-pagerduty-escalation",
+      "name": "PagerDuty: Escalation Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [2600, 1280]
+    }
+  ],
+  "connections": {
+    "Webhook: Receive Log Events": {
+      "main": [[
+        { "node": "Merge: All Event Sources", "type": "main", "index": 0 }
+      ]]
+    },
+    "Schedule: Poll Logs Every 30s": {
+      "main": [[
+        { "node": "Merge: All Event Sources", "type": "main", "index": 1 }
+      ]]
+    },
+    "AMQP: Consume security-events Topic": {
+      "main": [[
+        { "node": "Merge: All Event Sources", "type": "main", "index": 2 }
+      ]]
+    },
+    "Merge: All Event Sources": {
+      "main": [[
+        { "node": "Detect: Brute Force & Credential Stuffing", "type": "main", "index": 0 },
+        { "node": "Detect: DDoS & Flood Attacks",              "type": "main", "index": 0 },
+        { "node": "Detect: SQL Injection",                     "type": "main", "index": 0 },
+        { "node": "Detect: XSS Attacks",                       "type": "main", "index": 0 },
+        { "node": "Detect: Account Takeover (ATO)",            "type": "main", "index": 0 },
+        { "node": "Detect: Bot Traffic",                       "type": "main", "index": 0 }
+      ]]
+    },
+    "Detect: Brute Force & Credential Stuffing": {
+      "main": [[{ "node": "Merge: All Detection Results", "type": "main", "index": 0 }]]
+    },
+    "Detect: DDoS & Flood Attacks": {
+      "main": [[{ "node": "Merge: All Detection Results", "type": "main", "index": 1 }]]
+    },
+    "Detect: SQL Injection": {
+      "main": [[{ "node": "Merge: All Detection Results", "type": "main", "index": 2 }]]
+    },
+    "Detect: XSS Attacks": {
+      "main": [[{ "node": "Merge: All Detection Results", "type": "main", "index": 3 }]]
+    },
+    "Detect: Account Takeover (ATO)": {
+      "main": [[{ "node": "Merge: All Detection Results", "type": "main", "index": 4 }]]
+    },
+    "Detect: Bot Traffic": {
+      "main": [[{ "node": "Merge: All Detection Results", "type": "main", "index": 5 }]]
+    },
+    "Merge: All Detection Results": {
+      "main": [[{ "node": "Filter: Remove NONE Detections", "type": "main", "index": 0 }]]
+    },
+    "Filter: Remove NONE Detections": {
+      "main": [
+        [{ "node": "Classify: Severity + GeoIP Enrichment", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "Classify: Severity + GeoIP Enrichment": {
+      "main": [[{ "node": "Switch: Route by Severity", "type": "main", "index": 0 }]]
+    },
+    "Switch: Route by Severity": {
+      "main": [
+        [
+          { "node": "Switch: CRITICAL - Deployment Type",  "type": "main", "index": 0 },
+          { "node": "Escalation: Check Attack Duration",   "type": "main", "index": 0 }
+        ],
+        [{ "node": "Switch: HIGH - Deployment Type", "type": "main", "index": 0 }],
+        [
+          { "node": "PostgreSQL: Write Incident Record",    "type": "main", "index": 0 },
+          { "node": "Slack: Security Alert Notification",  "type": "main", "index": 0 }
+        ],
+        [{ "node": "PostgreSQL: Write Incident Record", "type": "main", "index": 0 }]
+      ]
+    },
+    "Switch: CRITICAL - Deployment Type": {
+      "main": [
+        [{ "node": "AWS WAF: Prepare Block Payload",       "type": "main", "index": 0 }],
+        [{ "node": "On-Prem: Prepare Firewall Commands",  "type": "main", "index": 0 }]
+      ]
+    },
+    "Switch: HIGH - Deployment Type": {
+      "main": [
+        [{ "node": "AWS WAF: Prepare Block Payload",      "type": "main", "index": 0 }],
+        [{ "node": "On-Prem: Prepare Firewall Commands", "type": "main", "index": 0 }]
+      ]
+    },
+    "AWS WAF: Prepare Block Payload": {
+      "main": [[
+        { "node": "AWS WAF: UpdateIPSet API Call",  "type": "main", "index": 0 },
+        { "node": "AWS CloudWatch: Send Metric",    "type": "main", "index": 0 }
+      ]]
+    },
+    "AWS WAF: UpdateIPSet API Call": {
+      "main": [[
+        { "node": "AWS SNS: Publish Security Alert",    "type": "main", "index": 0 },
+        { "node": "PostgreSQL: Write Incident Record",  "type": "main", "index": 0 },
+        { "node": "PostgreSQL: Upsert Blocked IP",      "type": "main", "index": 0 }
+      ]]
+    },
+    "AWS SNS: Publish Security Alert": {
+      "main": [[
+        { "node": "Slack: Security Alert Notification",      "type": "main", "index": 0 },
+        { "node": "Email: Security Alert",                   "type": "main", "index": 0 },
+        { "node": "JIRA: Create Security Incident Ticket",   "type": "main", "index": 0 }
+      ]]
+    },
+    "On-Prem: Prepare Firewall Commands": {
+      "main": [[{ "node": "SSH: Execute iptables/nftables Block", "type": "main", "index": 0 }]]
+    },
+    "SSH: Execute iptables/nftables Block": {
+      "main": [[
+        { "node": "ModSecurity: Add Block Rule",            "type": "main", "index": 0 },
+        { "node": "PostgreSQL: Write Incident Record",      "type": "main", "index": 0 },
+        { "node": "PostgreSQL: Upsert Blocked IP",          "type": "main", "index": 0 }
+      ]]
+    },
+    "ModSecurity: Add Block Rule": {
+      "main": [[{ "node": "nginx/HAProxy: Update Blocklist", "type": "main", "index": 0 }]]
+    },
+    "nginx/HAProxy: Update Blocklist": {
+      "main": [[
+        { "node": "Slack: Security Alert Notification",    "type": "main", "index": 0 },
+        { "node": "Email: Security Alert",                 "type": "main", "index": 0 },
+        { "node": "JIRA: Create Security Incident Ticket", "type": "main", "index": 0 }
+      ]]
+    },
+    "PostgreSQL: Write Incident Record": {
+      "main": [[{ "node": "Threat Intel: Submit IOC", "type": "main", "index": 0 }]]
+    },
+    "Escalation: Check Attack Duration": {
+      "main": [[
+        { "node": "PagerDuty: Page On-Call Engineer", "type": "main", "index": 0 },
+        { "node": "Filter: Only Escalated Events",    "type": "main", "index": 0 }
+      ]]
+    },
+    "PagerDuty: Page On-Call Engineer": {
+      "main": [[]]
+    },
+    "Filter: Only Escalated Events": {
+      "main": [
+        [{ "node": "PagerDuty: Escalation Alert", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "Slack: Security Alert Notification":    { "main": [[]] },
+    "Email: Security Alert":                 { "main": [[]] },
+    "JIRA: Create Security Incident Ticket": { "main": [[]] },
+    "Threat Intel: Submit IOC":              { "main": [[]] },
+    "PagerDuty: Escalation Alert":           { "main": [[]] },
+    "PostgreSQL: Upsert Blocked IP":         { "main": [[]] },
+    "AWS CloudWatch: Send Metric":           { "main": [[]] }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "error-handler-workflow",
+    "timezone": "UTC"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "acmetocasino-soar-instance"
+  },
+  "pinData": {},
+  "versionId": "1.0.0",
+  "triggerCount": 3,
+  "tags": [
+    { "id": "tag-security",   "name": "security"   },
+    { "id": "tag-soar",       "name": "soar"        },
+    { "id": "tag-igaming",    "name": "igaming"     },
+    { "id": "tag-production", "name": "production"  }
+  ]
+}

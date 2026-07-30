@@ -1,0 +1,13 @@
+{
+  "generated_at": "2026-04-22T22:04:42.059877+00:00",
+  "states": [
+    {
+      "state": "NY",
+      "regulator": "NY State Gaming Commission",
+      "source_url": "https://gaming.ny.gov/revenue-reports",
+      "report_count": 112,
+      "successful": 88,
+      "collected_at": "2026-04-22T22:04:42.059354+00:00"
+    }
+  ]
+}

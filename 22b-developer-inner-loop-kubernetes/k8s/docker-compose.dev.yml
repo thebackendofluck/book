@@ -1,0 +1,272 @@
+# Companion code for "The Backend of Luck" - Chapter 22b, Developer Inner-Loop Experience in Containerized iGaming Pla.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# docker-compose.dev.yml
+# Development environment — hot reload, debug ports exposed, local game provider mocks
+# Do NOT use this file in CI/CD or production
+
+version: "3.9"
+
+services:
+
+  # ─── Infrastructure ──────────────────────────────────────────────────────────
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: casino_dev
+      POSTGRES_PASSWORD: dev_only_not_secret  # test-only credential, never use in production
+      POSTGRES_DB: casino
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/db/init:/docker-entrypoint-initdb.d   # Schema + seed data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U casino_dev -d casino"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --save "" --appendonly no   # No persistence in dev
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 2s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: casino_dev
+      RABBITMQ_DEFAULT_PASS: dev_only_not_secret
+    ports:
+      - "5672:5672"
+      - "15672:15672"    # Management UI
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ─── Game Provider Mock ───────────────────────────────────────────────────────
+
+  game-provider-mock:
+    image: wiremock/wiremock:3.5.4
+    ports:
+      - "8089:8080"
+    volumes:
+      - ./mocks/game-provider:/home/wiremock/mappings:ro
+      - ./mocks/game-provider/__files:/home/wiremock/__files:ro
+    command: --verbose --global-response-templating
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/__admin/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ─── Payment Mock (PIX + Card) ────────────────────────────────────────────────
+
+  payment-mock:
+    image: wiremock/wiremock:3.5.4
+    ports:
+      - "8090:8080"
+    volumes:
+      - ./mocks/payment:/home/wiremock/mappings:ro
+      - ./mocks/payment/__files:/home/wiremock/__files:ro
+    command: --verbose --global-response-templating --print-all-network-traffic
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/__admin/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ─── Casino Microservices ─────────────────────────────────────────────────────
+
+  player-service:
+    build:
+      context: ./player-service
+      dockerfile: Dockerfile.dev           # Section 4 covers the two-Dockerfile pattern
+    image: casino/player-service:dev
+    volumes:
+      - ./player-service:/app
+      - player_service_venv:/app/.venv
+    ports:
+      - "8000:8000"
+      - "5678:5678"      # debugpy — VS Code remote debugger port
+    environment:
+      DATABASE_URL: postgresql+asyncpg://casino_dev:dev_only_not_secret@postgres:5432/casino
+      REDIS_URL: redis://redis:6379/0
+      AMQP_URL: amqp://casino_dev:dev_only_not_secret@rabbitmq:5672/
+      LOG_LEVEL: DEBUG
+      ENVIRONMENT: development
+      # Feature flags — all on in dev
+      FEATURE_NEW_LOYALTY_TIERS: "true"
+      FEATURE_BONUS_V2: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: >
+      uvicorn app:app
+        --host 0.0.0.0
+        --port 8000
+        --reload
+        --reload-dir /app
+        --log-level debug
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+
+  wallet-service:
+    build:
+      context: ./wallet-service
+      dockerfile: Dockerfile.dev
+    image: casino/wallet-service:dev
+    volumes:
+      - ./wallet-service:/app
+      - wallet_service_venv:/app/.venv
+    ports:
+      - "8001:8001"
+      - "5679:5678"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://casino_dev:dev_only_not_secret@postgres:5432/casino
+      REDIS_URL: redis://redis:6379/1
+      AMQP_URL: amqp://casino_dev:dev_only_not_secret@rabbitmq:5672/
+      PLAYER_SERVICE_URL: http://player-service:8000
+      PAYMENT_GATEWAY_URL: http://payment-mock:8080   # Points to mock in dev
+      LOG_LEVEL: DEBUG
+      ENVIRONMENT: development
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      player-service:
+        condition: service_healthy
+    command: >
+      uvicorn app:app
+        --host 0.0.0.0
+        --port 8001
+        --reload
+        --reload-dir /app
+        --log-level debug
+
+  game-engine:
+    build:
+      context: ./game-engine
+      dockerfile: Dockerfile.dev
+    image: casino/game-engine:dev
+    volumes:
+      - ./game-engine:/app
+      - game_engine_venv:/app/.venv
+    ports:
+      - "8002:8002"
+      - "8082:8082"     # WebSocket endpoint for live casino
+      - "5680:5678"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://casino_dev:dev_only_not_secret@postgres:5432/casino
+      REDIS_URL: redis://redis:6379/2
+      AMQP_URL: amqp://casino_dev:dev_only_not_secret@rabbitmq:5672/
+      WALLET_SERVICE_URL: http://wallet-service:8001
+      GAME_PROVIDER_URL: http://game-provider-mock:8080   # Mock provider
+      RNG_SEED_OVERRIDE: "42"    # Deterministic RNG in dev only — NEVER in prod
+      LOG_LEVEL: DEBUG
+      ENVIRONMENT: development
+    depends_on:
+      wallet-service:
+        condition: service_healthy
+      game-provider-mock:
+        condition: service_healthy
+    command: >
+      uvicorn app:app
+        --host 0.0.0.0
+        --port 8002
+        --reload
+        --reload-dir /app
+        --log-level debug
+
+  bonus-engine:
+    build:
+      context: ./bonus-engine
+      dockerfile: Dockerfile.dev
+    image: casino/bonus-engine:dev
+    volumes:
+      - ./bonus-engine:/app
+      - bonus_engine_venv:/app/.venv
+    ports:
+      - "8003:8003"
+      - "5681:5678"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://casino_dev:dev_only_not_secret@postgres:5432/casino
+      REDIS_URL: redis://redis:6379/3
+      AMQP_URL: amqp://casino_dev:dev_only_not_secret@rabbitmq:5672/
+      PLAYER_SERVICE_URL: http://player-service:8000
+      WALLET_SERVICE_URL: http://wallet-service:8001
+      LOG_LEVEL: DEBUG
+      ENVIRONMENT: development
+    depends_on:
+      postgres:
+        condition: service_healthy
+      wallet-service:
+        condition: service_healthy
+    command: >
+      uvicorn app:app
+        --host 0.0.0.0
+        --port 8003
+        --reload
+        --reload-dir /app
+        --log-level debug
+
+  compliance-reporter:
+    build:
+      context: ./compliance-reporter
+      dockerfile: Dockerfile.dev
+    image: casino/compliance-reporter:dev
+    volumes:
+      - ./compliance-reporter:/app
+      - compliance_reporter_venv:/app/.venv
+    ports:
+      - "8004:8004"
+      - "5682:5678"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://casino_dev:dev_only_not_secret@postgres:5432/casino
+      AMQP_URL: amqp://casino_dev:dev_only_not_secret@rabbitmq:5672/
+      # In dev, compliance reports go to a local sink instead of the regulator endpoint
+      REGULATOR_ENDPOINT: http://localhost:8099/dev-sink
+      LOG_LEVEL: DEBUG
+      ENVIRONMENT: development
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    command: >
+      uvicorn app:app
+        --host 0.0.0.0
+        --port 8004
+        --reload
+        --reload-dir /app
+        --log-level debug
+
+volumes:
+  postgres_data:
+  player_service_venv:
+  wallet_service_venv:
+  game_engine_venv:
+  bonus_engine_venv:
+  compliance_reporter_venv:

@@ -1,0 +1,664 @@
+<!--
+  Traffic Intelligence Widget
+  ===========================
+  Standalone <div class="card"> for insertion into the existing dashboard
+  at /var/www/new.acmetocasino.com/dashboard.html.
+
+  Integration: paste the entire <div id="traffic-intelligence-card"> block
+  inside the #tab-hsm-security tab-content, or add a new tab entry:
+
+    Side-nav button:
+      <button class="dash-tab-side ..." data-tab="traffic-intelligence">
+        <span class="material-symbols-outlined text-[18px]">monitoring</span>Traffic Intel
+      </button>
+
+    Tab content wrapper:
+      <div class="tab-content" id="tab-traffic-intelligence">
+        <!-- paste widget here -->
+      </div>
+
+    Top dash-tab:
+      <button class="dash-tab" data-tab="traffic-intelligence">Traffic Intel</button>
+
+  The widget reads /api/v2/traffic/status every 10 s.
+  All JS is self-contained. No external dependencies.
+  All user-data-derived DOM updates use textContent / DOM creation (no innerHTML
+  on external strings) to prevent XSS.
+-->
+
+<!-- ======================================================================
+     TRAFFIC INTELLIGENCE CARD
+     ====================================================================== -->
+<div id="traffic-intelligence-card" class="full-width animate-in">
+
+  <!-- Section header bar -->
+  <div style="background:linear-gradient(90deg,#0a0a1a,#0a1020,#0a0a1a);padding:8px 16px;text-align:center;font-weight:600;font-size:0.8rem;color:#448aff;letter-spacing:1px;text-transform:uppercase;border-radius:var(--radius-sm);margin-bottom:20px">
+    TRAFFIC INTELLIGENCE &mdash; NGINX ANALYSIS &bull; DDoS DETECTION &bull; CAMPAIGN TRACKING &bull; LIVE CLASSIFICATION
+  </div>
+
+  <!-- ── Row 1: Status + Summary Stats ──────────────────────────────── -->
+  <div style="display:grid;grid-template-columns:auto 1fr;gap:20px;margin-bottom:20px;align-items:start">
+
+    <!-- Status Badge -->
+    <div class="card" style="padding:20px 28px;display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:180px;gap:10px">
+      <div style="font-family:var(--font-mono);font-size:0.65rem;text-transform:uppercase;letter-spacing:0.12em;color:var(--text-dim);margin-bottom:4px">Classification</div>
+      <div id="ti-status-badge" style="display:inline-flex;align-items:center;gap:8px;padding:10px 22px;border-radius:8px;font-family:var(--font-heading);font-size:1.05rem;letter-spacing:2px;font-weight:700;background:rgba(0,230,118,0.1);color:var(--green);border:1px solid rgba(0,230,118,0.25);transition:all 0.4s ease">
+        <span id="ti-status-dot" style="width:9px;height:9px;border-radius:50%;background:var(--green);box-shadow:0 0 8px rgba(0,230,118,0.6);animation:pulse 2s infinite;flex-shrink:0"></span>
+        <span id="ti-status-text">NORMAL</span>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:4px;width:100%">
+        <div style="font-size:0.7rem;color:var(--text-dim)">Confidence</div>
+        <div style="width:100%;height:5px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden">
+          <div id="ti-confidence-bar" style="height:100%;width:95%;background:linear-gradient(90deg,var(--green),var(--cyan));border-radius:3px;transition:width 0.6s ease"></div>
+        </div>
+        <div id="ti-confidence-pct" style="font-family:var(--font-mono);font-size:0.78rem;color:var(--cyan);font-weight:600">95.0%</div>
+      </div>
+      <div id="ti-last-updated" style="font-size:0.62rem;color:var(--text-dim);font-family:var(--font-mono)">&#8212;</div>
+    </div>
+
+    <!-- Summary Metric Tiles -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
+
+      <!-- Req/s -->
+      <div class="card" style="padding:16px;text-align:center">
+        <div style="font-family:var(--font-mono);font-size:0.6rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:6px">Req / s</div>
+        <div id="ti-rps-current" style="font-family:var(--font-heading);font-size:1.6rem;color:var(--cyan);line-height:1;margin-bottom:4px">0.00</div>
+        <div style="font-size:0.65rem;color:var(--text-dim)"><span id="ti-rps-5m" style="color:var(--text)">0.00</span> avg 5m</div>
+        <canvas id="ti-sparkline" width="120" height="28" style="margin-top:8px;width:100%;height:28px;display:block"></canvas>
+      </div>
+
+      <!-- Unique IPs -->
+      <div class="card" style="padding:16px;text-align:center">
+        <div style="font-family:var(--font-mono);font-size:0.6rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:6px">Unique IPs</div>
+        <div id="ti-unique-ips" style="font-family:var(--font-heading);font-size:1.6rem;color:var(--purple);line-height:1;margin-bottom:4px">0</div>
+        <div style="font-size:0.65rem;color:var(--text-dim)">last 5 min</div>
+        <div style="margin-top:8px;height:5px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden">
+          <div id="ti-ips-bar" style="height:100%;width:0%;background:linear-gradient(90deg,var(--purple),var(--blue));border-radius:3px;transition:width 0.6s ease"></div>
+        </div>
+      </div>
+
+      <!-- UA Diversity -->
+      <div class="card" style="padding:16px;text-align:center">
+        <div style="font-family:var(--font-mono);font-size:0.6rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:6px">UA Diversity</div>
+        <div id="ti-ua-div" style="font-family:var(--font-heading);font-size:1.6rem;color:var(--gold);line-height:1;margin-bottom:4px">100</div>
+        <div style="font-size:0.65rem;color:var(--text-dim)">score / 100</div>
+        <div style="margin-top:8px;height:5px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden">
+          <div id="ti-ua-bar" style="height:100%;width:100%;background:linear-gradient(90deg,var(--gold),var(--gold-light));border-radius:3px;transition:width 0.6s ease"></div>
+        </div>
+      </div>
+
+      <!-- Error Rate -->
+      <div class="card" style="padding:16px;text-align:center">
+        <div style="font-family:var(--font-mono);font-size:0.6rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:6px">Error Rate</div>
+        <div id="ti-error-rate" style="font-family:var(--font-heading);font-size:1.6rem;color:var(--green);line-height:1;margin-bottom:4px">0.00%</div>
+        <div style="font-size:0.65rem;color:var(--text-dim)">
+          4xx: <span id="ti-4xx" style="color:var(--orange)">0</span>
+          &nbsp;5xx: <span id="ti-5xx" style="color:var(--red)">0</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── Row 2: Geo + Bot + Campaign ────────────────────────────────── -->
+  <div class="grid-3" style="margin-bottom:16px">
+
+    <!-- Geo Distribution -->
+    <div class="card" style="padding:16px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+        <span class="material-symbols-outlined" style="font-size:16px;color:var(--blue)">public</span>
+        <span style="font-family:var(--font-mono);font-size:0.7rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--gold)">Geo Distribution</span>
+        <span style="margin-left:auto;font-size:0.62rem;color:var(--text-dim);font-family:var(--font-mono)">top 5</span>
+      </div>
+      <div id="ti-geo-bars" class="chart-bars"></div>
+    </div>
+
+    <!-- Bot & UA -->
+    <div class="card" style="padding:16px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+        <span class="material-symbols-outlined" style="font-size:16px;color:var(--orange)">smart_toy</span>
+        <span style="font-family:var(--font-mono);font-size:0.7rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--gold)">Bot &amp; UA Analysis</span>
+      </div>
+
+      <div style="margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;font-size:0.75rem;margin-bottom:5px">
+          <span style="color:var(--text-dim)">Bot Score</span>
+          <span id="ti-bot-pct" style="font-family:var(--font-mono);font-weight:600;color:var(--green)">0.0%</span>
+        </div>
+        <div style="height:8px;background:rgba(255,255,255,0.05);border-radius:4px;overflow:hidden">
+          <div id="ti-bot-bar" style="height:100%;width:0%;border-radius:4px;background:linear-gradient(90deg,var(--green),var(--orange));transition:width 0.6s ease"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:0.6rem;color:var(--text-dim);margin-top:2px">
+          <span>Clean</span><span>&gt;30% Suspicious</span><span>&gt;60% Attack</span>
+        </div>
+      </div>
+
+      <div style="margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;font-size:0.75rem;margin-bottom:5px">
+          <span style="color:var(--text-dim)">UA Diversity Index</span>
+          <span id="ti-ua-index" style="font-family:var(--font-mono);font-weight:600;color:var(--gold)">100.0</span>
+        </div>
+        <div style="height:8px;background:rgba(255,255,255,0.05);border-radius:4px;overflow:hidden">
+          <div id="ti-ua-diversity-bar" style="height:100%;width:100%;border-radius:4px;background:linear-gradient(90deg,var(--red),var(--orange),var(--green));transition:width 0.6s ease"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:0.6rem;color:var(--text-dim);margin-top:2px">
+          <span>Uniform=Attack</span><span>High=Organic</span>
+        </div>
+      </div>
+
+      <div style="padding-top:12px;border-top:1px solid var(--border)">
+        <div style="font-size:0.65rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px">Top User Agents</div>
+        <div id="ti-top-uas"></div>
+      </div>
+    </div>
+
+    <!-- Campaign + Hot Paths -->
+    <div class="card" style="padding:16px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+        <span class="material-symbols-outlined" style="font-size:16px;color:var(--purple)">campaign</span>
+        <span style="font-family:var(--font-mono);font-size:0.7rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--gold)">Campaign Status</span>
+      </div>
+      <div id="ti-campaign-panel"></div>
+
+      <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+        <div style="font-size:0.65rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px">Hot Paths</div>
+        <div id="ti-top-paths"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── Row 3: Actions ─────────────────────────────────────────────── -->
+  <div class="card" style="padding:14px 20px">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+
+      <div style="display:flex;align-items:center;gap:8px">
+        <span class="material-symbols-outlined" style="font-size:16px;color:var(--text-dim)">tune</span>
+        <span style="font-family:var(--font-mono);font-size:0.7rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim)">Actions</span>
+      </div>
+
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        <button id="ti-btn-campaign" onclick="tiMarkCampaign()" style="display:inline-flex;align-items:center;gap:6px;padding:7px 16px;border-radius:var(--radius-sm);background:rgba(179,136,255,0.08);color:var(--purple);border:1px solid rgba(179,136,255,0.2);font-family:var(--font-body);font-size:0.78rem;font-weight:600;cursor:pointer;transition:var(--transition)">
+          <span class="material-symbols-outlined" style="font-size:14px">campaign</span>Mark Campaign
+        </button>
+        <button onclick="tiStopCampaign()" style="display:inline-flex;align-items:center;gap:6px;padding:7px 16px;border-radius:var(--radius-sm);background:rgba(255,255,255,0.04);color:var(--text-dim);border:1px solid rgba(255,255,255,0.06);font-family:var(--font-body);font-size:0.78rem;font-weight:600;cursor:pointer;transition:var(--transition)">
+          <span class="material-symbols-outlined" style="font-size:14px">stop_circle</span>End Campaign
+        </button>
+        <button onclick="tiOverride('ATTACK')" style="display:inline-flex;align-items:center;gap:6px;padding:7px 16px;border-radius:var(--radius-sm);background:rgba(255,82,82,0.08);color:var(--red);border:1px solid rgba(255,82,82,0.2);font-family:var(--font-body);font-size:0.78rem;font-weight:600;cursor:pointer;transition:var(--transition)">
+          <span class="material-symbols-outlined" style="font-size:14px">gpp_bad</span>Mark Attack
+        </button>
+        <button onclick="tiOverride('NORMAL')" style="display:inline-flex;align-items:center;gap:6px;padding:7px 16px;border-radius:var(--radius-sm);background:rgba(0,230,118,0.06);color:var(--green);border:1px solid rgba(0,230,118,0.15);font-family:var(--font-body);font-size:0.78rem;font-weight:600;cursor:pointer;transition:var(--transition)">
+          <span class="material-symbols-outlined" style="font-size:14px">check_circle</span>Mark Normal
+        </button>
+        <button onclick="tiClearOverride()" style="display:inline-flex;align-items:center;gap:6px;padding:7px 16px;border-radius:var(--radius-sm);background:rgba(255,171,64,0.06);color:var(--orange);border:1px solid rgba(255,171,64,0.15);font-family:var(--font-body);font-size:0.78rem;font-weight:600;cursor:pointer;transition:var(--transition)">
+          <span class="material-symbols-outlined" style="font-size:14px">undo</span>Clear Override
+        </button>
+        <button onclick="tiFetch(true)" style="display:inline-flex;align-items:center;gap:6px;padding:7px 16px;border-radius:var(--radius-sm);background:rgba(68,138,255,0.06);color:var(--blue);border:1px solid rgba(68,138,255,0.15);font-family:var(--font-body);font-size:0.78rem;font-weight:600;cursor:pointer;transition:var(--transition)">
+          <span class="material-symbols-outlined" style="font-size:14px">refresh</span>Refresh
+        </button>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:6px;font-size:0.7rem;color:var(--text-dim)">
+        <span id="ti-refresh-dot" style="width:7px;height:7px;border-radius:50%;background:var(--green);animation:pulse 2s infinite;display:inline-block"></span>
+        Auto-refresh 10s &mdash; <span id="ti-source-badge" style="font-family:var(--font-mono);font-size:0.65rem;color:var(--text-dim)">&#8212;</span>
+      </div>
+    </div>
+
+    <div id="ti-toast" style="display:none;margin-top:10px;padding:6px 14px;border-radius:var(--radius-sm);font-family:var(--font-mono);font-size:0.75rem;background:rgba(212,175,55,0.08);color:var(--gold);border:1px solid var(--border)"></div>
+  </div>
+
+</div>
+<!-- end #traffic-intelligence-card -->
+
+<!-- ======================================================================
+     INLINE JAVASCRIPT
+     All external data is set via textContent or DOM element creation.
+     No user-controlled data is ever passed to innerHTML or eval.
+     ====================================================================== -->
+<script>
+(function () {
+  'use strict';
+
+  // ── Configuration ────────────────────────────────────────────────────
+  var API_STATUS          = '/api/v2/traffic/status';
+  var API_CAMPAIGN_START  = '/api/v2/traffic/campaign/start';
+  var API_CAMPAIGN_STOP   = '/api/v2/traffic/campaign/stop';
+  var API_OVERRIDE        = '/api/v2/traffic/override';
+  var REFRESH_INTERVAL    = 10000; // ms
+
+  // ── State ────────────────────────────────────────────────────────────
+  var _timer    = null;
+  var _started  = false;
+  var _sparkData = [];
+  var SPARK_MAX  = 30;
+
+  // ── Status themes ────────────────────────────────────────────────────
+  var THEMES = {
+    NORMAL:   { color:'var(--green)',  bg:'rgba(0,230,118,0.10)', border:'rgba(0,230,118,0.25)',  glow:'rgba(0,230,118,0.6)'  },
+    ELEVATED: { color:'var(--orange)', bg:'rgba(255,171,64,0.10)', border:'rgba(255,171,64,0.25)', glow:'rgba(255,171,64,0.6)' },
+    CAMPAIGN: { color:'var(--blue)',   bg:'rgba(68,138,255,0.10)', border:'rgba(68,138,255,0.25)', glow:'rgba(68,138,255,0.6)' },
+    ATTACK:   { color:'var(--red)',    bg:'rgba(255,82,82,0.10)',  border:'rgba(255,82,82,0.25)',  glow:'rgba(255,82,82,0.6)'  },
+  };
+  var GEO_COLORS = ['var(--blue)','var(--cyan)','var(--purple)','var(--gold)','var(--orange)'];
+
+  // ── DOM helpers ───────────────────────────────────────────────────────
+  function el(id)        { return document.getElementById(id); }
+  function setText(id,v) { var e=el(id); if(e) e.textContent=String(v); }
+  function setWidth(id,pct) {
+    var e=el(id);
+    if(e) e.style.width = Math.max(0,Math.min(100,pct)).toFixed(1)+'%';
+  }
+
+  // Create a text-only DOM element (never accepts raw user HTML)
+  function makeEl(tag, opts) {
+    var e = document.createElement(tag);
+    if (opts) {
+      if (opts.className)  e.className  = opts.className;
+      if (opts.style)      e.style.cssText = opts.style;
+      if (opts.title)      e.title      = opts.title;
+      if (opts.text  !== undefined) e.textContent = opts.text;
+    }
+    return e;
+  }
+
+  // Append multiple children in one call
+  function append(parent) {
+    for (var i = 1; i < arguments.length; i++) parent.appendChild(arguments[i]);
+    return parent;
+  }
+
+  // Replace all children of a container with a single child
+  function replaceChildren(container, child) {
+    while (container.firstChild) container.removeChild(container.firstChild);
+    container.appendChild(child);
+  }
+
+  function fmtTime(iso) {
+    try {
+      var d = new Date(iso);
+      return d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    } catch(e) { return iso; }
+  }
+
+  function countryFlag(code) {
+    if (!code || code.length !== 2) return '';
+    try {
+      var c1 = 0x1F1E6 + code.toUpperCase().charCodeAt(0) - 65;
+      var c2 = 0x1F1E6 + code.toUpperCase().charCodeAt(1) - 65;
+      return String.fromCodePoint(c1) + String.fromCodePoint(c2) + ' ';
+    } catch(e) { return ''; }
+  }
+
+  // ── Fetch ────────────────────────────────────────────────────────────
+  function tiFetch(forceRefresh) {
+    var url = API_STATUS + (forceRefresh ? '?t=' + Date.now() : '');
+    fetch(url)
+      .then(function(r){ return r.ok ? r.json() : Promise.reject(r.status); })
+      .then(function(data){ tiRender(data); })
+      .catch(function(err){
+        var dot = el('ti-refresh-dot');
+        if (dot) dot.style.background = 'var(--red)';
+        console.warn('[Traffic Widget] fetch error:', err);
+      });
+  }
+  window.tiFetch = tiFetch;
+
+  // ── Render ────────────────────────────────────────────────────────────
+  function tiRender(data) {
+    var status   = (data.status || 'NORMAL').toUpperCase();
+    var metrics  = data.metrics  || {};
+    var rps      = metrics.rps   || {};
+    var sc       = metrics.status_counts || {};
+    var campaign = data.campaign || {};
+    var conf     = data.confidence || 0;
+
+    // Status badge
+    var theme = THEMES[status] || THEMES.NORMAL;
+    var badge = el('ti-status-badge');
+    if (badge) {
+      badge.style.background  = theme.bg;
+      badge.style.color       = theme.color;
+      badge.style.borderColor = theme.border;
+    }
+    var dot = el('ti-status-dot');
+    if (dot) {
+      dot.style.background = theme.color;
+      dot.style.boxShadow  = '0 0 8px ' + theme.glow;
+    }
+    setText('ti-status-text',   status);
+    setText('ti-confidence-pct', conf.toFixed(1) + '%');
+    setWidth('ti-confidence-bar', conf);
+    setText('ti-last-updated',  data.generated_at ? fmtTime(data.generated_at) : '—');
+    setText('ti-source-badge',  data.source || '—');
+
+    // Req/s
+    setText('ti-rps-current', (rps.current || 0).toFixed(2));
+    setText('ti-rps-5m',      (rps.avg_5m  || 0).toFixed(2));
+    _sparkData.push(rps.current || 0);
+    if (_sparkData.length > SPARK_MAX) _sparkData.shift();
+    drawSparkline(_sparkData);
+
+    // Unique IPs
+    var ips = metrics.unique_ips_5m || 0;
+    setText('ti-unique-ips', ips);
+    setWidth('ti-ips-bar', Math.min((ips / 500) * 100, 100));
+
+    // UA Diversity
+    var uaDiv = metrics.ua_diversity_score || 100;
+    setText('ti-ua-div',   uaDiv.toFixed(0));
+    setText('ti-ua-index', uaDiv.toFixed(1));
+    setWidth('ti-ua-bar',          uaDiv);
+    setWidth('ti-ua-diversity-bar', uaDiv);
+
+    // Error rate
+    var errRate = metrics.error_rate || 0;
+    var errEl = el('ti-error-rate');
+    if (errEl) {
+      errEl.textContent = errRate.toFixed(2) + '%';
+      errEl.style.color = errRate === 0 ? 'var(--green)' : (errRate < 5 ? 'var(--orange)' : 'var(--red)');
+    }
+    setText('ti-4xx', sc['4xx'] || 0);
+    setText('ti-5xx', sc['5xx'] || 0);
+
+    // Bot score
+    var bot = metrics.bot_score || 0;
+    var botEl = el('ti-bot-pct');
+    if (botEl) {
+      botEl.textContent = bot.toFixed(1) + '%';
+      botEl.style.color = bot < 20 ? 'var(--green)' : (bot < 60 ? 'var(--orange)' : 'var(--red)');
+    }
+    setWidth('ti-bot-bar', Math.min(bot, 100));
+
+    // Sub-panels
+    renderGeoBars(metrics.top_countries || []);
+    renderTopPaths(metrics.top_paths    || []);
+    renderTopUAs(metrics.top_uas        || []);
+    renderCampaign(campaign);
+
+    // Refresh indicator
+    var rd = el('ti-refresh-dot');
+    if (rd) rd.style.background = 'var(--green)';
+  }
+
+  // ── Sparkline canvas ─────────────────────────────────────────────────
+  function drawSparkline(data) {
+    var canvas = el('ti-sparkline');
+    if (!canvas || !canvas.getContext) return;
+    var ctx = canvas.getContext('2d');
+    var w = canvas.width;
+    var h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    if (data.length < 2) return;
+
+    var maxVal = Math.max.apply(null, data) || 1;
+    var step   = w / (data.length - 1);
+
+    ctx.beginPath();
+    for (var i = 0; i < data.length; i++) {
+      var x = i * step;
+      var y = h - (data[i] / maxVal) * (h - 2) - 1;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = 'rgba(24,255,255,0.7)';
+    ctx.lineWidth   = 1.5;
+    ctx.lineJoin    = 'round';
+    ctx.stroke();
+
+    ctx.lineTo((data.length - 1) * step, h);
+    ctx.lineTo(0, h);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(24,255,255,0.07)';
+    ctx.fill();
+  }
+
+  // ── Geo bars — built with DOM, no innerHTML on data ──────────────────
+  function renderGeoBars(countries) {
+    var container = el('ti-geo-bars');
+    if (!container) return;
+
+    while (container.firstChild) container.removeChild(container.firstChild);
+
+    if (!countries || countries.length === 0) {
+      container.appendChild(makeEl('div', {
+        style: 'font-size:0.72rem;color:var(--text-dim);text-align:center;padding:10px',
+        text:  'No geo data — ip-api enrichment pending',
+      }));
+      return;
+    }
+
+    var maxCount = Math.max.apply(null, countries.slice(0,5).map(function(c){ return c.count||0; })) || 1;
+
+    countries.slice(0, 5).forEach(function(c, i) {
+      var pct    = ((c.count || 0) / maxCount * 100).toFixed(1);
+      var color  = GEO_COLORS[i % GEO_COLORS.length];
+      var flag   = countryFlag(c.code || '');
+      var name   = String(c.name || c.code || '??');
+
+      var row  = makeEl('div', { className:'chart-row' });
+      var lbl  = makeEl('div', { style:'width:110px;font-size:0.7rem;color:var(--text);text-align:right;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis' });
+      lbl.textContent = flag + name;
+
+      var track = makeEl('div', { className:'chart-bar-track' });
+      var fill  = makeEl('div', {
+        style: 'height:100%;width:' + pct + '%;background:' + color + ';opacity:0.75;border-radius:4px;display:flex;align-items:center;justify-content:flex-end;padding-right:6px;transition:width 0.8s ease',
+        text:  String(c.count || 0),
+      });
+      fill.style.fontSize  = '0.65rem';
+      fill.style.fontWeight= '700';
+      fill.style.color     = 'rgba(255,255,255,0.9)';
+      fill.style.minWidth  = 'fit-content';
+
+      append(track, fill);
+      append(row, lbl, track);
+      container.appendChild(row);
+    });
+  }
+
+  // ── Top Paths — DOM only ─────────────────────────────────────────────
+  function renderTopPaths(paths) {
+    var container = el('ti-top-paths');
+    if (!container) return;
+    while (container.firstChild) container.removeChild(container.firstChild);
+
+    if (!paths || paths.length === 0) {
+      container.appendChild(makeEl('div', { style:'font-size:0.72rem;color:var(--text-dim)', text:'No data' }));
+      return;
+    }
+
+    paths.slice(0, 5).forEach(function(p) {
+      var row   = makeEl('div', { style:'display:flex;justify-content:space-between;align-items:center;font-size:0.72rem' });
+      var label = makeEl('span', {
+        style: 'color:var(--text);font-family:var(--font-mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px',
+        title: String(p.path || '/'),
+        text:  String(p.path || '/'),
+      });
+      var count = makeEl('span', {
+        style: 'color:var(--cyan);font-weight:600;flex-shrink:0;margin-left:8px',
+        text:  String(p.count || 0),
+      });
+      append(row, label, count);
+      container.appendChild(row);
+    });
+  }
+
+  // ── Top UAs — DOM only ───────────────────────────────────────────────
+  var BOT_RE = /bot|crawl|spider|wget|curl|python|Go-http|headless/i;
+
+  function renderTopUAs(uas) {
+    var container = el('ti-top-uas');
+    if (!container) return;
+    while (container.firstChild) container.removeChild(container.firstChild);
+
+    if (!uas || uas.length === 0) {
+      container.appendChild(makeEl('div', { style:'font-size:0.72rem;color:var(--text-dim)', text:'No data' }));
+      return;
+    }
+
+    uas.slice(0, 3).forEach(function(u) {
+      var ua    = String(u.ua || '-');
+      var isBot = BOT_RE.test(ua);
+      var row   = makeEl('div', { style:'display:flex;justify-content:space-between;gap:6px;font-size:0.68rem;margin-bottom:5px' });
+      var label = makeEl('span', {
+        style: 'color:' + (isBot ? 'var(--orange)' : 'var(--text-dim)') + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:170px',
+        title: ua,
+        text:  (isBot ? '\u{1F916} ' : '') + ua.substring(0, 55),
+      });
+      var count = makeEl('span', {
+        style: 'color:var(--cyan);font-weight:600;flex-shrink:0',
+        text:  String(u.count || 0),
+      });
+      append(row, label, count);
+      container.appendChild(row);
+    });
+  }
+
+  // ── Campaign panel — static structure, data via textContent ──────────
+  function renderCampaign(campaign) {
+    var container = el('ti-campaign-panel');
+    if (!container) return;
+    while (container.firstChild) container.removeChild(container.firstChild);
+
+    if (!campaign || !campaign.active) {
+      var idle = makeEl('div', {
+        style: 'padding:12px;background:rgba(255,255,255,0.02);border-radius:var(--radius-sm);border:1px solid rgba(255,255,255,0.04);text-align:center',
+      });
+      idle.appendChild(makeEl('div', { style:'font-size:0.75rem;color:var(--text-dim)', text:'No active campaign' }));
+      container.appendChild(idle);
+      return;
+    }
+
+    var wrap = makeEl('div', {
+      style: 'padding:12px;background:rgba(68,138,255,0.06);border-radius:var(--radius-sm);border:1px solid rgba(68,138,255,0.2)',
+    });
+
+    // Header row
+    var hdr  = makeEl('div', { style:'display:flex;align-items:center;gap:6px;margin-bottom:10px' });
+    var blink= makeEl('span', { style:'width:8px;height:8px;border-radius:50%;background:var(--blue);box-shadow:0 0 6px rgba(68,138,255,0.5);animation:pulse 2s infinite;display:inline-block;flex-shrink:0' });
+    var name = makeEl('span', { style:'font-family:var(--font-heading);font-size:0.85rem;color:var(--blue);letter-spacing:0.5px', text: String(campaign.name || 'Campaign') });
+    append(hdr, blink, name);
+
+    // Detail rows
+    var details = makeEl('div', { style:'display:flex;flex-direction:column;gap:5px;font-size:0.72rem' });
+
+    function addRow(label, value, valueColor) {
+      var row  = makeEl('div', { style:'display:flex;justify-content:space-between' });
+      var lbl  = makeEl('span', { style:'color:var(--text-dim)', text: label });
+      var val  = makeEl('span', { style:'color:' + (valueColor || 'var(--text)'), text: value });
+      append(row, lbl, val);
+      details.appendChild(row);
+    }
+
+    addRow('Started',      campaign.started_at ? fmtTime(campaign.started_at) : '—');
+    addRow('Expires',      campaign.expires_at ? fmtTime(campaign.expires_at) : 'Manual');
+    addRow('Expected RPS', campaign.expected_rps ? campaign.expected_rps.toFixed(1) + ' req/s' : '—', 'var(--cyan)');
+
+    if (campaign.notes) {
+      var notes = makeEl('div', {
+        style: 'margin-top:4px;padding:5px 8px;background:rgba(255,255,255,0.03);border-radius:4px;color:var(--text-dim);font-size:0.68rem',
+        text:  String(campaign.notes),
+      });
+      details.appendChild(notes);
+    }
+
+    append(wrap, hdr, details);
+    container.appendChild(wrap);
+  }
+
+  // ── Toast ────────────────────────────────────────────────────────────
+  function showToast(msg, isError) {
+    var t = el('ti-toast');
+    if (!t) return;
+    t.textContent  = String(msg);
+    t.style.display = 'block';
+    t.style.color   = isError ? 'var(--red)'  : 'var(--gold)';
+    t.style.borderColor = isError ? 'rgba(255,82,82,0.2)' : 'var(--border)';
+    clearTimeout(t._hide);
+    t._hide = setTimeout(function(){ t.style.display='none'; }, 4000);
+  }
+
+  // ── Action handlers ──────────────────────────────────────────────────
+  window.tiMarkCampaign = function() {
+    var name = prompt('Campaign name (e.g. "Black Friday Email Blast"):');
+    if (!name) return;
+    var durStr = prompt('Duration in minutes (blank = manual end):');
+    var rpsStr = prompt('Expected req/s (blank = unknown):');
+    var body = { name: name };
+    var dur = durStr ? parseInt(durStr, 10) : null;
+    var rps = rpsStr ? parseFloat(rpsStr)  : null;
+    if (dur && !isNaN(dur)) body.duration_minutes = dur;
+    if (rps && !isNaN(rps)) body.expected_rps     = rps;
+
+    fetch(API_CAMPAIGN_START, {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify(body),
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(){ showToast('Campaign "' + name + '" started'); tiFetch(true); })
+    .catch(function(e){ showToast('Error starting campaign: ' + e, true); });
+  };
+
+  window.tiStopCampaign = function() {
+    if (!confirm('End the active campaign?')) return;
+    fetch(API_CAMPAIGN_STOP, { method:'POST' })
+    .then(function(){ showToast('Campaign ended'); tiFetch(true); })
+    .catch(function(e){ showToast('Error: ' + e, true); });
+  };
+
+  window.tiOverride = function(status) {
+    var reason = prompt('Reason for override to ' + status + ':');
+    if (!reason) return;
+    var ttlStr = prompt('Duration in minutes (default 60):') || '60';
+    var ttl = parseInt(ttlStr, 10) || 60;
+
+    fetch(API_OVERRIDE, {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify({ status: status, reason: reason, ttl_minutes: ttl }),
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(){ showToast('Override set: ' + status + ' for ' + ttl + 'm'); tiFetch(true); })
+    .catch(function(e){ showToast('Error: ' + e, true); });
+  };
+
+  window.tiClearOverride = function() {
+    fetch(API_OVERRIDE, { method:'DELETE' })
+    .then(function(){ showToast('Override cleared — auto classification restored'); tiFetch(true); })
+    .catch(function(e){ showToast('Error: ' + e, true); });
+  };
+
+  // ── Bootstrap ────────────────────────────────────────────────────────
+  function startAutoRefresh() {
+    if (_started) return;
+    _started = true;
+    tiFetch(false);
+    _timer = setInterval(function(){ tiFetch(false); }, REFRESH_INTERVAL);
+  }
+
+  // Hook into dashboard tab navigation
+  document.addEventListener('click', function(e) {
+    var btn = e.target.closest('[data-tab]');
+    if (!btn) return;
+    var tab = btn.getAttribute('data-tab');
+    if (tab === 'traffic-intelligence' || tab === 'hsm-security') {
+      startAutoRefresh();
+    }
+  });
+
+  // Auto-start if the widget is already visible (direct URL to tab)
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function() {
+      var card = el('traffic-intelligence-card');
+      if (card && card.offsetParent !== null) startAutoRefresh();
+    });
+  } else {
+    var card = el('traffic-intelligence-card');
+    if (card && card.offsetParent !== null) startAutoRefresh();
+  }
+
+  window.addEventListener('beforeunload', function() {
+    if (_timer) clearInterval(_timer);
+  });
+
+})();
+</script>

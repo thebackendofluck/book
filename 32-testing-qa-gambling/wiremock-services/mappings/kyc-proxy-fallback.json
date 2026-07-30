@@ -1,0 +1,12 @@
+{
+    "uuid": "3c309ade-b997-43b2-aa1d-8d212ce1c3e5",
+    "persistent": true,
+    "request": {
+        "urlPath": "/online/authentication_kyc_url.asp",
+        "method": "POST"
+    },
+    "response": {
+        "status": 200,
+        "proxyBaseUrl": "https://www.INTEGRITY-DIRECT.com"
+    }
+}

@@ -1,0 +1,227 @@
+# Companion code for "The Backend of Luck" - Chapter 17, Random Number Generation (RNG).
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# ===========================================================================
+# RNG Service Deployment Stack
+# ===========================================================================
+#
+# GLI-11 Section 4.7: RNG Service Architecture Requirements
+# - RNG must run as an isolated service
+# - Audit logs must be persistent and tamper-evident
+# - Service must be monitored for health and performance
+# - Redis provides rate limiting and caching
+# - PostgreSQL stores audit trail for regulatory compliance
+#
+# Usage:
+#   docker-compose up -d                    # Start all services
+#   docker-compose logs -f rng-service      # View RNG service logs
+#   docker-compose exec rng-service python rng_microservice.py --test
+#
+# Endpoints:
+#   POST http://localhost:8443/api/v1/rng/bytes     - Generate random bytes
+#   POST http://localhost:8443/api/v1/rng/integer   - Generate random integer
+#   POST http://localhost:8443/api/v1/rng/float     - Generate random float
+#   POST http://localhost:8443/api/v1/rng/shuffle   - Shuffle sequence
+#   GET  http://localhost:8443/health                - Health check
+#   GET  http://localhost:9090                       - Prometheus UI
+#   GET  http://localhost:3000                       - Grafana (admin/admin)
+#
+# ===========================================================================
+
+version: "3.8"
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "5"
+    tag: "{{.Name}}"
+
+services:
+  # ─────────────────────────────────────────────────────────
+  # RNG FastAPI Microservice
+  # ─────────────────────────────────────────────────────────
+  rng-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: acme-casino/rng-service:1.0.0
+    container_name: rng-service
+    restart: unless-stopped
+    ports:
+      - "8443:8443"
+    environment:
+      - RNG_REDIS_URL=redis://redis:6379/0
+      - RNG_AUDIT_DB_URL=postgresql://rng_audit:${POSTGRES_PASSWORD:-rng_audit_secret}@postgres:5432/rng_audit
+      - RNG_AUDIT_HMAC_KEY=${RNG_AUDIT_HMAC_KEY:-change-me-in-production}
+      - RNG_RATE_LIMIT_PER_MINUTE=1000
+      - RNG_RATE_LIMIT_BURST=100
+      - RNG_MAX_BYTES_PER_REQUEST=4096
+      - RNG_WORKERS=2
+      - RNG_LOG_LEVEL=info
+      # GLI-11 4.7: Service must not have access to game logic
+      - PYTHONDONTWRITEBYTECODE=1
+    volumes:
+      - rng-audit-logs:/var/log/rng-service
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8443/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 512M
+        reservations:
+          cpus: "0.5"
+          memory: 128M
+    networks:
+      - rng-internal
+    logging: *default-logging
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:size=50M
+
+  # ─────────────────────────────────────────────────────────
+  # Redis (Rate Limiting + Request Caching)
+  # ─────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: rng-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --save ""
+      --appendonly no
+      --requirepass ${REDIS_PASSWORD:-rng_redis_secret}
+      --protected-mode yes
+      --bind 0.0.0.0
+      --loglevel warning
+    ports:
+      - "6380:6379"  # Non-standard port externally
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-rng_redis_secret}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+    networks:
+      - rng-internal
+    logging: *default-logging
+
+  # ─────────────────────────────────────────────────────────
+  # PostgreSQL (Audit Trail Storage)
+  # ─────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: rng-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: rng_audit
+      POSTGRES_USER: rng_audit
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rng_audit_secret}
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    ports:
+      - "5433:5432"  # Non-standard port externally
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./init-audit-db.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rng_audit -d rng_audit"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+    networks:
+      - rng-internal
+    logging: *default-logging
+
+  # ─────────────────────────────────────────────────────────
+  # Prometheus (Metrics Collection)
+  # ─────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.50.0
+    container_name: rng-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=30d"
+      - "--web.enable-lifecycle"
+    networks:
+      - rng-internal
+    logging: *default-logging
+
+  # ─────────────────────────────────────────────────────────
+  # Grafana (Dashboard Visualization)
+  # ─────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.3.0
+    container_name: rng-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:?GRAFANA_PASSWORD must be set}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ../monitoring/rng_health_dashboard.json:/var/lib/grafana/dashboards/rng-health.json:ro
+    depends_on:
+      - prometheus
+    networks:
+      - rng-internal
+    logging: *default-logging
+
+volumes:
+  redis-data:
+    driver: local
+  postgres-data:
+    driver: local
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
+  rng-audit-logs:
+    driver: local
+
+networks:
+  rng-internal:
+    driver: bridge
+    internal: false  # Allow external access for testing; set to true in production
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16

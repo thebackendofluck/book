@@ -1,0 +1,66 @@
+Order Allow,Deny
+Allow from all
+
+Options +FollowSymLinks
+RewriteEngine On
+
+php_flag magic_quotes_gpc Off
+
+<FilesMatch "\.(gif|jpe?g|png|css|js|cgi|swf)$">
+  ErrorDocument 404 default
+</FilesMatch>
+
+ErrorDocument 404 /index.php?page=404
+
+#http -> https.
+RewriteCond %{HTTP:X-Forwarded-Proto} =http
+RewriteCond %{HTTP_HOST} !^acebet.acmecasino.com$ [NC]
+RewriteRule ^(.*)$ https://%{HTTP_HOST}/$1 [NC,R=301,QSA,L]
+
+#Non www.
+RewriteCond %{HTTP_HOST} ^acebet.acmecasino.com$ [NC]
+RewriteRule ^(.*)$ https://www.acebet.acmecasino.com%{REQUEST_URI}?%{QUERY_STRING} [R=301,L]
+
+# Adyen skinning CORS
+SetEnvIf Origin ^(https?://.+\.adyen\.com(?::\d{1,5})?)$   CORS_ALLOW_ORIGIN=$1
+Header append Access-Control-Allow-Origin  %{CORS_ALLOW_ORIGIN}e   env=CORS_ALLOW_ORIGIN
+
+#Promotions
+RewriteRule ^(en|fi|no|sv|de)/promotions/(.*) /index.php?page=promotions&promo=$2&language=$1 [L,QSA]
+RewriteRule ^promotions/(.*) /index.php?page=promotions&promo=$1 [L,QSA]
+
+#Desktop Linking to page without the page parameter.
+RewriteCond %{QUERY_STRING} !(^|&)page [NC]
+RewriteCond %{REQUEST_URI} !^(.*\.(xml|txt|html|php))$ [NC]
+RewriteRule ^([^/]*)$ /?page=$1 [QSA,L]
+
+# SEO-friendly redirects
+RewriteCond %{QUERY_STRING} (^|&)page=playerprotection($|&)
+RewriteCond %{ENV:REDIRECT_STATUS} ^$
+RewriteRule ^([^/]*)$ /playerprotection? [L,R=301]
+
+RewriteCond %{QUERY_STRING} (^|&)page=games($|&)
+RewriteCond %{ENV:REDIRECT_STATUS} ^$
+RewriteRule ^([^/]*)$ /casino-games? [L,R=301]
+
+RewriteCond %{QUERY_STRING} (^|&)page=site-map($|&)
+RewriteCond %{ENV:REDIRECT_STATUS} ^$
+RewriteRule ^([^/]*)$ /sitemap? [L,R=301]
+
+RewriteCond %{QUERY_STRING} (^|&)page=support($|&)
+RewriteCond %{ENV:REDIRECT_STATUS} ^$
+RewriteRule ^([^/]*)$ /contact? [L,R=301]
+
+RewriteCond %{QUERY_STRING} (^|&)page=loyalty($|&)
+RewriteCond %{ENV:REDIRECT_STATUS} ^$
+RewriteRule ^([^/]*)$ /rewards? [L,R=301]
+
+RewriteCond %{QUERY_STRING} (^|&)page=loyaltyredeem($|&)
+RewriteCond %{ENV:REDIRECT_STATUS} ^$
+RewriteRule ^([^/]*)$ /rewards? [L,R=301]
+
+#Landers
+RewriteCond %{REQUEST_URI} !^.*\.(gif|jpe?g|png|css|js|cgi|swf)$ [NC]
+RewriteRule lander/(.*) index.php?page=home&lander=$1 [L,QSA]
+
+Redirect 301 /games /casino-games

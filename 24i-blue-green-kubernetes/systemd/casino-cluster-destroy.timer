@@ -1,0 +1,10 @@
+# /etc/systemd/system/casino-cluster-destroy.timer
+[Unit]
+Description=Daily Casino Old Cluster Teardown
+
+[Timer]
+OnCalendar=*-*-* 04:00:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target

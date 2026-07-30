@@ -1,0 +1,260 @@
+# Companion code for "The Backend of Luck" - Chapter 16, Cryptocurrency and DeFi Integration.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# Chapter 8: Cryptocurrency and DeFi Integration
+# Full Crypto Integration Development Stack
+#
+# Services:
+#   - Hardhat node (local Ethereum for smart contract testing)
+#   - PostgreSQL (transaction records, player balances)
+#   - Redis (rate caching, session management)
+#   - Crypto API (exchange rates, KYT, wallet management)
+#   - Blockchain monitor (deposit detection, confirmation tracking)
+#   - Admin dashboard (wallet management UI)
+#
+# Usage:
+#   docker-compose up -d
+#   docker-compose logs -f crypto-api
+#   docker-compose exec hardhat npx hardhat console
+
+version: "3.9"
+
+services:
+  # ── Local Ethereum Node (Hardhat) ─────────────────────────────────
+  hardhat:
+    image: node:20-alpine
+    container_name: casino-hardhat
+    working_dir: /app
+    command: >
+      sh -c "npm install --save-dev hardhat @openzeppelin/contracts @chainlink/contracts &&
+             npx hardhat node --hostname 0.0.0.0"
+    ports:
+      - "127.0.0.1:8545:8545"
+    volumes:
+      - hardhat-data:/app
+    environment:
+      - HARDHAT_NETWORK=localhost
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8545"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+
+  # ── PostgreSQL (Transaction Database) ─────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: casino-crypto-db
+    environment:
+      POSTGRES_DB: crypto_casino
+      POSTGRES_USER: casino_admin
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set}
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U casino_admin -d crypto_casino"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+
+  # ── Redis (Rate Cache & Sessions) ─────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: casino-crypto-cache
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "127.0.0.1:6380:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 320M
+          cpus: "0.5"
+
+  # ── Crypto API Service ────────────────────────────────────────────
+  crypto-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: casino-crypto-api
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      DATABASE_URL: postgresql://casino_admin:${DB_PASSWORD:?DB_PASSWORD must be set}@postgres:5432/crypto_casino
+      REDIS_URL: redis://redis:6379
+      HARDHAT_RPC_URL: http://hardhat:8545
+      ETH_RPC_URL: ${ETH_RPC_URL:-http://hardhat:8545}
+      POLYGON_RPC_URL: ${POLYGON_RPC_URL:-}
+      HOT_WALLET_KEY: ${HOT_WALLET_KEY:?HOT_WALLET_KEY must be set}
+      HOUSE_EDGE_BPS: ${HOUSE_EDGE_BPS:-250}
+      TRAVEL_RULE_JURISDICTION: ${TRAVEL_RULE_JURISDICTION:-FATF}
+      KYT_PROVIDER: ${KYT_PROVIDER:-internal}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      hardhat:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+
+  # ── Blockchain Monitor (Deposit Detection) ────────────────────────
+  blockchain-monitor:
+    build:
+      context: .
+      dockerfile: Dockerfile.monitor
+    container_name: casino-blockchain-monitor
+    environment:
+      DATABASE_URL: postgresql://casino_admin:${DB_PASSWORD:?DB_PASSWORD must be set}@postgres:5432/crypto_casino
+      REDIS_URL: redis://redis:6379
+      ETH_RPC_URL: ${ETH_RPC_URL:-http://hardhat:8545}
+      POLYGON_RPC_URL: ${POLYGON_RPC_URL:-}
+      CONFIRMATION_THRESHOLD_ETH: 12
+      CONFIRMATION_THRESHOLD_POLYGON: 30
+      SCAN_INTERVAL_SECONDS: 5
+      HOT_WALLET_ADDRESS: ${HOT_WALLET_ADDRESS:?HOT_WALLET_ADDRESS must be set}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+
+  # ── Admin Dashboard ───────────────────────────────────────────────
+  admin-ui:
+    image: nginx:1.27-alpine
+    container_name: casino-crypto-admin
+    ports:
+      - "127.0.0.1:3001:80"
+    volumes:
+      - ./admin-ui:/usr/share/nginx/html:ro
+    depends_on:
+      - crypto-api
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.25"
+
+  # ── Prometheus (Metrics) ──────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.54.0
+    container_name: casino-crypto-metrics
+    ports:
+      - "127.0.0.1:9091:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=30d"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9090/-/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 384M
+          cpus: "0.5"
+
+  # ── Grafana (Dashboards) ──────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:11.4.0
+    container_name: casino-crypto-grafana
+    ports:
+      - "127.0.0.1:3002:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:?GRAFANA_PASSWORD must be set}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+
+volumes:
+  hardhat-data:
+  postgres-data:
+  redis-data:
+  grafana-data:
+
+networks:
+  default:
+    name: casino-crypto-network

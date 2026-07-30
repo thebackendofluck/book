@@ -1,0 +1,175 @@
+{
+  "name": "[book-cap24m §10.3] Withdrawal Hold Orchestration",
+  "active": false,
+  "tags": [{"name": "book-cap24m"}, {"name": "fraud-ops"}, {"name": "compliance"}],
+  "settings": {"executionOrder": "v1"},
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Withdrawal Hold (cap 24m §10.3)\n\n**Trigger:** Webhook from wallet service when withdrawal > threshold (configurable per market).\n**Steps:**\n1. Pause withdrawal (status='under_review')\n2. Check if extra KYC artifact already on file\n3. If not, request artifact from player + wait up to 24h\n4. After 24h: release if artifact provided, else escalate to manual review case\n\n**Configurable thresholds (env vars):**\n- WITHDRAWAL_THRESHOLD_EUR_UK=5000\n- WITHDRAWAL_THRESHOLD_EUR_MGA=10000\n- WITHDRAWAL_THRESHOLD_EUR_BR=25000",
+        "height": 280,
+        "width": 380,
+        "color": 5
+      },
+      "id": "note-3",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [0, -200]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "withdrawal-threshold",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "wh-1",
+      "name": "Webhook: withdrawal-threshold",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 200],
+      "webhookId": "withdrawal-hold-cap24m"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE wallet_events SET status='under_review', held_at=NOW() WHERE event_id=$1 AND type='WITHDRAWAL' AND status='pending' RETURNING event_id, player_id, amount, currency",
+        "options": {"queryReplacement": "={{ $json.body.event_id }}"}
+      },
+      "id": "pg-pause",
+      "name": "Pause Withdrawal",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [480, 200],
+      "credentials": {"postgres": {"id": "PLACEHOLDER", "name": "casino-cnpg-tunnel"}}
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT EXISTS(SELECT 1 FROM kyc_documents WHERE player_id=$1 AND doc_type='proof_of_funds' AND status='approved' AND created_at > NOW() - INTERVAL '90 days') AS has_pof",
+        "options": {"queryReplacement": "={{ $json.player_id }}"}
+      },
+      "id": "pg-check",
+      "name": "Has Recent PoF?",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [720, 200],
+      "credentials": {"postgres": {"id": "PLACEHOLDER", "name": "casino-cnpg-tunnel"}}
+    },
+    {
+      "parameters": {
+        "rules": {"values": [{"conditions": {"options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict"}, "conditions": [{"leftValue": "={{ $json.has_pof }}", "rightValue": true, "operator": {"type": "boolean", "operation": "equals"}}]}, "outputKey": "has_pof"}]},
+        "options": {"fallbackOutput": "extra"}
+      },
+      "id": "switch-1",
+      "name": "Branch: PoF on file?",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [960, 200]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE wallet_events SET status='completed', released_at=NOW() WHERE event_id=$1 RETURNING event_id",
+        "options": {"queryReplacement": "={{ $node['Pause Withdrawal'].json.event_id }}"}
+      },
+      "id": "pg-release",
+      "name": "Release Withdrawal",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1200, 80],
+      "credentials": {"postgres": {"id": "PLACEHOLDER", "name": "casino-cnpg-tunnel"}}
+    },
+    {
+      "parameters": {
+        "url": "https://api.postmarkapp.com/email",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {"parameters": [{"name": "X-Postmark-Server-Token", "value": "={{ $credentials.postmarkToken }}"}]},
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"From\": \"compliance@example.internal\",\n  \"To\": \"{{ $node['Pause Withdrawal'].json.player_email }}\",\n  \"Subject\": \"Action required: upload proof of funds for your withdrawal\",\n  \"HtmlBody\": \"<p>We need additional documentation before processing your withdrawal of {{ $node['Pause Withdrawal'].json.amount }} {{ $node['Pause Withdrawal'].json.currency }}.</p><p><a href='https://kyc.example.internal/upload?type=pof&player={{ $node['Pause Withdrawal'].json.player_id }}'>Upload now</a></p><p>Withdrawal will be released within 24h of receipt.</p>\"\n}",
+        "options": {}
+      },
+      "id": "email-pof",
+      "name": "Request PoF from Player",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1200, 320]
+    },
+    {
+      "parameters": {
+        "amount": 24,
+        "unit": "hours"
+      },
+      "id": "wait-24h",
+      "name": "Wait 24h",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1440, 320],
+      "webhookId": "withdrawal-wait-cap24m"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT EXISTS(SELECT 1 FROM kyc_documents WHERE player_id=$1 AND doc_type='proof_of_funds' AND status='approved' AND created_at > $2) AS pof_received",
+        "options": {"queryReplacement": "={{ $node['Pause Withdrawal'].json.player_id }},={{ $node['Pause Withdrawal'].json.held_at }}"}
+      },
+      "id": "pg-recheck",
+      "name": "PoF Provided?",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1680, 320],
+      "credentials": {"postgres": {"id": "PLACEHOLDER", "name": "casino-cnpg-tunnel"}}
+    },
+    {
+      "parameters": {
+        "rules": {"values": [{"conditions": {"options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict"}, "conditions": [{"leftValue": "={{ $json.pof_received }}", "rightValue": true, "operator": {"type": "boolean", "operation": "equals"}}]}, "outputKey": "received"}]},
+        "options": {"fallbackOutput": "extra"}
+      },
+      "id": "switch-2",
+      "name": "Branch: PoF received?",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [1920, 320]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE wallet_events SET status='completed', released_at=NOW() WHERE event_id=$1",
+        "options": {"queryReplacement": "={{ $node['Pause Withdrawal'].json.event_id }}"}
+      },
+      "id": "pg-release-2",
+      "name": "Release After PoF",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2160, 200],
+      "credentials": {"postgres": {"id": "PLACEHOLDER", "name": "casino-cnpg-tunnel"}}
+    },
+    {
+      "parameters": {
+        "url": "https://case-manager.example.internal/api/v2/cases",
+        "method": "POST",
+        "sendBody": true,
+        "bodyParameters": {"parameters": [{"name": "type", "value": "withdrawal_hold_escalation"}, {"name": "player_id", "value": "={{ $node['Pause Withdrawal'].json.player_id }}"}, {"name": "event_id", "value": "={{ $node['Pause Withdrawal'].json.event_id }}"}, {"name": "reason", "value": "PoF not provided within 24h hold window"}]},
+        "options": {}
+      },
+      "id": "case-escalate",
+      "name": "Escalate to Manual Review",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2160, 440]
+    }
+  ],
+  "connections": {
+    "Webhook: withdrawal-threshold": {"main": [[{"node": "Pause Withdrawal", "type": "main", "index": 0}]]},
+    "Pause Withdrawal": {"main": [[{"node": "Has Recent PoF?", "type": "main", "index": 0}]]},
+    "Has Recent PoF?": {"main": [[{"node": "Branch: PoF on file?", "type": "main", "index": 0}]]},
+    "Branch: PoF on file?": {"main": [[{"node": "Release Withdrawal", "type": "main", "index": 0}], [{"node": "Request PoF from Player", "type": "main", "index": 0}]]},
+    "Request PoF from Player": {"main": [[{"node": "Wait 24h", "type": "main", "index": 0}]]},
+    "Wait 24h": {"main": [[{"node": "PoF Provided?", "type": "main", "index": 0}]]},
+    "PoF Provided?": {"main": [[{"node": "Branch: PoF received?", "type": "main", "index": 0}]]},
+    "Branch: PoF received?": {"main": [[{"node": "Release After PoF", "type": "main", "index": 0}], [{"node": "Escalate to Manual Review", "type": "main", "index": 0}]]}
+  }
+}

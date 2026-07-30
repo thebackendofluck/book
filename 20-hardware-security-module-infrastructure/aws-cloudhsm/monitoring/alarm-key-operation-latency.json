@@ -1,0 +1,26 @@
+{
+  "AlarmName": "openbao-nlb-response-time-high",
+  "AlarmDescription": "OpenBao NLB p99 response time exceeds 500ms. Possible CloudHSM performance degradation or network latency between OpenBao nodes and HSM cluster. Investigate CloudHSM FailedRequestCount and HsmCount metrics.",
+  "Namespace": "AWS/NetworkELB",
+  "MetricName": "TargetResponseTime",
+  "Dimensions": [
+    {
+      "Name": "LoadBalancer",
+      "Value": "${NLB_ARN_SUFFIX}"
+    }
+  ],
+  "ExtendedStatistic": "p99",
+  "Period": 60,
+  "EvaluationPeriods": 5,
+  "DatapointsToAlarm": 3,
+  "Threshold": 0.5,
+  "ComparisonOperator": "GreaterThanThreshold",
+  "TreatMissingData": "notBreaching",
+  "AlarmActions": ["${SNS_TOPIC_ARN}"],
+  "OKActions": ["${SNS_TOPIC_ARN}"],
+  "Tags": [
+    {"Key": "Environment", "Value": "${ENV}"},
+    {"Key": "Compliance", "Value": "pci-dss-4.0.1"},
+    {"Key": "Severity", "Value": "medium"}
+  ]
+}

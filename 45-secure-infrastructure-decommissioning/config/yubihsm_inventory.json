@@ -1,0 +1,30 @@
+[
+  {
+    "_comment": "YubiHSM 2 device inventory for the SDDS destruction pipeline. auth_key_id references the application auth key (not the default key 1). Chapter 45: Secure Infrastructure Decommissioning.",
+    "serial": "REPLACE_WITH_YUBIHSM_SERIAL_1",
+    "connector_url": "http://localhost:12345",
+    "auth_key_id": 2,
+    "password_env": "YUBIHSM_1_PASSWORD",
+    "role": "primary-hsm",
+    "location": "DC-PRIMARY-RACK-A1-SLOT1",
+    "key_slots": [
+      {"id": 10, "type": "asymmetric", "algorithm": "EC_P256", "label": "signing-key-prod"},
+      {"id": 11, "type": "asymmetric", "algorithm": "EC_P256", "label": "signing-key-dr"},
+      {"id": 20, "type": "symmetric",  "algorithm": "AES256_CCM_WRAP", "label": "wrap-key-backup"},
+      {"id": 30, "type": "opaque",     "algorithm": "OPAQUE_X509_CERTIFICATE", "label": "ca-cert-prod"}
+    ]
+  },
+  {
+    "serial": "REPLACE_WITH_YUBIHSM_SERIAL_2",
+    "connector_url": "http://hsm-dr.internal:12345",
+    "auth_key_id": 2,
+    "password_env": "YUBIHSM_2_PASSWORD",
+    "role": "dr-hsm",
+    "location": "DC-DR-RACK-B1-SLOT1",
+    "key_slots": [
+      {"id": 10, "type": "asymmetric", "algorithm": "EC_P256", "label": "signing-key-dr-mirror"},
+      {"id": 20, "type": "symmetric",  "algorithm": "AES256_CCM_WRAP", "label": "wrap-key-dr"},
+      {"id": 30, "type": "opaque",     "algorithm": "OPAQUE_X509_CERTIFICATE", "label": "ca-cert-dr"}
+    ]
+  }
+]

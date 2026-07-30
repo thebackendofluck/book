@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<configuration>
+
+    <contextListener class="ch.qos.logback.classic.jul.LevelChangePropagator">
+        <resetJUL>true</resetJUL>
+    </contextListener>
+
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <includeMDC>true</includeMDC>
+        </encoder>
+    </appender>
+
+    <root level="INFO">
+        <appender-ref ref="STDOUT" />
+    </root>
+
+    <logger name="org.apache" level="INFO"/>
+    <logger name="org.apache.kafka" level="ERROR"/>
+
+    <logger name="com.google" level="INFO"/>
+
+    <logger name="java.sql" level="INFO"/>
+
+    <logger name="slick" level="INFO"/>
+
+    <!-- Logger to see auto-generated SQL -->
+    <logger name="slick.session" level="INFO"/>
+
+    <logger name="org.postgresql" level="INFO"/>
+
+    <logger name="org.asynchttpclient" level="INFO"/>
+    <logger name="io.netty" level="INFO"/>
+    <logger name="io.micrometer" level="INFO"/>
+    <logger name="com.zaxxer.hikari.pool.HikariPool" level="DEBUG"/>
+
+
+
+</configuration>

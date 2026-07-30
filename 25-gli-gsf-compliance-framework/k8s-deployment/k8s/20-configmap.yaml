@@ -1,0 +1,52 @@
+# Companion code for "The Backend of Luck" - Chapter 25, GLI-GSF Compliance Framework.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gli-compliance-stub-data
+  namespace: gli-compliance
+data:
+  # GLI-12 stub: 1 jackpot, reserve floor satisfied
+  jackpot-config.json: |
+    {
+      "jackpots": [
+        {"jackpot_id": "mega-progressive-001",
+         "seed_amount_cents": 10000000,
+         "reserve_floor_multiplier": 1.0}
+      ]
+    }
+  jackpot-ledger.csv: |
+    jackpot_id,pool_balance_cents,funded_reserve_cents
+    mega-progressive-001,12500000,10000000
+  # GLI-16 stub: clean reconciliation
+  provider.csv: |
+    txid,direction,amount_cents
+    pix-2026-05-04-0001,deposit,5000
+    pix-2026-05-04-0002,deposit,12000
+  operator.csv: |
+    txid,direction,amount_cents
+    pix-2026-05-04-0001,deposit,5000
+    pix-2026-05-04-0002,deposit,12000
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gli-compliance-runtime
+  namespace: gli-compliance
+data:
+  # MCS connector points to a stub that always returns 200 — proves the cron lifecycle.
+  # In a real deployment this is the regulator's MCS endpoint, secrets from OpenBao.
+  MCS_HOST: "127.0.0.1"
+  MCS_PORT: "8080"
+  MCS_HEALTH_PATH: "/healthz"
+  MCS_LAST_EVENT_PATH: "/healthz"
+  STALL_WINDOW_SEC: "999999"
+  CHECK_TIMEOUT_S: "60"

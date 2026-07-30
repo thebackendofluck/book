@@ -1,0 +1,67 @@
+{
+  "dashboard": {
+    "title": "Hardware Health Executive Summary",
+    "tags": ["executive", "summary", "health"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "title": "Overall System Health",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "(1 - (count(hardware_risk_score >= 70) / count(hardware_risk_score))) * 100",
+            "legendFormat": "System Health %"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "red", "value": null },
+                { "color": "orange", "value": 95 },
+                { "color": "yellow", "value": 98 },
+                { "color": "green", "value": 99.5 }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "title": "Critical Components",
+        "type": "table",
+        "targets": [
+          {
+            "expr": "topk(5, hardware_risk_score)",
+            "legendFormat": "{{ component_type }}/{{ component_id }}"
+          }
+        ]
+      },
+      {
+        "title": "MTBF Trend",
+        "type": "timeSeries",
+        "targets": [
+          {
+            "expr": "rate(hardware_failures_total[7d])",
+            "legendFormat": "Failure Rate"
+          }
+        ]
+      },
+      {
+        "title": "Predictive Accuracy",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "ml_prediction_accuracy",
+            "legendFormat": "ML Accuracy %"
+          }
+        ]
+      }
+    ],
+    "time": { "from": "now-7d", "to": "now" },
+    "refresh": "1h"
+  }
+}

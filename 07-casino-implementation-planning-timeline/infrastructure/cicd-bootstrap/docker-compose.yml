@@ -1,0 +1,335 @@
+# Companion code for "The Backend of Luck" - Chapter 07, Casino Implementation Planning and Timeline.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# =============================================================================
+# CI/CD and Monitoring Bootstrap Stack
+#
+# Deploys a complete CI/CD pipeline with monitoring from day one.
+# Designed for iGaming platform development with compliance-aware pipelines.
+#
+# Components:
+#   - Gitea (lightweight Git server, or use GitHub/GitLab)
+#   - Jenkins (CI/CD orchestration with gambling-specific pipeline templates)
+#   - SonarQube (code quality and security scanning)
+#   - ArgoCD (GitOps-based Kubernetes deployments)
+#   - Prometheus + Grafana (monitoring from day one)
+#   - Loki (log aggregation)
+#   - Vault (secrets management)
+#   - Trivy (container vulnerability scanning)
+#
+# Usage:
+#   docker compose up -d
+#   docker compose ps
+#   docker compose logs -f jenkins
+#
+# Access:
+#   Jenkins:    http://localhost:8080  (admin / see JENKINS_ADMIN_PASSWORD)
+#   Gitea:      http://localhost:3000
+#   SonarQube:  http://localhost:9000  (admin / admin)
+#   ArgoCD:     http://localhost:8081
+#   Grafana:    http://localhost:3001  (admin / admin)
+#   Prometheus: http://localhost:9090
+#   Vault:      http://localhost:8200
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # Git Server (use GitHub/GitLab in production)
+  # ---------------------------------------------------------------------------
+  gitea:
+    image: gitea/gitea:1.21
+    container_name: casino-gitea
+    environment:
+      - USER_UID=1000
+      - USER_GID=1000
+      - GITEA__database__DB_TYPE=postgres
+      - GITEA__database__HOST=gitea-db:5432
+      - GITEA__database__NAME=gitea
+      - GITEA__database__USER=gitea
+      - GITEA__database__PASSWD=${GITEA_DB_PASSWORD:?GITEA_DB_PASSWORD must be set}
+      - GITEA__server__ROOT_URL=http://localhost:3000
+      - GITEA__server__DOMAIN=localhost
+    volumes:
+      - gitea_data:/data
+      - gitea_config:/etc/gitea
+    ports:
+      - "3000:3000"
+      - "2222:22"
+    depends_on:
+      - gitea-db
+    networks:
+      - casino-cicd
+    restart: unless-stopped
+
+  gitea-db:
+    image: postgres:16-alpine
+    container_name: casino-gitea-db
+    environment:
+      - POSTGRES_USER=gitea
+      - POSTGRES_PASSWORD=${GITEA_DB_PASSWORD:?GITEA_DB_PASSWORD must be set}
+      - POSTGRES_DB=gitea
+    volumes:
+      - gitea_db_data:/var/lib/postgresql/data
+    networks:
+      - casino-cicd
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Jenkins CI/CD
+  # ---------------------------------------------------------------------------
+  jenkins:
+    image: jenkins/jenkins:lts-jdk17
+    container_name: casino-jenkins
+    environment:
+      - JENKINS_OPTS=--prefix=/jenkins
+      - JAVA_OPTS=-Xmx2g -Xms512m
+      # Initial admin password - change immediately after first login
+      - JENKINS_ADMIN_PASSWORD=${JENKINS_ADMIN_PASSWORD:?JENKINS_ADMIN_PASSWORD must be set}
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "8080:8080"
+      - "50000:50000"
+    networks:
+      - casino-cicd
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/jenkins/login"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # SonarQube - Code Quality and Security Analysis
+  # ---------------------------------------------------------------------------
+  sonarqube:
+    image: sonarqube:10-community
+    container_name: casino-sonarqube
+    environment:
+      - SONAR_JDBC_URL=jdbc:postgresql://sonarqube-db:5432/sonarqube
+      - SONAR_JDBC_USERNAME=sonarqube
+      - SONAR_JDBC_PASSWORD=${SONAR_DB_PASSWORD:?SONAR_DB_PASSWORD must be set}
+      - SONAR_ES_BOOTSTRAP_CHECKS_DISABLE=true
+    volumes:
+      - sonarqube_data:/opt/sonarqube/data
+      - sonarqube_extensions:/opt/sonarqube/extensions
+      - sonarqube_logs:/opt/sonarqube/logs
+    ports:
+      - "9000:9000"
+    depends_on:
+      - sonarqube-db
+    networks:
+      - casino-cicd
+    restart: unless-stopped
+
+  sonarqube-db:
+    image: postgres:16-alpine
+    container_name: casino-sonarqube-db
+    environment:
+      - POSTGRES_USER=sonarqube
+      - POSTGRES_PASSWORD=${SONAR_DB_PASSWORD:?SONAR_DB_PASSWORD must be set}
+      - POSTGRES_DB=sonarqube
+    volumes:
+      - sonarqube_db_data:/var/lib/postgresql/data
+    networks:
+      - casino-cicd
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # ArgoCD - GitOps Deployments
+  # ---------------------------------------------------------------------------
+  argocd:
+    image: quay.io/argoproj/argocd:v2.9.3
+    container_name: casino-argocd
+    command: argocd-server --insecure --port 8081
+    ports:
+      - "8081:8081"
+    volumes:
+      - argocd_data:/home/argocd
+    networks:
+      - casino-cicd
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Prometheus - Metrics Collection
+  # ---------------------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:v2.48.1
+    container_name: casino-prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=90d'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+    volumes:
+      - prometheus_data:/prometheus
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alerts/:/etc/prometheus/alerts/:ro
+    ports:
+      - "9090:9090"
+    networks:
+      - casino-cicd
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Grafana - Dashboards and Visualization
+  # ---------------------------------------------------------------------------
+  grafana:
+    image: grafana/grafana:10.2.3
+    container_name: casino-grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:?GRAFANA_PASSWORD must be set}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-piechart-panel
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+      - loki
+    networks:
+      - casino-cicd
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Loki - Log Aggregation
+  # ---------------------------------------------------------------------------
+  loki:
+    image: grafana/loki:2.9.3
+    container_name: casino-loki
+    command: -config.file=/etc/loki/loki.yml
+    volumes:
+      - loki_data:/loki
+      - ./loki/loki.yml:/etc/loki/loki.yml:ro
+    ports:
+      - "3100:3100"
+    networks:
+      - casino-cicd
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Promtail - Log Shipper (sends Docker logs to Loki)
+  # ---------------------------------------------------------------------------
+  promtail:
+    image: grafana/promtail:2.9.3
+    container_name: casino-promtail
+    command: -config.file=/etc/promtail/promtail.yml
+    volumes:
+      - /var/log:/var/log:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./promtail/promtail.yml:/etc/promtail/promtail.yml:ro
+    depends_on:
+      - loki
+    networks:
+      - casino-cicd
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # HashiCorp Vault - Secrets Management
+  # ---------------------------------------------------------------------------
+  vault:
+    image: hashicorp/vault:1.15
+    container_name: casino-vault
+    cap_add:
+      - IPC_LOCK
+    environment:
+      - VAULT_DEV_ROOT_TOKEN_ID=${VAULT_DEV_TOKEN:?VAULT_DEV_TOKEN must be set}
+      - VAULT_DEV_LISTEN_ADDRESS=0.0.0.0:8200
+    ports:
+      - "8200:8200"
+    volumes:
+      - vault_data:/vault/data
+    networks:
+      - casino-cicd
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Trivy - Container Vulnerability Scanning
+  # ---------------------------------------------------------------------------
+  trivy-server:
+    image: aquasec/trivy:0.48.0
+    container_name: casino-trivy
+    command: server --listen 0.0.0.0:4954
+    volumes:
+      - trivy_cache:/root/.cache/trivy
+    ports:
+      - "4954:4954"
+    networks:
+      - casino-cicd
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Node Exporter - Host metrics for Prometheus
+  # ---------------------------------------------------------------------------
+  node-exporter:
+    image: prom/node-exporter:v1.7.0
+    container_name: casino-node-exporter
+    command:
+      - '--path.rootfs=/host'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    volumes:
+      - /:/host:ro,rslave
+    ports:
+      - "9100:9100"
+    networks:
+      - casino-cicd
+    restart: unless-stopped
+    pid: host
+
+  # ---------------------------------------------------------------------------
+  # cAdvisor - Container metrics for Prometheus
+  # ---------------------------------------------------------------------------
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.47.2
+    container_name: casino-cadvisor
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    ports:
+      - "8082:8080"
+    networks:
+      - casino-cicd
+    restart: unless-stopped
+
+# ---------------------------------------------------------------------------
+# Volumes
+# ---------------------------------------------------------------------------
+volumes:
+  gitea_data:
+  gitea_config:
+  gitea_db_data:
+  jenkins_home:
+  sonarqube_data:
+  sonarqube_extensions:
+  sonarqube_logs:
+  sonarqube_db_data:
+  argocd_data:
+  prometheus_data:
+  grafana_data:
+  loki_data:
+  vault_data:
+  trivy_cache:
+
+# ---------------------------------------------------------------------------
+# Networks
+# ---------------------------------------------------------------------------
+networks:
+  casino-cicd:
+    driver: bridge
+    name: casino-cicd-network

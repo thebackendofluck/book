@@ -1,0 +1,33 @@
+<!-- AcmetoCasino Cashier UI Launcher Template -->
+<!-- Renders the cashier iframe in either modal or fullscreen mode -->
+<!-- Supports jurisdiction-specific styling (e.g., SGA for Swedish regulation) -->
+<div id="cashier-ui-outer"
+  [ngClass]="{
+    'cashier-ui-modal': showInModal,
+    'cashier-ui-fullscreen': !showInModal,
+    'sga': sgaStyling,
+    'hidden': cashierHidden
+  }">
+  <div id="cashier-ui-inner"
+    [ngClass]="{
+      'cashier-ui-modal': showInModal,
+      'cashier-ui-fullscreen': !showInModal
+    }">
+    <div id="cashier-ui-controls-container"
+      [ngClass]="{'light': lightHeader }">
+      <div id="cashier-ui-close"
+        (click)="hideCashier()"
+        [ngClass]="{'light': lightHeader }">
+      </div>
+      <img id="brand-logo-img" [src]="brandLogoURL">
+    </div>
+    <iframe id="cashier-ui-iframe"
+      [ngClass]="{
+        'cashier-ui-modal': showInModal,
+        'cashier-ui-fullscreen': !showInModal,
+        'sga': sgaStyling
+      }"
+      [src]="cashierUrl">
+    </iframe>
+  </div>
+</div>

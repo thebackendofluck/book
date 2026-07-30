@@ -1,0 +1,7 @@
+# pg_aegis — AEGIS-128L column encryption
+comment = 'High-throughput AEAD column encryption (AEGIS-128L, ChaCha20-Poly1305)'
+default_version = '0.1.0'
+module_pathname = '$libdir/pg_aegis'
+relocatable = false
+superuser = true
+schema = 'public'

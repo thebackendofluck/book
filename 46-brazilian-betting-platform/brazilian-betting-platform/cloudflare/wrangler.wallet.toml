@@ -1,0 +1,31 @@
+name = "bet-brazil-wallet"
+main = "src/wallet.ts"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# This Durable Object handles money. Never expose it on a workers.dev subdomain.
+workers_dev = false
+
+[vars]
+ENVIRONMENT = "staging"
+PLATFORM_NAME = "AcmeToCasino Brasil"
+
+# Secrets (set via `wrangler secret put <NAME>`, never committed):
+#   WALLET_INTERNAL_HMAC_SECRET — shared secret for the internal HMAC gate on
+#                                 the DO fetch dispatcher (see src/wallet.ts).
+#   PIX_HMAC_SECRET             — inbound only: validates PSP webhook signatures.
+#   PIX_PSP_API_KEY             — outbound only: bearer credential for PSP withdrawal calls.
+
+[[d1_databases]]
+binding = "DB"
+database_name = "bet_brazil_db"
+database_id = "9086c214-4376-462d-a97c-8522204349fd"
+
+[durable_objects]
+bindings = [
+  { name = "WALLET_BALANCE", class_name = "WalletBalance" }
+]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["WalletBalance"]

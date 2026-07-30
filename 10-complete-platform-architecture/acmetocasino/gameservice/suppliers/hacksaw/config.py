@@ -1,0 +1,37 @@
+# Companion code for "The Backend of Luck" - Chapter 10, Complete Platform Architecture.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+"""
+gameservice.suppliers.hacksaw.config — Hacksaw Gaming Configuration
+====================================================================
+"""
+
+from __future__ import annotations
+
+from pydantic import Field
+
+from acmetocasino.gameservice.suppliers.settings import SupplierConfig
+
+
+class HacksawConfig(SupplierConfig):
+    """Hacksaw Gaming configuration.
+
+    Attributes
+    ----------
+    operator_id:
+        Hacksaw operator identifier.
+    api_key:
+        Secret key for SEAMLESS wallet callback authentication.
+    """
+
+    operator_id: str = Field(default="", description="Hacksaw operator identifier.")
+
+
+__all__ = ["HacksawConfig"]

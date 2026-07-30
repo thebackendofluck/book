@@ -1,0 +1,430 @@
+<!--
+  igaming-rules.xml - Custom Wazuh Detection Rules for iGaming Platforms
+
+  OGIS-3 requires SIEM with sub-15-minute detection KPI.
+  These rules cover gambling-specific threats including:
+    - RNG/game integrity violations (OGIS-1)
+    - Back-office unauthorized access (OGIS-2)
+    - Game logic manipulation (OGIS-3)
+    - Bot/automation abuse (OGIS-4)
+    - DDoS indicators (OGIS-5)
+    - Payment fraud patterns
+    - Player account abuse
+    - Regulatory compliance alerts
+
+  Rule ID ranges:
+    200000-200099: OGIS-1 (Signature Verification)
+    200100-200199: OGIS-2 (Back Office Security)
+    200200-200299: OGIS-3 (Server-Side Integrity)
+    200300-200399: OGIS-4 (Application Protection)
+    200400-200499: OGIS-5 (DDoS Protection)
+    200500-200599: Payment Security
+    200600-200699: Player Account Security
+    200700-200799: Regulatory Compliance
+    200800-200899: Vendor Access (GLI-GSF-3)
+
+  Installation:
+    Copy to /var/ossec/etc/rules/igaming-rules.xml
+    Restart Wazuh manager: systemctl restart wazuh-manager
+
+  Reference: GLI-GSF-5, OGIS-3 (SIEM Requirements)
+-->
+
+<group name="igaming,">
+
+  <!-- ===================================================================
+       OGIS-1: Critical Control Program Verification
+       Rules 200000-200099
+       =================================================================== -->
+
+  <rule id="200000" level="15">
+    <decoded_as>json</decoded_as>
+    <field name="status">FAIL</field>
+    <match>gsf-ccp-verify</match>
+    <description>OGIS-1 CRITICAL: CCP signature verification FAILED - $(program_name)</description>
+    <group>ogis1,signature_mismatch,critical,</group>
+    <options>alert_by_email</options>
+  </rule>
+
+  <rule id="200001" level="12">
+    <decoded_as>json</decoded_as>
+    <field name="status">ERROR</field>
+    <match>gsf-ccp-verify</match>
+    <description>OGIS-1: CCP verification error - $(program_name): $(error_message)</description>
+    <group>ogis1,verification_error,</group>
+  </rule>
+
+  <rule id="200002" level="3">
+    <decoded_as>json</decoded_as>
+    <field name="status">PASS</field>
+    <match>gsf-ccp-verify</match>
+    <description>OGIS-1: CCP verification passed - $(program_name)</description>
+    <group>ogis1,verification_pass,</group>
+  </rule>
+
+  <rule id="200003" level="10">
+    <decoded_as>json</decoded_as>
+    <field name="ntp_synchronized">false</field>
+    <match>gsf-ccp-verify</match>
+    <description>OGIS-1: NTP not synchronized during CCP verification (timestamps may be unreliable)</description>
+    <group>ogis1,ntp_desync,</group>
+  </rule>
+
+  <rule id="200010" level="14">
+    <if_sid>200000</if_sid>
+    <field name="program_name">rng</field>
+    <description>OGIS-1 CRITICAL: RNG system signature mismatch detected!</description>
+    <group>ogis1,rng_integrity,critical,</group>
+    <options>alert_by_email</options>
+  </rule>
+
+  <rule id="200011" level="12">
+    <frequency>3</frequency>
+    <timeframe>3600</timeframe>
+    <if_matched_sid>200000</if_matched_sid>
+    <description>OGIS-1: Multiple CCP signature failures in 1 hour (possible compromise)</description>
+    <group>ogis1,multiple_failures,critical,</group>
+  </rule>
+
+  <!-- ===================================================================
+       OGIS-2: Back Office Administration Security
+       Rules 200100-200199
+       =================================================================== -->
+
+  <rule id="200100" level="10">
+    <match>backoffice|back-office|admin-panel|bo-api</match>
+    <status>401|403</status>
+    <description>OGIS-2: Failed back-office authentication attempt</description>
+    <group>ogis2,auth_failure,</group>
+  </rule>
+
+  <rule id="200101" level="14">
+    <frequency>5</frequency>
+    <timeframe>300</timeframe>
+    <if_matched_sid>200100</if_matched_sid>
+    <description>OGIS-2 HIGH: Brute force attack on back-office (5+ failures in 5 min)</description>
+    <group>ogis2,brute_force,</group>
+    <options>alert_by_email</options>
+  </rule>
+
+  <rule id="200102" level="12">
+    <match>mfa_bypass|mfa_skip|no_mfa|without_mfa</match>
+    <description>OGIS-2 HIGH: MFA bypass attempt detected on admin account</description>
+    <group>ogis2,mfa_bypass,</group>
+  </rule>
+
+  <rule id="200103" level="10">
+    <match>concurrent_session|duplicate_session</match>
+    <match>backoffice|admin</match>
+    <description>OGIS-2: Concurrent session violation on admin account</description>
+    <group>ogis2,session_violation,</group>
+  </rule>
+
+  <rule id="200104" level="8">
+    <match>session_timeout|idle_disconnect</match>
+    <match>backoffice|admin</match>
+    <description>OGIS-2: Admin session timed out (15-min idle policy)</description>
+    <group>ogis2,session_timeout,</group>
+  </rule>
+
+  <rule id="200110" level="12">
+    <match>role_change|permission_grant|privilege_escalation</match>
+    <match>admin|backoffice</match>
+    <description>OGIS-2: Administrative privilege change detected</description>
+    <group>ogis2,privilege_change,</group>
+  </rule>
+
+  <rule id="200111" level="10">
+    <match>orphaned_account|inactive_account|stale_account</match>
+    <description>OGIS-2: Orphaned/inactive account detected during review</description>
+    <group>ogis2,orphaned_account,</group>
+  </rule>
+
+  <rule id="200115" level="12">
+    <match>admin_login</match>
+    <time>22:00-06:00</time>
+    <description>OGIS-2: After-hours admin login (22:00-06:00)</description>
+    <group>ogis2,afterhours_access,</group>
+  </rule>
+
+  <!-- ===================================================================
+       OGIS-3: Server-Side Integrity and Programming Security
+       Rules 200200-200299
+       =================================================================== -->
+
+  <rule id="200200" level="14">
+    <match>client_side_calculation|local_game_logic|client_rng</match>
+    <description>OGIS-3 CRITICAL: Client-side game logic execution detected</description>
+    <group>ogis3,client_side_logic,critical,</group>
+    <options>alert_by_email</options>
+  </rule>
+
+  <rule id="200201" level="12">
+    <match>game_state_manipulation|invalid_state_transition</match>
+    <description>OGIS-3: Game state manipulation attempt detected</description>
+    <group>ogis3,game_manipulation,</group>
+  </rule>
+
+  <rule id="200202" level="10">
+    <match>sql_injection|sqli|union.*select|or.*1.*=.*1</match>
+    <match>game|player|payment|bonus</match>
+    <description>OGIS-3: SQL injection attempt on gaming endpoint</description>
+    <group>ogis3,sql_injection,</group>
+  </rule>
+
+  <rule id="200203" level="10">
+    <match>command_injection|cmd_injection|exec\(|system\(|eval\(</match>
+    <description>OGIS-3: Command injection attempt on gaming server</description>
+    <group>ogis3,command_injection,</group>
+  </rule>
+
+  <rule id="200204" level="12">
+    <match>unauthorized_code|unsigned_binary|code_signing_fail</match>
+    <description>OGIS-3: Unauthorized/unsigned code execution attempt</description>
+    <group>ogis3,code_integrity,</group>
+  </rule>
+
+  <rule id="200210" level="14">
+    <match>payout_anomaly|abnormal_win_rate|statistical_anomaly</match>
+    <description>OGIS-3: Game payout statistical anomaly detected</description>
+    <group>ogis3,payout_anomaly,</group>
+    <options>alert_by_email</options>
+  </rule>
+
+  <rule id="200211" level="12">
+    <match>balance_manipulation|negative_balance|overflow</match>
+    <description>OGIS-3: Player balance manipulation attempt</description>
+    <group>ogis3,balance_fraud,</group>
+  </rule>
+
+  <rule id="200220" level="8">
+    <match>usb_device|removable_media|external_storage</match>
+    <match>game_server|csc</match>
+    <description>OGIS-3: USB/removable media detected on game server</description>
+    <group>ogis3,removable_media,</group>
+  </rule>
+
+  <!-- ===================================================================
+       OGIS-4: Application Protection Mechanisms
+       Rules 200300-200399
+       =================================================================== -->
+
+  <rule id="200300" level="10">
+    <match>bot_detected|automated_traffic|headless_browser</match>
+    <description>OGIS-4: Bot/automated traffic detected</description>
+    <group>ogis4,bot_detection,</group>
+  </rule>
+
+  <rule id="200301" level="12">
+    <frequency>100</frequency>
+    <timeframe>60</timeframe>
+    <if_matched_sid>200300</if_matched_sid>
+    <description>OGIS-4 HIGH: Mass bot attack detected (100+ bots/minute)</description>
+    <group>ogis4,bot_attack,</group>
+    <options>alert_by_email</options>
+  </rule>
+
+  <rule id="200310" level="12">
+    <match>certificate_pinning_bypass|ssl_interception|mitm_detected</match>
+    <description>OGIS-4: Certificate pinning bypass / MITM attempt on mobile app</description>
+    <group>ogis4,cert_pinning,</group>
+  </rule>
+
+  <rule id="200311" level="10">
+    <match>jailbreak_detected|root_detected|frida_detected|xposed</match>
+    <description>OGIS-4: Rooted/jailbroken device detected accessing mobile app</description>
+    <group>ogis4,device_integrity,</group>
+  </rule>
+
+  <rule id="200312" level="10">
+    <match>tamper_detected|debugger_attached|hooking_detected</match>
+    <description>OGIS-4: App tampering or debugger attachment detected</description>
+    <group>ogis4,app_tampering,</group>
+  </rule>
+
+  <rule id="200320" level="12">
+    <match>credential_stuffing|breach_password|known_credential</match>
+    <description>OGIS-4: Credential stuffing attack detected</description>
+    <group>ogis4,credential_stuffing,</group>
+  </rule>
+
+  <rule id="200321" level="10">
+    <frequency>50</frequency>
+    <timeframe>60</timeframe>
+    <if_matched_sid>200320</if_matched_sid>
+    <description>OGIS-4 HIGH: Mass credential stuffing attack (50+ attempts/min)</description>
+    <group>ogis4,mass_credential_stuffing,</group>
+    <options>alert_by_email</options>
+  </rule>
+
+  <rule id="200330" level="10">
+    <match>api_abuse|rate_limit_exceeded|api_quota</match>
+    <description>OGIS-4: API abuse / rate limit exceeded</description>
+    <group>ogis4,api_abuse,</group>
+  </rule>
+
+  <rule id="200331" level="12">
+    <match>owasp_api|broken_auth|bola|ssrf|mass_assignment</match>
+    <description>OGIS-4: OWASP API Top 10 vulnerability exploitation attempt</description>
+    <group>ogis4,api_vulnerability,</group>
+  </rule>
+
+  <!-- ===================================================================
+       OGIS-5: DDoS Protection Controls
+       Rules 200400-200499
+       =================================================================== -->
+
+  <rule id="200400" level="12">
+    <match>ddos_detected|volumetric_attack|syn_flood</match>
+    <description>OGIS-5: DDoS attack detected</description>
+    <group>ogis5,ddos_attack,</group>
+    <options>alert_by_email</options>
+  </rule>
+
+  <rule id="200401" level="14">
+    <match>ddos_mitigation_active|scrubbing_activated</match>
+    <description>OGIS-5: DDoS mitigation activated (attack in progress)</description>
+    <group>ogis5,ddos_mitigation,</group>
+    <options>alert_by_email</options>
+  </rule>
+
+  <rule id="200410" level="10">
+    <match>rate_limit_adaptive|threshold_adjusted</match>
+    <description>OGIS-5: Adaptive rate limiting threshold adjusted</description>
+    <group>ogis5,rate_limiting,</group>
+  </rule>
+
+  <rule id="200411" level="12">
+    <match>direct_ip_access|origin_ip_exposed|cdn_bypass</match>
+    <description>OGIS-5: Direct IP access attempt (CDN bypass) detected</description>
+    <group>ogis5,ip_obfuscation,</group>
+  </rule>
+
+  <rule id="200420" level="14">
+    <match>platform_outage|service_unavailable|availability_breach</match>
+    <description>OGIS-5 CRITICAL: Platform availability breach (potential 15-min GIS incident threshold)</description>
+    <group>ogis5,availability,critical,</group>
+    <options>alert_by_email</options>
+  </rule>
+
+  <!-- ===================================================================
+       Payment Security
+       Rules 200500-200599
+       =================================================================== -->
+
+  <rule id="200500" level="12">
+    <match>fraudulent_withdrawal|unauthorized_withdrawal</match>
+    <description>Payment: Fraudulent withdrawal attempt detected</description>
+    <group>payment,fraud,</group>
+    <options>alert_by_email</options>
+  </rule>
+
+  <rule id="200501" level="10">
+    <match>chargeback|dispute|reversal</match>
+    <frequency>5</frequency>
+    <timeframe>3600</timeframe>
+    <description>Payment: Multiple chargebacks from single player (5+ in 1 hour)</description>
+    <group>payment,chargeback,</group>
+  </rule>
+
+  <rule id="200510" level="14">
+    <match>payment_config_change|psp_modification|gateway_update</match>
+    <description>Payment CRITICAL: Payment system configuration changed</description>
+    <group>payment,config_change,</group>
+    <options>alert_by_email</options>
+  </rule>
+
+  <rule id="200511" level="12">
+    <match>large_withdrawal|high_value_transaction</match>
+    <description>Payment: High-value transaction detected (threshold exceeded)</description>
+    <group>payment,high_value,</group>
+  </rule>
+
+  <!-- ===================================================================
+       Player Account Security
+       Rules 200600-200699
+       =================================================================== -->
+
+  <rule id="200600" level="10">
+    <match>multi_accounting|duplicate_account|same_device_multiple</match>
+    <description>Player: Multi-accounting detected (same device/IP)</description>
+    <group>player,multi_account,</group>
+  </rule>
+
+  <rule id="200601" level="10">
+    <match>bonus_abuse|wagering_exploit|promo_fraud</match>
+    <description>Player: Bonus abuse pattern detected</description>
+    <group>player,bonus_abuse,</group>
+  </rule>
+
+  <rule id="200602" level="8">
+    <match>self_exclusion_bypass|excluded_player_access</match>
+    <description>Player: Self-excluded player attempted access</description>
+    <group>player,responsible_gaming,</group>
+  </rule>
+
+  <rule id="200610" level="14">
+    <match>mass_account_creation|registration_spike</match>
+    <frequency>50</frequency>
+    <timeframe>300</timeframe>
+    <description>Player CRITICAL: Mass account creation (50+ in 5 min)</description>
+    <group>player,mass_registration,critical,</group>
+    <options>alert_by_email</options>
+  </rule>
+
+  <!-- ===================================================================
+       Regulatory Compliance
+       Rules 200700-200799
+       =================================================================== -->
+
+  <rule id="200700" level="12">
+    <match>outage_15min|gis_incident_threshold</match>
+    <description>Compliance: 15-minute outage threshold reached (GIS incident per GLI-GSF-1)</description>
+    <group>compliance,gis_incident,</group>
+    <options>alert_by_email</options>
+  </rule>
+
+  <rule id="200701" level="10">
+    <match>data_breach|pii_exposure|player_data_leak</match>
+    <description>Compliance: Potential player data breach detected</description>
+    <group>compliance,data_breach,</group>
+    <options>alert_by_email</options>
+  </rule>
+
+  <rule id="200710" level="8">
+    <match>quarterly_scan|vulnerability_scan|gts_scan</match>
+    <description>Compliance: GTS vulnerability scan initiated</description>
+    <group>compliance,gts_scan,</group>
+  </rule>
+
+  <!-- ===================================================================
+       Vendor Access (GLI-GSF-3)
+       Rules 200800-200899
+       =================================================================== -->
+
+  <rule id="200800" level="8">
+    <match>vendor_session_start|vendor_access_granted</match>
+    <description>Vendor: Third-party vendor access session started</description>
+    <group>vendor,access_start,</group>
+  </rule>
+
+  <rule id="200801" level="10">
+    <match>vendor_session_expired|vendor_access_timeout</match>
+    <description>Vendor: Vendor access session expired (time-limited token)</description>
+    <group>vendor,access_expired,</group>
+  </rule>
+
+  <rule id="200802" level="14">
+    <match>vendor_emergency_revoke|vendor_access_revoked</match>
+    <description>Vendor: Emergency vendor access revocation executed</description>
+    <group>vendor,emergency_revoke,</group>
+    <options>alert_by_email</options>
+  </rule>
+
+  <rule id="200810" level="12">
+    <match>vendor_privilege_escalation|vendor_unauthorized</match>
+    <description>Vendor: Vendor attempted unauthorized privilege escalation</description>
+    <group>vendor,privilege_escalation,</group>
+  </rule>
+
+</group>

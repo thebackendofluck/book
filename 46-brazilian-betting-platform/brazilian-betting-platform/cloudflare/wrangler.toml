@@ -1,0 +1,123 @@
+# Brazilian Betting Platform — Cloudflare Workers Configuration
+# Regulated under SIGAP (Sistema de Gestão de Apostas), Lei 14.790/2023
+# Domain: *.acmetocasino.bet.br
+
+name = "bet-brazil-api-gateway"
+main = "src/api-gateway.ts"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Never expose a public *.workers.dev subdomain — all traffic must go through
+# the routed gateway so geo/threat/JWT checks cannot be bypassed.
+workers_dev = false
+
+# Route: all traffic on the .bet.br domain
+route = { pattern = "*.acmetocasino.bet.br/*", zone_name = "acmetocasino.bet.br" }
+
+# ── Environment Variables ────────────────────────────────────────────────────
+
+[vars]
+ENVIRONMENT = "development"
+PLATFORM_NAME = "AcmeToCasino Brasil"
+AWS_CORE_API_URL = "https://core.example.internal"
+
+# SIGAP — regulatory reporting endpoints (values set via wrangler secret)
+SIGAP_API_URL         = "https://api.sigap.gov.br/v1"
+SIGAP_OPERATOR_ID     = "<YOUR-SIGAP-OPERATOR-ID>"
+
+# PIX PSP — replace with your licensed PSP base URL
+PIX_PSP_BASE_URL      = "https://psp.example.com.br/pix/v2"
+
+# JWT issuer
+JWT_ISSUER            = "bet-brazil.acmetocasino.bet.br"
+
+# ── D1 Database ──────────────────────────────────────────────────────────────
+
+[[d1_databases]]
+binding     = "DB"
+database_name = "bet_brazil_db"
+database_id = "<YOUR-D1-DATABASE-ID>"
+
+# ── KV Namespaces ────────────────────────────────────────────────────────────
+
+[[kv_namespaces]]
+binding    = "PLAYER_SESSIONS"
+id         = "<YOUR-PLAYER-SESSIONS-KV-ID>"
+preview_id = "<YOUR-PLAYER-SESSIONS-KV-PREVIEW-ID>"
+
+[[kv_namespaces]]
+binding    = "ODDS_CACHE"
+id         = "<YOUR-ODDS-CACHE-KV-ID>"
+preview_id = "<YOUR-ODDS-CACHE-KV-PREVIEW-ID>"
+
+[[kv_namespaces]]
+binding    = "RATE_LIMITS"
+id         = "<YOUR-RATE-LIMITS-KV-ID>"
+preview_id = "<YOUR-RATE-LIMITS-KV-PREVIEW-ID>"
+
+# ── R2 Bucket ────────────────────────────────────────────────────────────────
+
+[[r2_buckets]]
+binding     = "KYC_DOCUMENTS"
+bucket_name = "kyc-documents-br"
+preview_bucket_name = "kyc-documents-br-preview"
+
+# ── Durable Objects ──────────────────────────────────────────────────────────
+
+[durable_objects]
+bindings = [
+  { name = "BETTING_SESSION", class_name = "BettingSession", script_name = "bet-brazil-session-manager" },
+]
+
+# ── Worker Definitions ───────────────────────────────────────────────────────
+# Each sub-worker is deployed separately with its own `wrangler deploy --config`
+# call.  They share the same D1/KV/R2 resources via service bindings.
+
+# Worker: PIX Webhook receiver
+[[services]]
+binding = "PIX_WEBHOOK_SVC"
+service = "bet-brazil-pix-webhook"
+
+# Worker: SIGAP regulatory reporter
+[[services]]
+binding = "SIGAP_REPORTER_SVC"
+service = "bet-brazil-sigap-reporter"
+
+# Worker: Live odds feed
+[[services]]
+binding = "ODDS_FEED_SVC"
+service = "bet-brazil-odds-feed"
+
+# ── Secrets (set via `wrangler secret put <NAME>`) ───────────────────────────
+# JWT_SECRET             — HS256 signing key (min 32 chars, high entropy)
+# PIX_HMAC_SECRET        — HMAC-SHA256 secret shared with PIX PSP
+# AWS_CORE_HMAC_SECRET       — signs requests sent to the authoritative AWS core
+# ODDS_PUBLISHER_HMAC_SECRET — authenticates snapshots pushed by the AWS publisher
+# GATEWAY_INTERNAL_HMAC_SECRET — signs internal gateway→pix-webhook calls (/qrcode);
+#                                MUST match the value set on bet-brazil-pix-webhook
+# SIGAP_BEARER_TOKEN         — temporary reception token issued by SIGAP
+# ENCRYPTION_KEY         — AES-256-GCM key for PII at rest
+
+# ── Staging environment ──────────────────────────────────────────────────────
+
+[env.staging]
+name  = "bet-brazil-api-gateway-staging"
+route = { pattern = "staging.acmetocasino.bet.br/*", zone_name = "acmetocasino.bet.br" }
+
+[env.staging.vars]
+ENVIRONMENT       = "staging"
+SIGAP_API_URL     = "https://homolog.sigap.gov.br/v1"
+PIX_PSP_BASE_URL  = "https://sandbox.psp.example.com.br/pix/v2"
+AWS_CORE_API_URL  = "https://core-staging.example.internal"
+
+# ── Production environment ───────────────────────────────────────────────────
+
+[env.production]
+name  = "bet-brazil-api-gateway-production"
+route = { pattern = "*.acmetocasino.bet.br/*", zone_name = "acmetocasino.bet.br" }
+
+[env.production.vars]
+ENVIRONMENT       = "production"
+SIGAP_API_URL     = "https://api.sigap.gov.br/v1"
+PIX_PSP_BASE_URL  = "https://psp.example.com.br/pix/v2"
+AWS_CORE_API_URL  = "https://core.example.internal"

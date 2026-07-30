@@ -1,0 +1,211 @@
+# Companion code for "The Backend of Luck" - Chapter 28d, Elastic Compute and Cluster Autoscaling on EKS.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# Default-deny baseline + minimal allow-list for the regulated namespaces.
+# Requires VPC CNI >= 1.21.0 with enableNetworkPolicy=true (see ../../terraform/addons.tf)
+# or Cilium. Satisfies ISO A.8.20/A.8.22 (network security/segregation) + PCI Req 1
+# (CDE segmentation) + GLI/BMM isolation — one control, three frameworks.
+#
+# NetworkPolicy is namespace-scoped, and a namespace with no policy selecting a
+# pod is allow-all. There is no cluster-wide default-deny here: `kyc` carries the
+# `restricted` Pod Security Standard, which constrains what a pod may *do* and
+# says nothing about who it may *talk to*. A hardened pod in an unpoliced
+# namespace still reaches every other pod in the cluster. Both namespaces below
+# therefore get their own default-deny, and every new regulated namespace needs
+# one added here (or a tiered ClusterNetworkPolicy, which is the durable fix).
+#
+#   kubectl apply -f default-deny-netpol.yaml
+#   kubectl get netpol -A     # every regulated namespace must appear
+#
+# --- On the third-party CIDRs -----------------------------------------------
+# The acquirer and KYC-vendor egress rules below use RFC 5737 documentation
+# ranges (192.0.2.0/24 TEST-NET-1, 198.51.100.0/24 TEST-NET-2). These are
+# reserved for documentation and are not routable anywhere, so applying this file
+# unedited fails closed: the gateway cannot reach the acquirer and staging breaks
+# loudly. That is deliberate. An earlier revision used 200.0.0.0/8, which is real
+# allocated address space: applied unedited it authorises egress to 16.7 million
+# third-party addresses and fails *open*, silently, with the policy still
+# appearing to implement least privilege.
+#
+# Replace both with the exact ranges from the acquirer's and vendor's technical
+# onboarding documents, as /32s where they publish them. Where the endpoint moves
+# (most SaaS vendors), use Cilium FQDN policy instead of guessing at a CIDR.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: payments
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+# DNS egress must be allowed explicitly or every other policy silently breaks.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: payments
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+---
+# The PIX gateway may egress only to the acquirer network on 443, nothing else.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: pix-gateway-egress
+  namespace: payments
+spec:
+  podSelector:
+    matchLabels:
+      app: pix-gateway
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - ipBlock:
+            # RFC 5737 TEST-NET-1 placeholder: fails closed until replaced with
+            # the acquirer's published range. See the header note.
+            cidr: 192.0.2.0/24
+      ports:
+        - { protocol: TCP, port: 443 }
+---
+# Only the wallet service may reach the PIX gateway (ingress allow-list).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: pix-gateway-ingress
+  namespace: payments
+spec:
+  podSelector:
+    matchLabels:
+      app: pix-gateway
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: wallet
+      ports:
+        - { protocol: TCP, port: 8080 }
+---
+# =============================================================================
+# kyc namespace
+# =============================================================================
+# Identity documents, selfies, PEP/sanctions screening results and the audit
+# trail of every verification decision. Under GDPR/LGPD this is special-category
+# data, and it is the namespace whose breach makes the newspaper rather than the
+# incident log. Without these policies the namespace was allow-all: any pod in
+# the cluster could reach the document store, and a compromised pod anywhere
+# could exfiltrate passport scans to any destination on the internet.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: kyc
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: kyc
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+---
+# The verification service may egress only to the KYC vendor's API on 443.
+# Everything else, including any other internet destination, stays denied by the
+# default-deny above. This is the control that turns a compromised KYC pod from
+# a data-exfiltration event into a contained one.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kyc-service-egress
+  namespace: kyc
+spec:
+  podSelector:
+    matchLabels:
+      app: kyc-service
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - ipBlock:
+            # RFC 5737 TEST-NET-2 placeholder: fails closed until replaced with
+            # the vendor's published range. See the header note.
+            cidr: 198.51.100.0/24
+      ports:
+        - { protocol: TCP, port: 443 }
+---
+# Only the onboarding service in the casino namespace may submit verifications.
+# Cross-namespace ingress needs BOTH selectors: namespaceSelector alone would
+# admit every pod in casino, podSelector alone would only match pods in kyc.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kyc-service-ingress
+  namespace: kyc
+spec:
+  podSelector:
+    matchLabels:
+      app: kyc-service
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: casino
+          podSelector:
+            matchLabels:
+              app: onboarding
+      ports:
+        - { protocol: TCP, port: 8080 }
+---
+# The wallet service checks verification status before releasing a withdrawal,
+# so payments needs a narrow read path into kyc. Separate rule rather than
+# another `from` entry on the rule above, to keep the two callers auditable
+# independently: a regulator asking "who can read KYC status?" gets a list.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kyc-status-from-payments
+  namespace: kyc
+spec:
+  podSelector:
+    matchLabels:
+      app: kyc-service
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: payments
+          podSelector:
+            matchLabels:
+              app: wallet
+      ports:
+        - { protocol: TCP, port: 8080 }

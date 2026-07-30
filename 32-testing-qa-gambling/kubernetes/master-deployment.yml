@@ -1,0 +1,149 @@
+# Companion code for "The Backend of Luck" - Chapter 32, Testing and QA in Gambling.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: locust-master
+  namespace: load-testing
+  labels:
+    app: locust
+    component: master
+    version: v2
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: locust
+      component: master
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: locust
+        component: master
+        version: v2
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8089"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: locust-service-account
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: locust-master
+        image: load-testing:1.0.0
+        imagePullPolicy: Always
+        command: [ "/start_master.sh" ]
+        ports:
+        - containerPort: 8089
+          name: web-ui
+          protocol: TCP
+        - containerPort: 5557
+          name: master-comm
+          protocol: TCP
+        - containerPort: 5558
+          name: master-comm-plus
+          protocol: TCP
+        - containerPort: 9622
+          name: metrics
+          protocol: TCP
+        envFrom:
+        - configMapRef:
+            name: locust-config
+        - secretRef:
+            name: locust-secrets
+        env:
+        - name: LOCUST_MODE
+          value: "master"
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        resources:
+          requests:
+            cpu: 1000m
+            memory: 2Gi
+          limits:
+            cpu: 2000m
+            memory: 4Gi
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8089
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8089
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        lifecycle:
+          preStop:
+            exec:
+              command: [ "/pre-stop.sh" ]
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+          readOnlyRootFilesystem: true
+        volumeMounts:
+        - name: locust-logs
+          mountPath: /app/logs
+        - name: locust-scripts
+          mountPath: /app/locusts
+          readOnly: true
+        - name: locust-schemas
+          mountPath: /app/schemas
+          readOnly: true
+        - name: tmp-volume
+          mountPath: /tmp
+      volumes:
+      - name: locust-logs
+        persistentVolumeClaim:
+          claimName: locust-logs-pvc
+      - name: locust-scripts
+        configMap:
+          name: locust-scripts
+      - name: locust-schemas
+        configMap:
+          name: locust-schemas
+      - name: tmp-volume
+        emptyDir: {}
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            preference:
+              matchExpressions:
+              - key: node-type
+                operator: In
+                values:
+                - load-testing
+      tolerations:
+      - key: "load-testing"
+        operator: "Equal"
+        value: "true"
+        effect: "NoSchedule"

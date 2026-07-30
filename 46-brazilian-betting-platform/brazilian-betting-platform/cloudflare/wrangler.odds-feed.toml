@@ -1,0 +1,18 @@
+name = "bet-brazil-odds-feed"
+main = "src/odds-feed.ts"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = false
+
+[vars]
+ENVIRONMENT = "staging"
+PLATFORM_NAME = "AcmeToCasino Brasil"
+JWT_ISSUER = "cloud-acmetocasino.com"
+
+[[kv_namespaces]]
+binding = "ODDS_CACHE"
+id = "4f6ff8523a8945d6be4b7699cac89f66"
+
+# Configure with: wrangler secret put ODDS_PUBLISHER_HMAC_SECRET
+# The authoritative AWS odds publisher signs POST /api/odds/refresh and
+# POST /api/odds/suspend with this HMAC secret.

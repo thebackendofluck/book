@@ -1,0 +1,22 @@
+# Production dependencies for YubiHSM 2 FIPS Enterprise Security Infrastructure
+
+# YubiHSM 2 Python SDK
+yubihsm[http,usb]==3.1.1
+
+# Cryptography library
+cryptography>=46.0.6
+
+# AWS SDK
+boto3==1.43.8
+
+# Configuration and utilities
+pyyaml==6.0.3
+requests>=2.34.2
+
+# API Gateway dependencies
+fastapi==0.136.1
+uvicorn[standard]==0.27.0
+pydantic==2.13.4
+
+# Database connectivity
+psycopg2-binary==2.9.12

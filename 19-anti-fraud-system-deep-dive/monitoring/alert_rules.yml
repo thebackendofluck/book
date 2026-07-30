@@ -1,0 +1,195 @@
+# Companion code for "The Backend of Luck" - Chapter 19, Anti-Fraud System Deep Dive.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+groups:
+- name: fraud_detection_alerts
+  rules:
+  # Service Health Alerts
+  - alert: FraudDetectionServiceDown
+    expr: up{job=~"fraud-detection-.*"} == 0
+    for: 5m
+    labels:
+      severity: critical
+      service: "{{ $labels.job }}"
+    annotations:
+      summary: "Fraud Detection service {{ $labels.job }} is down"
+      description: "Service {{ $labels.job }} has been down for more than 5 minutes"
+
+  - alert: FraudDetectionServiceHighErrorRate
+    expr: rate(http_requests_total{job=~"fraud-detection-.*", status=~"5.."}[5m]) / rate(http_requests_total{job=~"fraud-detection-.*"}[5m]) > 0.05
+    for: 5m
+    labels:
+      severity: warning
+      service: "{{ $labels.job }}"
+    annotations:
+      summary: "High error rate on {{ $labels.job }}"
+      description: "Error rate is {{ $value | printf \"%.2f\" }}% over the last 5 minutes"
+
+  # Performance Alerts
+  - alert: FraudDetectionHighLatency
+    expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job=~"fraud-detection-.*"}[5m])) > 0.1
+    for: 5m
+    labels:
+      severity: warning
+      service: "{{ $labels.job }}"
+    annotations:
+      summary: "High latency on {{ $labels.job }}"
+      description: "95th percentile latency is {{ $value | printf \"%.2f\" }}s over the last 5 minutes"
+
+  - alert: FraudDetectionHighCPUUsage
+    expr: rate(process_cpu_seconds_total{job=~"fraud-detection-.*"}[5m]) > 0.8
+    for: 10m
+    labels:
+      severity: warning
+      service: "{{ $labels.job }}"
+    annotations:
+      summary: "High CPU usage on {{ $labels.job }}"
+      description: "CPU usage is {{ $value | printf \"%.2f\" }} cores over the last 5 minutes"
+
+  - alert: FraudDetectionHighMemoryUsage
+    expr: container_memory_working_set_bytes{pod=~"fraud-detection-.*"} / container_spec_memory_limit_bytes{pod=~"fraud-detection-.*"} > 0.9
+    for: 5m
+    labels:
+      severity: warning
+      service: "{{ $labels.job }}"
+    annotations:
+      summary: "High memory usage on {{ $labels.job }}"
+      description: "Memory usage is {{ $value | printf \"%.2f\" }}% of available memory"
+
+  # Business Logic Alerts
+  - alert: FraudDetectionHighFraudScoreRate
+    expr: rate(fraud_score_total{fraud_score="high"}[5m]) / rate(fraud_score_total[5m]) > 0.1
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High rate of fraud scores detected"
+      description: "Fraud score rate is {{ $value | printf \"%.2f\" }}% over the last 5 minutes"
+
+  - alert: FraudDetectionAlertBacklog
+    expr: fraud_alert_queue_length > 100
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Fraud alert backlog is growing"
+      description: "Alert queue length is {{ $value }} items"
+
+  # Infrastructure Alerts
+  - alert: KafkaHighConsumerLag
+    expr: kafka_consumer_lag > 10000
+    for: 5m
+    labels:
+      severity: warning
+      topic: "{{ $labels.topic }}"
+    annotations:
+      summary: "High Kafka consumer lag on topic {{ $labels.topic }}"
+      description: "Consumer lag is {{ $value }} messages"
+
+  - alert: PostgreSQLHighConnectionCount
+    expr: pg_stat_activity_count{datname="fraud_detection"} > 50
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High PostgreSQL connection count"
+      description: "Active connections: {{ $value }}"
+
+  - alert: RedisHighMemoryUsage
+    expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.8
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High Redis memory usage"
+      description: "Redis memory usage is {{ $value | printf \"%.2f\" }}%"
+
+  # Data Quality Alerts
+  - alert: DataIngestionRateLow
+    expr: rate(data_ingestion_events_total[10m]) < 100
+    for: 10m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Low data ingestion rate"
+      description: "Ingestion rate is {{ $value | printf \"%.2f\" }} events/second"
+
+  - alert: FeatureEngineeringDelay
+    expr: (time() - feature_last_updated_timestamp) > 300
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Feature engineering pipeline delay"
+      description: "Last feature update was {{ $value | printf \"%.0f\" }} seconds ago"
+
+- name: business_impact_alerts
+  rules:
+  # Revenue Impact Alerts
+  - alert: FraudDetectionRevenueLoss
+    expr: increase(fraud_blocked_amount_total[1h]) > 10000
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Significant revenue loss due to fraud blocking"
+      description: "Blocked amount in last hour: ${{ $value | printf \"%.2f\" }}"
+
+  # Operational Impact Alerts
+  - alert: FraudDetectionCaseSLABreach
+    expr: fraud_cases_sla_breached_total > 0
+    for: 1m
+    labels:
+      severity: high
+    annotations:
+      summary: "Fraud investigation SLA breached"
+      description: "{{ $value }} cases have breached SLA"
+
+  # System Capacity Alerts
+  - alert: FraudDetectionAvailabilityLow
+    # Renamed: this measures scrape availability, not saturation/capacity.
+    expr: (1 - avg by (job) (avg_over_time(up{job=~"fraud-detection-.*"}[5m]))) > 0.1
+    for: 10m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Fraud detection system near capacity"
+      description: "System availability degradation detected"
+
+- name: security_alerts
+  rules:
+  # Security Monitoring
+  - alert: FraudDetectionAnomalousAccess
+    expr: rate(security_failed_auth_total[5m]) > 10
+    for: 5m
+    labels:
+      severity: high
+    annotations:
+      summary: "Anomalous authentication failures detected"
+      description: "Failed auth rate: {{ $value | printf \"%.2f\" }}/second"
+
+  - alert: FraudDetectionDataExfiltration
+    expr: rate(data_export_bytes_total[5m]) > 100000000
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Potential data exfiltration detected"
+      description: "Large data export detected: {{ $value | printf \"%.2f\" }} bytes/second"
+
+  # Compliance Alerts
+  - alert: FraudDetectionAuditLogGap
+    expr: (time() - audit_last_entry_timestamp) > 3600
+    for: 10m
+    labels:
+      severity: high
+    annotations:
+      summary: "Audit logging gap detected"
+      description: "No audit entries for {{ $value | printf \"%.0f\" }} seconds"

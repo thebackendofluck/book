@@ -1,0 +1,54 @@
+# Companion code for "The Backend of Luck" - Chapter 32, Testing and QA in Gambling.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# GLI-28 v1.0 — CI gate snippet (GitLab CI).
+#
+# Drop into your existing .gitlab-ci.yml or `include:` it. The job is
+# deploy-blocking: any failure prevents the artifact from advancing
+# beyond `staging` to `prod`.
+#
+# Required CI/CD variables (set under Project → Settings → CI/CD):
+#   BASE_URL          https URL of the staging environment
+#   PLAYER_JWT        masked, protected — long-lived test player JWT
+#   GAME_SLUG         e.g. "demo-slot"
+#   GAMES_FILE        path inside repo (e.g. "tests/games.json")
+#
+# Outputs published as JUnit so MR pipelines render the per-check status:
+#   gli28-out/gli28-junit.xml
+# Plus the raw evidence pack for the audit submission.
+
+stages:
+  - test
+  - compliance
+  - deploy
+
+gli28-compliance:
+  stage: compliance
+  image: mcr.microsoft.com/playwright/python:v1.48.0-jammy
+  needs: ["build-staging-image"]   # depends on whatever produces the staging deploy
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+  before_script:
+    - npm install -g @axe-core/cli
+    - pip install --quiet httpx playwright
+    - playwright install --with-deps chromium
+  script:
+    - python writing/new-book/scripts/chapter-32/testing-qa/gli28_runner.py
+        --out-dir gli28-out
+        --duration-min 5
+  artifacts:
+    when: always
+    paths:
+      - gli28-out/
+    reports:
+      junit: gli28-out/gli28-junit.xml
+    expire_in: 5 years    # SPA / BACEN retention floor; some EU jurisdictions ask for more
+  allow_failure: false    # deploy-blocking

@@ -1,0 +1,26 @@
+{
+  "implicitDependencies": {
+    "package.json": {
+      "dependencies": "*",
+      "devDependencies": "*"
+    },
+    ".eslintrc.json": "*"
+  },
+  "affected": {
+    "defaultBase": "origin/master"
+  },
+  "npmScope": "acme.bo",
+  "tasksRunnerOptions": {
+    "default": {
+      "runner": "@nrwl/workspace/tasks-runners/default",
+      "options": {
+        "cacheableOperations": ["build", "lint", "test", "e2e"],
+        "parallel": 3
+      }
+    }
+  },
+  "cli": {
+    "defaultCollection": "@nrwl/node"
+  },
+  "defaultProject": "fe-main-app"
+}

@@ -1,0 +1,60 @@
+{
+  "title": "Casino mTLS Certificate Lifecycle",
+  "uid": "casino-mtls-certs",
+  "tags": ["mtls", "certificates", "security"],
+  "panels": [
+    {
+      "title": "Days Until Expiry by Certificate",
+      "type": "bargauge",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 0},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "displayName": "${__field.labels.namespace}/${__field.labels.name}",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "red", "value": null},
+              {"color": "red", "value": 0},
+              {"color": "orange", "value": 604800},
+              {"color": "yellow", "value": 1209600},
+              {"color": "green", "value": 2592000}
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "certmanager_certificate_expiration_timestamp_seconds - time()",
+          "legendFormat": "{{namespace}}/{{name}}"
+        }
+      ]
+    },
+    {
+      "title": "Certificate Ready Status",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 8, "x": 0, "y": 8},
+      "targets": [
+        {
+          "expr": "sum(certmanager_certificate_ready_status{condition=\"True\"})",
+          "legendFormat": "Ready"
+        }
+      ]
+    },
+    {
+      "title": "Certificate Issuance Latency (P99)",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 16, "x": 8, "y": 8},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, rate(certmanager_certificate_issuance_duration_seconds_bucket[5m]))",
+          "legendFormat": "p99 issuance latency"
+        },
+        {
+          "expr": "histogram_quantile(0.50, rate(certmanager_certificate_issuance_duration_seconds_bucket[5m]))",
+          "legendFormat": "p50 issuance latency"
+        }
+      ]
+    }
+  ]
+}

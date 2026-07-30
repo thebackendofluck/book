@@ -1,0 +1,202 @@
+# Companion code for "The Backend of Luck" - Chapter 10, Complete Platform Architecture.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+"""
+gameservice.suppliers.relax.adapter — Relax Gaming Adapter
+============================================================
+
+SEAMLESS wallet integration for Relax Gaming and Silver Bullet partner studios.
+
+Silver Bullet aggregation
+--------------------------
+Relax Gaming's Silver Bullet program distributes games from multiple partner
+studios through a single Relax integration.  The ``partnerStudioId`` field on
+callbacks identifies which studio's game was played.
+
+Free rounds
+-----------
+Relax supports operator-awarded free rounds via their bonus API.  The
+``isFreeRound`` flag on callbacks identifies bonus-funded spins.
+"""
+
+from __future__ import annotations
+
+import uuid
+from datetime import timedelta
+from decimal import Decimal
+from typing import Any
+
+from acmetocasino.gameservice.errors import InsufficientFundsError
+from acmetocasino.gameservice.models.enums import CommandType
+from acmetocasino.gameservice.models.launch_request import LaunchRequest
+from acmetocasino.gameservice.models.round_command import RoundCommand
+from acmetocasino.gameservice.models.wallet_snapshot import WalletSnapshot
+from acmetocasino.gameservice.suppliers.base import (
+    BaseSupplierAdapter,
+    LaunchResult,
+    TransactionResult,
+)
+from acmetocasino.gameservice.suppliers.relax.config import RelaxConfig
+from acmetocasino.gameservice.suppliers.relax.models import (
+    RelaxCreditRequest,
+    RelaxDebitRequest,
+    RelaxRollbackRequest,
+    RelaxWalletResponse,
+)
+from acmetocasino.gameservice.suppliers.relax.translator import (
+    build_relax_launch_url,
+    map_relax_action,
+)
+
+
+class RelaxAdapter(BaseSupplierAdapter):
+    """Adapter for Relax Gaming's SEAMLESS wallet API."""
+
+    supplier_id = "relax"
+
+    def __init__(self, config: RelaxConfig | Any) -> None:
+        super().__init__(config)
+        if isinstance(config, RelaxConfig):
+            self._relax_config: RelaxConfig = config
+        else:
+            self._relax_config = RelaxConfig.model_validate(config.model_dump())
+
+    def _do_launch(self, request: LaunchRequest, correlation_id: str) -> LaunchResult:
+        session_id = str(uuid.uuid4())
+        game_url = build_relax_launch_url(
+            request=request,
+            partner_id=self._relax_config.partner_id,
+            api_base_url=self._relax_config.api_base_url,
+            session_id=session_id,
+        )
+        return LaunchResult(
+            session_id=session_id,
+            game_url=game_url,
+            token=request.player.session_token,
+            expires_at=self._utcnow() + timedelta(hours=4),
+            metadata={"game_code": request.game_id},
+        )
+
+    def _do_get_balance(self, session_id: str) -> WalletSnapshot:
+        return WalletSnapshot(
+            cash_balance=Decimal("0"),
+            currency="EUR",
+            snapshot_at=self._utcnow().isoformat(),
+        )
+
+    def _do_debit(
+        self,
+        session_id: str,
+        round_id: str,
+        amount: Decimal,
+        command: RoundCommand,
+    ) -> TransactionResult:
+        balance = self._do_get_balance(session_id)
+        if balance.total_balance < amount:
+            raise InsufficientFundsError(
+                message="Insufficient funds for Relax debit",
+                requested_amount=str(amount),
+                available_balance=str(balance.total_balance),
+            )
+        updated = balance.with_cash_delta(-amount)
+        return TransactionResult(
+            transaction_id=self._new_transaction_id(),
+            supplier_ref=command.supplier_ref,
+            balance_after=updated,
+        )
+
+    def _do_credit(
+        self,
+        session_id: str,
+        round_id: str,
+        amount: Decimal,
+        command: RoundCommand,
+    ) -> TransactionResult:
+        balance = self._do_get_balance(session_id)
+        updated = balance.with_cash_delta(amount) if amount > Decimal("0") else balance
+        return TransactionResult(
+            transaction_id=self._new_transaction_id(),
+            supplier_ref=command.supplier_ref,
+            balance_after=updated,
+        )
+
+    def _do_rollback(
+        self,
+        session_id: str,
+        round_id: str,
+        original_ref: str,
+    ) -> TransactionResult:
+        balance = self._do_get_balance(session_id)
+        return TransactionResult(
+            transaction_id=self._new_transaction_id(),
+            supplier_ref=original_ref,
+            balance_after=balance,
+        )
+
+    def _do_end_session(self, session_id: str) -> None:
+        self._logger.debug("relax.end_session", extra={"session_id": session_id})
+
+    # ------------------------------------------------------------------
+    # Inbound SEAMLESS handlers
+    # ------------------------------------------------------------------
+
+    def handle_debit(self, req: RelaxDebitRequest) -> RelaxWalletResponse:
+        action_code = map_relax_action(req.actionType, req.isFreeRound)
+        command = RoundCommand(
+            command_type=CommandType.DEBIT,
+            round_id=req.roundId,
+            amount=Decimal(req.amount),
+            action_code=action_code,
+            supplier_ref=req.txId,
+            metadata={"partner_studio_id": req.partnerStudioId} if req.partnerStudioId else {},
+        )
+        try:
+            result = self.debit(req.sessionToken, req.roundId, Decimal(req.amount), command)
+        except InsufficientFundsError:
+            return RelaxWalletResponse(
+                status="INSUFFICIENT_FUNDS",
+                balance="0",
+                txId="",
+                currency=req.currency,
+            )
+        return RelaxWalletResponse(
+            balance=str(result.balance_after.cash_balance),
+            txId=result.transaction_id,
+            currency=req.currency,
+        )
+
+    def handle_credit(self, req: RelaxCreditRequest) -> RelaxWalletResponse:
+        amount = Decimal(req.amount)
+        command = RoundCommand(
+            command_type=CommandType.CREDIT,
+            round_id=req.roundId,
+            amount=amount,
+            action_code=map_relax_action("WIN"),
+            supplier_ref=req.txId,
+            metadata={"round_ended": req.roundEnded},
+        )
+        result = self.credit(req.sessionToken, req.roundId, amount, command)
+        return RelaxWalletResponse(
+            balance=str(result.balance_after.cash_balance),
+            txId=result.transaction_id,
+            currency=req.currency,
+        )
+
+    def handle_rollback(self, req: RelaxRollbackRequest) -> RelaxWalletResponse:
+        result = self.rollback(req.sessionToken, req.roundId, req.txId)
+        balance = self._do_get_balance(req.sessionToken)
+        return RelaxWalletResponse(
+            balance=str(balance.cash_balance),
+            txId=result.transaction_id,
+            currency=req.currency,
+        )
+
+
+__all__ = ["RelaxAdapter"]

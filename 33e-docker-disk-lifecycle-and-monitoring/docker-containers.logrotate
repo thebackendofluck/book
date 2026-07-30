@@ -1,0 +1,12 @@
+# /etc/logrotate.d/docker-containers
+# Bound rotation for Docker JSON logs. Use copytruncate because Docker doesn't
+# support SIGHUP-based log reopening — it keeps the file descriptor open.
+/var/lib/docker/containers/*/*-json.log {
+    rotate 5
+    daily
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+}

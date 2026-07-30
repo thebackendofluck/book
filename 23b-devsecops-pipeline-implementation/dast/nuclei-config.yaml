@@ -1,0 +1,65 @@
+# Companion code for "The Backend of Luck" - Chapter 23b, DevSecOps Pipeline Implementation.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# =============================================================================
+# Nuclei Scanner Configuration
+# Target: staging.acmetocasino.com
+# Severity: critical, high, medium (skip low/info to reduce noise)
+# =============================================================================
+
+# Severity filter — only report findings at these levels
+severity:
+  - critical
+  - high
+  - medium
+
+# Exclude templates that could cause damage or excessive load
+exclude-templates:
+  - dos/                    # Denial of service — never run against live targets
+  - fuzzing/                # Fuzzing generates high traffic volume
+  - brute-force/            # Brute force attempts trigger WAF and lockouts
+
+# Exclude specific template IDs known to cause false positives on CDN-fronted sites
+exclude-ids:
+  - tech-detect             # Technology detection is informational only
+  - waf-detect              # WAF detection is informational only
+
+# Rate limiting — be gentle on staging infrastructure
+rate-limit: 50              # Max 50 requests per second
+bulk-size: 10               # Process 10 templates concurrently
+concurrency: 10             # 10 concurrent requests
+
+# Timeouts
+timeout: 10                 # 10 seconds per request
+retries: 1                  # Retry once on timeout
+max-host-error: 30          # Stop scanning host after 30 errors
+
+# Network settings
+follow-redirects: true
+max-redirects: 5
+
+# Header configuration — add custom headers if authentication is needed
+# Uncomment and configure if staging requires auth headers:
+# header:
+#   - "Authorization: Bearer ${STAGING_API_TOKEN}"
+#   - "X-Custom-Header: nuclei-scan"
+
+# Output settings
+json-export: nuclei-results.json
+markdown-export: nuclei-results.md
+sarif-export: nuclei-results.sarif
+
+# Template update settings
+# Templates are bundled in the container image — no auto-update needed
+disable-update-check: true
+
+# Statistics
+stats: true
+stats-interval: 10

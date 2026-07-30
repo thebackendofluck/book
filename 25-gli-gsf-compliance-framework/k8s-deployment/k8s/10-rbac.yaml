@@ -1,0 +1,40 @@
+# Companion code for "The Backend of Luck" - Chapter 25, GLI-GSF Compliance Framework.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: gli-compliance
+  namespace: gli-compliance
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: gli-compliance-reader
+  namespace: gli-compliance
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps", "secrets"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: gli-compliance-reader
+  namespace: gli-compliance
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: gli-compliance-reader
+subjects:
+  - kind: ServiceAccount
+    name: gli-compliance
+    namespace: gli-compliance

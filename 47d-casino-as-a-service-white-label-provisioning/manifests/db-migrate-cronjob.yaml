@@ -1,0 +1,63 @@
+# Companion code for "The Backend of Luck" - Chapter 47d, Casino as a Service.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: BUSL-1.1
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# Per-tenant DB migration runner. Template — rendered into rendered/<slug>/db-migrate-cronjob.yaml.
+# caasctl runs migrations on-demand via: kubectl create job --from=cronjob/db-migrate migrate-<slug>-<ts>
+# The CronJob schedule is a safety net; provisioning triggers it imperatively.
+# Placeholders: __SLUG__
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: db-migrate
+  namespace: caas-__SLUG__
+  labels:
+    caas.tenant: "__SLUG__"
+spec:
+  schedule: "17 3 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            caas.tenant: "__SLUG__"
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: migrate
+              image: ghcr.io/acmetocasino/caas-runtime:1.0.0
+              command: ["caas-admin", "db", "migrate", "--wait"]
+              env:
+                - name: DB_HOST
+                  valueFrom: { secretKeyRef: { name: tenant-db-credentials, key: host } }
+                - name: DB_PASSWORD
+                  valueFrom: { secretKeyRef: { name: tenant-db-credentials, key: password } }
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+                limits:
+                  cpu: 500m
+                  memory: 512Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]

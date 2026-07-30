@@ -1,0 +1,237 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 24, Security and Compliance.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# group_vars/suricata_sensors.yml
+# All Suricata-specific variables for hosts in the suricata_sensors group.
+# Values here are production-grade defaults.  Override per-host or per
+# child-group in the inventory for zone-specific sizing.
+
+# =============================================================================
+# VERSION & OPERATING MODE
+# =============================================================================
+
+suricata_version: "7.0.7"
+
+# suricata_mode:
+#   ids  — passive sniffing via AF_PACKET, PCAP, or a SPAN/TAP
+#   ips  — inline via NFQ (iptables/nftables) or AF_PACKET with copy-mode
+# Start with ids; rotate to ips using playbooks/rotate_to_ips.yml after
+# 30 days of burn-in and confirmed drop-rate < 0.01 %.
+suricata_mode: ids
+
+# Fail-open: if Suricata crashes while running as IPS, pass traffic through.
+# Set to false only after extended stability testing in your environment.
+suricata_failopen: true
+
+# =============================================================================
+# NETWORK CONFIGURATION
+# =============================================================================
+
+# HOME_NET: address space you own / are responsible for.
+# Use RFC-1918 super-nets unless you have PI space.
+suricata_home_net: "[10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16]"
+suricata_external_net: "!$HOME_NET"
+
+# Port groups used in rule matching
+suricata_http_ports: "80"
+suricata_https_ports: "443"
+suricata_ssh_ports: "22"
+suricata_dns_ports: "53"
+suricata_smtp_ports: "25, 465, 587"
+
+# Interfaces to monitor (list; usually one per sensor NIC)
+# Overridden per-host via host_vars or inventory host assignments
+suricata_interfaces:
+  - ens3f0
+
+# =============================================================================
+# MEMORY TUNING
+# =============================================================================
+# Size these to roughly 1/3 of available RAM for a dedicated sensor.
+#
+# Small  operator (8 GB RAM)  : memcap ~256 MB each
+# Medium operator (32 GB RAM) : memcap ~1 GB each
+# Large  operator (64+ GB RAM): memcap ~2–4 GB each
+
+# Stream reassembly — largest consumer; scales with concurrent connections
+stream_memcap: "1gb"
+stream_checksum_validation: true
+stream_inline: "auto"           # auto = enabled in IPS, disabled in IDS
+
+# Flow tracking table
+flow_memcap: "512mb"
+flow_hash_size: 65536
+flow_prealloc: 10000
+flow_emergency_recovery: 30     # % drop-rate that triggers emergency mode
+
+# IP defragmentation
+defrag_memcap: "128mb"
+defrag_hash_size: 65536
+defrag_max_frags: 65535
+
+# =============================================================================
+# THREADING & CPU AFFINITY
+# =============================================================================
+# worker_count is set per-host in the inventory to match physical core count.
+# The values here are safe defaults for a 4-core sensor.
+worker_count: 4
+
+# CPU sets use Linux core numbering (0-indexed).
+# Template reads numa_node from inventory and assigns workers accordingly.
+worker_cpu_set: "0-3"      # Overridden by the tuning task based on NUMA topology
+management_cpu: "0"        # Suricata management thread
+receive_cpu: "0"           # Packet receive thread (AF_PACKET / PCAP)
+
+# =============================================================================
+# AF_PACKET CAPTURE SETTINGS
+# =============================================================================
+# cluster_flow: distributes packets by 5-tuple — best for session tracking
+# cluster_cpu:  distributes by CPU hash — lower latency on very high-speed links
+afpacket_cluster_type: cluster_flow
+
+# Ring buffer size (number of slots).
+# Large rings reduce drops at the cost of memory.
+# 65536 × 1500 B MTU ≈ 100 MB per interface thread.
+afpacket_ring_size: 65536
+
+# Buffer size in bytes passed to setsockopt(SO_RCVBUF).
+# 64 MB is a practical ceiling; raise net.core.rmem_max to match.
+afpacket_buffer_size: 67108864   # 64 MB
+
+# Use mmap for zero-copy packet delivery
+afpacket_use_mmap: true
+
+# tpacket-v3 batches frames — reduces syscall overhead at high pps
+afpacket_tpacket_v3: true
+
+# copy-mode for IPS operation:
+#   ips    — copy packet to second interface (requires two NICs per pair)
+#   worker — each worker thread owns a socket (recommended for multi-core)
+afpacket_copy_mode: "ips"      # only used when suricata_mode == ips
+
+# =============================================================================
+# RULE SOURCES
+# =============================================================================
+
+# Emerging Threats Open (free, no registration required)
+et_open_enabled: true
+
+# Emerging Threats Pro (paid subscription; requires oinkcode)
+et_pro_enabled: false
+et_pro_oinkcode: "{{ vault_et_pro_oinkcode }}"   # set in vault.yml
+
+# Additional rule sources supported by suricata-update
+extra_rule_sources: []
+# Example:
+#  - name: "tgreen/hunting"
+#    license: Commercial
+#  - name: "ptresearch/attackdetection"
+#    license: Commercial
+
+# Custom iGaming rule files deployed from roles/suricata/files/
+suricata_custom_rule_files:
+  - igaming-custom.rules
+
+# Rule categories to DISABLE (noisy / irrelevant for iGaming infrastructure)
+disabled_rule_categories:
+  - "et/info"         # informational rules — too noisy for production
+  - "et/p2p"          # BitTorrent — irrelevant in DC environment
+
+# =============================================================================
+# EVE JSON LOGGING
+# =============================================================================
+
+# Community ID: deterministic flow identifier for cross-tool correlation
+suricata_community_id: true
+suricata_community_id_seed: 0
+
+# EVE event types to enable
+suricata_eve_alerts: true
+suricata_eve_anomaly: true
+suricata_eve_dns: true
+suricata_eve_http: true
+suricata_eve_tls: true
+suricata_eve_files: false          # file extraction — high storage cost
+suricata_eve_smtp: true
+suricata_eve_flow: true
+suricata_eve_netflow: false        # enable if shipping to NetFlow analytics
+
+# Payload logging (disable in PCI-DSS zones; override per host)
+suricata_eve_payload: true
+suricata_eve_payload_printable: true
+suricata_eve_payload_buffer_size: "4kb"
+
+# Extended HTTP logging fields
+suricata_eve_http_extended: true
+
+# JA3/JA4 TLS fingerprinting (requires Suricata >= 6.0)
+suricata_tls_ja3: true
+suricata_tls_ja4: true
+
+# =============================================================================
+# DETECTION ENGINE SETTINGS
+# =============================================================================
+
+# Detection profile:
+#   low    — fastest, fewer signatures checked (drops low-severity rules)
+#   medium — balanced (recommended default)
+#   high   — most thorough (use with fast NVMe storage)
+#   custom — use with sgh_mpm_context below
+suricata_detection_profile: "medium"
+
+# Multi-Pattern Matcher algorithm
+# ac-ks:   Aho-Corasick with KS optimisation (default, good all-around)
+# hs:      Hyperscan (best performance on Intel; requires libhs)
+suricata_mpm_algo: "auto"
+
+# App-layer protocols to inspect
+suricata_app_layer_http: true
+suricata_app_layer_http2: true
+suricata_app_layer_tls: true
+suricata_app_layer_dns: true
+suricata_app_layer_ssh: true
+suricata_app_layer_smtp: true
+suricata_app_layer_ftp: true
+suricata_app_layer_websocket: true
+
+# =============================================================================
+# MONITORING & ALERTING THRESHOLDS
+# =============================================================================
+
+# Prometheus metrics exporter (suricata-update prometheus plugin or stats log)
+prometheus_exporter_enabled: true
+prometheus_exporter_port: 9917
+
+# Health check (cron every 5 min, exports prom textfile)
+health_check_interval_minutes: 5
+
+# Kernel packet drop thresholds (percentage of total packets received)
+kernel_drops_warn_pct: 0.01    # warn  at 0.01 % drops
+kernel_drops_crit_pct: 0.05    # alert at 0.05 % drops
+
+# Memory utilisation alert thresholds (percentage of configured memcap)
+flow_memcap_alert_pct: 80
+stream_memcap_alert_pct: 80
+defrag_memcap_alert_pct: 80
+
+# =============================================================================
+# LOG MANAGEMENT
+# =============================================================================
+
+log_retention_days: 30         # rotate + delete EVE JSON older than N days
+suricata_log_dir: "/var/log/suricata"
+suricata_log_level: "notice"   # debug | info | notice | warning | error
+
+# Logrotate: rotate hourly in production to cap file size
+logrotate_frequency: hourly
+logrotate_compress: true
+logrotate_missingok: true
+logrotate_sharedscripts: true

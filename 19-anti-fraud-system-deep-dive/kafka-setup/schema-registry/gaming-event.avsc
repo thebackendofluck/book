@@ -1,0 +1,249 @@
+{
+  "type": "record",
+  "name": "GamingEvent",
+  "namespace": "com.acme.casino.fraud.events",
+  "doc": "Schema for all gaming-related events in the fraud detection pipeline. Captures bets, wins, game sessions, bonus claims, and slot/table actions. Each event carries enough context for real-time fraud scoring without additional lookups.",
+  "fields": [
+    {
+      "name": "event_id",
+      "type": "string",
+      "doc": "Globally unique event identifier (UUIDv7 for time-ordered sorting)"
+    },
+    {
+      "name": "event_type",
+      "type": {
+        "type": "enum",
+        "name": "GamingEventType",
+        "symbols": [
+          "BET_PLACED",
+          "BET_SETTLED",
+          "GAME_SESSION_START",
+          "GAME_SESSION_END",
+          "BONUS_CLAIMED",
+          "BONUS_WAGERED",
+          "BONUS_FORFEITED",
+          "JACKPOT_WIN",
+          "FREE_SPIN_AWARDED",
+          "CASHOUT_EARLY",
+          "TOURNAMENT_ENTRY",
+          "TOURNAMENT_EXIT",
+          "LIVE_DEALER_ACTION",
+          "POKER_HAND_PLAYED",
+          "SPORTSBOOK_BET"
+        ]
+      },
+      "doc": "Type of gaming event. Each type triggers different fraud detection rules."
+    },
+    {
+      "name": "timestamp",
+      "type": "long",
+      "logicalType": "timestamp-millis",
+      "doc": "Event timestamp in UTC milliseconds. Critical for velocity calculations."
+    },
+    {
+      "name": "player_id",
+      "type": "string",
+      "doc": "Unique player identifier. Used as Kafka partition key to ensure ordered processing per player."
+    },
+    {
+      "name": "session_id",
+      "type": "string",
+      "doc": "Current gaming session ID. Links related events within a single playing session."
+    },
+    {
+      "name": "game_context",
+      "type": {
+        "type": "record",
+        "name": "GameContext",
+        "fields": [
+          {
+            "name": "game_id",
+            "type": "string",
+            "doc": "Unique game identifier (e.g., 'blackjack-vip-001', 'slots-megamoolah')"
+          },
+          {
+            "name": "game_category",
+            "type": {
+              "type": "enum",
+              "name": "GameCategory",
+              "symbols": [
+                "SLOTS",
+                "TABLE_GAMES",
+                "LIVE_CASINO",
+                "POKER",
+                "SPORTSBOOK",
+                "BINGO",
+                "VIRTUAL_SPORTS",
+                "CRASH_GAMES",
+                "LOTTERY"
+              ]
+            }
+          },
+          {
+            "name": "game_provider",
+            "type": "string",
+            "doc": "Game provider/supplier (e.g., 'Evolution', 'Pragmatic Play', 'NetEnt')"
+          },
+          {
+            "name": "rtp_percentage",
+            "type": ["null", "float"],
+            "default": null,
+            "doc": "Return-to-player percentage. Anomalous actual RTP vs theoretical flags potential RNG manipulation."
+          },
+          {
+            "name": "table_id",
+            "type": ["null", "string"],
+            "default": null,
+            "doc": "For table games and poker: specific table identifier for collusion detection"
+          }
+        ]
+      }
+    },
+    {
+      "name": "financial",
+      "type": {
+        "type": "record",
+        "name": "FinancialDetails",
+        "fields": [
+          {
+            "name": "bet_amount",
+            "type": ["null", "double"],
+            "default": null,
+            "doc": "Bet amount in base currency. Null for non-betting events."
+          },
+          {
+            "name": "win_amount",
+            "type": ["null", "double"],
+            "default": null,
+            "doc": "Win amount in base currency. Null if bet not settled."
+          },
+          {
+            "name": "currency",
+            "type": "string",
+            "doc": "ISO 4217 currency code (EUR, USD, GBP, BRL)"
+          },
+          {
+            "name": "bet_amount_eur",
+            "type": ["null", "double"],
+            "default": null,
+            "doc": "Bet amount normalized to EUR for cross-currency fraud analysis"
+          },
+          {
+            "name": "bonus_amount",
+            "type": ["null", "double"],
+            "default": null,
+            "doc": "Bonus funds used in this event. Tracks bonus abuse patterns."
+          },
+          {
+            "name": "cumulative_session_wagered",
+            "type": ["null", "double"],
+            "default": null,
+            "doc": "Running total wagered in current session. Rapid increase flags automated play."
+          },
+          {
+            "name": "cumulative_session_net",
+            "type": ["null", "double"],
+            "default": null,
+            "doc": "Running session P&L. Large wins after small bets flags potential exploitation."
+          }
+        ]
+      }
+    },
+    {
+      "name": "behavior",
+      "type": {
+        "type": "record",
+        "name": "BehaviorSignals",
+        "doc": "Behavioral signals captured at event time for real-time fraud scoring",
+        "fields": [
+          {
+            "name": "time_since_last_bet_ms",
+            "type": ["null", "long"],
+            "default": null,
+            "doc": "Milliseconds since last bet. Extremely fast betting (<500ms) suggests bot activity."
+          },
+          {
+            "name": "bet_pattern_type",
+            "type": ["null", {
+              "type": "enum",
+              "name": "BetPattern",
+              "symbols": [
+                "FLAT",
+                "MARTINGALE",
+                "PROGRESSIVE",
+                "RANDOM",
+                "CONSTANT",
+                "KELLY_CRITERION",
+                "UNKNOWN"
+              ]
+            }],
+            "default": null,
+            "doc": "Detected betting pattern. Algorithmic patterns (Martingale, Kelly) flag bot/advantage play."
+          },
+          {
+            "name": "auto_play_enabled",
+            "type": "boolean",
+            "default": false,
+            "doc": "Whether auto-play feature is active. Combined with other signals for bot detection."
+          },
+          {
+            "name": "session_duration_ms",
+            "type": ["null", "long"],
+            "default": null,
+            "doc": "Current session duration. Very long sessions (>8h) may indicate problem gambling or bots."
+          },
+          {
+            "name": "bets_in_session",
+            "type": ["null", "int"],
+            "default": null,
+            "doc": "Number of bets placed in current session"
+          }
+        ]
+      }
+    },
+    {
+      "name": "device",
+      "type": {
+        "type": "record",
+        "name": "DeviceContext",
+        "fields": [
+          {
+            "name": "device_fingerprint",
+            "type": "string",
+            "doc": "Browser/device fingerprint hash. Multiple accounts from same device flags multi-accounting."
+          },
+          {
+            "name": "ip_address",
+            "type": "string",
+            "doc": "Client IP address for geolocation and VPN detection"
+          },
+          {
+            "name": "user_agent",
+            "type": "string",
+            "doc": "Browser user agent string"
+          },
+          {
+            "name": "is_mobile",
+            "type": "boolean",
+            "doc": "Mobile vs desktop. Sudden platform switches may indicate account takeover."
+          },
+          {
+            "name": "screen_resolution",
+            "type": ["null", "string"],
+            "default": null,
+            "doc": "Screen resolution. Headless browsers often have unusual resolutions."
+          }
+        ]
+      }
+    },
+    {
+      "name": "metadata",
+      "type": {
+        "type": "map",
+        "values": "string"
+      },
+      "default": {},
+      "doc": "Extensible key-value metadata for game-specific attributes (e.g., poker hand details, slot paylines)"
+    }
+  ]
+}

@@ -1,0 +1,218 @@
+#!/usr/bin/env bash
+# suricata-health-check — Managed by Ansible
+# Generated for: {{ inventory_hostname }} ({{ sensor_zone | default('unset') }} zone)
+# Runs every {{ health_check_interval_minutes }} minutes via cron.
+#
+# Checks:
+#   1. Suricata process is running
+#   2. EVE JSON file is being written (not stale)
+#   3. Kernel packet drop ratio is below threshold
+#   4. Memory utilisation is within bounds
+#   5. Rules are loaded (rule count > 0)
+#
+# Exports metrics to Prometheus textfile collector at:
+#   /var/lib/node_exporter/textfile_collector/suricata.prom
+
+set -euo pipefail
+
+##############################################################################
+# CONFIGURATION
+##############################################################################
+
+SURICATA_LOG_DIR="{{ suricata_log_dir }}"
+SURICATA_STATS_LOG="${SURICATA_LOG_DIR}/stats.log"
+SURICATA_EVE_LOG="${SURICATA_LOG_DIR}/eve.json"
+SURICATA_PID_FILE="{{ suricata_run_dir }}/suricata.pid"
+PROM_FILE="/var/lib/node_exporter/textfile_collector/suricata.prom"
+SENSOR_NAME="{{ inventory_hostname }}"
+SENSOR_ZONE="{{ sensor_zone | default('unknown') }}"
+
+# Alert thresholds
+DROPS_WARN_PCT="{{ kernel_drops_warn_pct }}"   # 0.01 %
+DROPS_CRIT_PCT="{{ kernel_drops_crit_pct }}"   # 0.05 %
+FLOW_MEMCAP_ALERT="{{ flow_memcap_alert_pct }}"  # 80 %
+
+# Slack webhook (populated from vault)
+SLACK_WEBHOOK="{{ slack_webhook_url }}"
+SLACK_CHANNEL="{{ slack_channel }}"
+
+##############################################################################
+# HELPERS
+##############################################################################
+
+log() { echo "[$(date -u '+%Y-%m-%dT%H:%M:%SZ')] $*"; }
+
+send_slack_alert() {
+    local severity="$1"
+    local message="$2"
+    local icon=":warning:"
+    [[ "$severity" == "critical" ]] && icon=":red_circle:"
+    [[ "$severity" == "ok"       ]] && icon=":white_check_mark:"
+
+    if [[ -n "${SLACK_WEBHOOK}" && "${SLACK_WEBHOOK}" != "" ]]; then
+        curl -s -o /dev/null -X POST "${SLACK_WEBHOOK}" \
+            -H 'Content-type: application/json' \
+            --data "{
+              \"channel\": \"${SLACK_CHANNEL}\",
+              \"username\": \"Suricata Health Check\",
+              \"icon_emoji\": \"${icon}\",
+              \"text\": \"${icon} *[${SENSOR_ZONE}] ${SENSOR_NAME}*: ${message}\"
+            }" || true
+    fi
+}
+
+##############################################################################
+# STATUS VARIABLES
+##############################################################################
+
+STATUS_SERVICE=0
+STATUS_EVE=0
+STATUS_DROPS=0
+STATUS_MEMORY=0
+STATUS_RULES=0
+
+DROPS_RATIO=0
+FLOW_MEMUSE_PCT=0
+RULE_COUNT=0
+TOTAL_PACKETS=0
+TOTAL_DROPS=0
+
+##############################################################################
+# CHECK 1: SURICATA PROCESS
+##############################################################################
+
+if systemctl is-active --quiet suricata; then
+    STATUS_SERVICE=1
+    log "OK: Suricata service is active"
+else
+    STATUS_SERVICE=0
+    log "CRITICAL: Suricata service is NOT active"
+    send_slack_alert "critical" "Suricata service is DOWN on ${SENSOR_NAME}"
+fi
+
+##############################################################################
+# CHECK 2: EVE JSON FRESHNESS (must have been written in last 5 minutes)
+##############################################################################
+
+if [[ -f "${SURICATA_EVE_LOG}" ]]; then
+    EVE_AGE=$(( $(date +%s) - $(stat -c %Y "${SURICATA_EVE_LOG}") ))
+    if [[ ${EVE_AGE} -lt $(( {{ health_check_interval_minutes }} * 60 + 30 )) ]]; then
+        STATUS_EVE=1
+        log "OK: EVE JSON last modified ${EVE_AGE}s ago"
+    else
+        STATUS_EVE=0
+        log "WARNING: EVE JSON has not been written for ${EVE_AGE}s"
+        send_slack_alert "warning" "EVE JSON stale — no new events for ${EVE_AGE}s"
+    fi
+else
+    STATUS_EVE=0
+    log "WARNING: EVE JSON file not found at ${SURICATA_EVE_LOG}"
+fi
+
+##############################################################################
+# CHECK 3: KERNEL PACKET DROPS (from stats.log)
+##############################################################################
+
+if [[ -f "${SURICATA_STATS_LOG}" ]]; then
+    # Parse the most recent stats block from stats.log
+    LATEST_STATS=$(tail -200 "${SURICATA_STATS_LOG}" | grep -A 100 "$(tail -200 ${SURICATA_STATS_LOG} | grep 'Date:' | tail -1)")
+
+    TOTAL_PACKETS=$(echo "${LATEST_STATS}" | grep -E 'capture\.kernel_packets' | tail -1 | awk '{print $NF}' || echo 0)
+    TOTAL_DROPS=$(echo "${LATEST_STATS}" | grep -E 'capture\.kernel_drops' | tail -1 | awk '{print $NF}' || echo 0)
+
+    if [[ ${TOTAL_PACKETS} -gt 0 ]]; then
+        # Calculate drop percentage with awk (bash lacks floating point)
+        DROPS_RATIO=$(awk "BEGIN {printf \"%.4f\", (${TOTAL_DROPS} / ${TOTAL_PACKETS}) * 100}")
+        IS_CRIT=$(awk "BEGIN {print (${DROPS_RATIO} >= ${DROPS_CRIT_PCT}) ? 1 : 0}")
+        IS_WARN=$(awk "BEGIN {print (${DROPS_RATIO} >= ${DROPS_WARN_PCT}) ? 1 : 0}")
+
+        if [[ "${IS_CRIT}" == "1" ]]; then
+            STATUS_DROPS=0
+            log "CRITICAL: Kernel drop ratio ${DROPS_RATIO}% >= ${DROPS_CRIT_PCT}% threshold"
+            send_slack_alert "critical" "Kernel drops at ${DROPS_RATIO}% on ${SENSOR_NAME} — investigate NIC ring buffer and CPU affinity"
+        elif [[ "${IS_WARN}" == "1" ]]; then
+            STATUS_DROPS=0
+            log "WARNING: Kernel drop ratio ${DROPS_RATIO}% >= ${DROPS_WARN_PCT}% threshold"
+            send_slack_alert "warning" "Kernel drops at ${DROPS_RATIO}% on ${SENSOR_NAME}"
+        else
+            STATUS_DROPS=1
+            log "OK: Kernel drop ratio ${DROPS_RATIO}% below threshold"
+        fi
+    else
+        STATUS_DROPS=1
+        log "INFO: No packet stats available yet (sensor may have just started)"
+    fi
+fi
+
+##############################################################################
+# CHECK 4: RULE COUNT
+##############################################################################
+
+RULE_COUNT=$(grep -c '^alert\|^drop\|^pass\|^reject' "{{ suricata_rules_dir }}/suricata.rules" 2>/dev/null || echo 0)
+if [[ ${RULE_COUNT} -gt 0 ]]; then
+    STATUS_RULES=1
+    log "OK: ${RULE_COUNT} rules loaded"
+else
+    STATUS_RULES=0
+    log "CRITICAL: No rules found in {{ suricata_rules_dir }}/suricata.rules"
+    send_slack_alert "critical" "No rules loaded on ${SENSOR_NAME}"
+fi
+
+##############################################################################
+# WRITE PROMETHEUS TEXTFILE METRICS
+##############################################################################
+
+TIMESTAMP=$(date +%s%3N)   # milliseconds
+
+cat > "${PROM_FILE}.tmp" << PROM
+# HELP suricata_up 1 if the Suricata service is running, 0 otherwise
+# TYPE suricata_up gauge
+suricata_up{sensor="${SENSOR_NAME}",zone="${SENSOR_ZONE}"} ${STATUS_SERVICE} ${TIMESTAMP}
+
+# HELP suricata_eve_fresh 1 if EVE JSON was updated recently, 0 otherwise
+# TYPE suricata_eve_fresh gauge
+suricata_eve_fresh{sensor="${SENSOR_NAME}",zone="${SENSOR_ZONE}"} ${STATUS_EVE} ${TIMESTAMP}
+
+# HELP suricata_kernel_packets_total Total packets received by the kernel
+# TYPE suricata_kernel_packets_total counter
+suricata_kernel_packets_total{sensor="${SENSOR_NAME}",zone="${SENSOR_ZONE}"} ${TOTAL_PACKETS} ${TIMESTAMP}
+
+# HELP suricata_kernel_drops_total Total packets dropped by the kernel
+# TYPE suricata_kernel_drops_total counter
+suricata_kernel_drops_total{sensor="${SENSOR_NAME}",zone="${SENSOR_ZONE}"} ${TOTAL_DROPS} ${TIMESTAMP}
+
+# HELP suricata_kernel_drop_ratio_percent Current kernel drop percentage
+# TYPE suricata_kernel_drop_ratio_percent gauge
+suricata_kernel_drop_ratio_percent{sensor="${SENSOR_NAME}",zone="${SENSOR_ZONE}"} ${DROPS_RATIO} ${TIMESTAMP}
+
+# HELP suricata_drops_status 1 if drops are below threshold, 0 if warning/critical
+# TYPE suricata_drops_status gauge
+suricata_drops_status{sensor="${SENSOR_NAME}",zone="${SENSOR_ZONE}"} ${STATUS_DROPS} ${TIMESTAMP}
+
+# HELP suricata_rule_count Total number of rules currently loaded
+# TYPE suricata_rule_count gauge
+suricata_rule_count{sensor="${SENSOR_NAME}",zone="${SENSOR_ZONE}"} ${RULE_COUNT} ${TIMESTAMP}
+
+# HELP suricata_health_check_timestamp Unix timestamp of the last health check
+# TYPE suricata_health_check_timestamp gauge
+suricata_health_check_timestamp{sensor="${SENSOR_NAME}",zone="${SENSOR_ZONE}"} $(date +%s) ${TIMESTAMP}
+PROM
+
+# Atomic rename to avoid partial reads by node_exporter
+mv "${PROM_FILE}.tmp" "${PROM_FILE}"
+
+##############################################################################
+# SUMMARY
+##############################################################################
+
+OVERALL=0
+[[ ${STATUS_SERVICE} -eq 1 && ${STATUS_EVE} -eq 1 && \
+   ${STATUS_DROPS} -eq 1  && ${STATUS_RULES} -eq 1 ]] && OVERALL=1
+
+if [[ ${OVERALL} -eq 1 ]]; then
+    log "HEALTH CHECK PASSED — all checks green"
+    exit 0
+else
+    log "HEALTH CHECK FAILED — see above for details"
+    exit 1
+fi

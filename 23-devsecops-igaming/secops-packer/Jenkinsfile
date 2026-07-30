@@ -1,0 +1,167 @@
+#!groovy
+
+node('platform') {
+    try {
+        def tomcatContainerImage =  "ContainerBuilds/TomcatContainerImage"
+        def phpContainerImage =  "ContainerBuilds/Php7ContainerImage"
+        def ubuntuContainerImage =  "ContainerBuilds/Ubuntu20ContainerImage"
+        def amazonEKS121EC2Image =  "MachineImageBuilds/AmazonEKSOptimised1.21MachineImage"
+        def ubuntuEC2Image =  "MachineImageBuilds/Ubuntu20MachineImage"
+        def amazonLinuxEC2Image =  "MachineImageBuilds/AmazonLinux2MachineImage"
+        def centos7EC2Image =  "MachineImageBuilds/CentOS7MachineImage"
+        def centos8EC2Image =  "MachineImageBuilds/CentOS8MachineImage"
+        def rhel7EC2Image =  "MachineImageBuilds/RHEL7MachineImage"
+        def rhel8EC2Image =  "MachineImageBuilds/RHEL8MachineImage"
+        def release = new Date().format( 'ddMMyyyy' )
+
+        withCredentials([aws(accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: 'secops_svc_user', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+            stage('checkout') {
+                deleteDir()
+                git credentialsId: 'github-app-credentials', url: 'https://github.com/acmetocasino/SecOps-packer.git'
+            }
+
+            stage('install-dependecies'){
+                try {
+                    sh(script: 'pip install -q --user awscli')
+                    sh(script: 'aws --version')
+                } catch (e) {
+                    sh(script: 'curl -s "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"')
+                    sh(script: 'unzip -q awscliv2.zip')
+                    sh(script: 'sudo ./aws/install')
+                    sh(script: 'aws sts get-caller-identity')
+                }
+                try {
+                    sh(script: 'packer --version')
+                } catch (e) {
+                    sh(script: 'sudo yum install -y yum-utils')
+                    sh(script: 'sudo yum-config-manager --add-repo https://rpm.releases.hashicorp.com/RHEL/hashicorp.repo')
+                    sh(script: 'sudo yum -y install packer')
+                    sh(script: 'packer --version')
+                }
+            }
+
+            // Container //
+            stage ('Container Images') {
+                echo "-------- Building Container Images --------"
+            }
+
+            stage('Tomcat9 Container Image'){
+                dir("${env.WORKSPACE}/${tomcatContainerImage}"){
+                    sh(script: "packer init .")
+                    sh(script: "packer build -var-file=\"build/baseimage.pkrvars.hcl\" -var \"release=" +release+ "\" .")
+                }
+            }
+
+            stage('PHP7.4 Container Image'){
+                dir("${env.WORKSPACE}/${phpContainerImage}"){
+                    sh(script: "packer init .")
+                    sh(script: "packer build -var-file=\"build/baseimage.pkrvars.hcl\" -var \"release=" +release+ "\" .")
+                }
+            }
+
+            stage('Ubuntu20.04 Container Image'){
+                dir("${env.WORKSPACE}/${ubuntuContainerImage}"){
+                    sh(script: "packer init .")
+                    sh(script: "packer build -var-file=\"build/baseimage.pkrvars.hcl\" -var \"release=" +release+ "\" .")
+                }
+            }
+
+            // EC2 //
+            stage ('EC2 Images') {
+                echo "-------- Building Ec2 Images --------"
+            }
+
+            stage('Ubuntu20.04 EC2 Image'){
+                dir("${env.WORKSPACE}/${ubuntuEC2Image}"){
+                    sh(script: "packer init .")
+                    withCredentials([string(credentialsId: 'dd_api_key', variable: 'dd_api_key')]) {
+                        sh(script: "packer build -var-file=\"build/baseimage.pkrvars.hcl\"  -var-file=\"../accounts.pkrvars.hcl\" -var \"release=" +release+ "\" -var \"dd_api_key=" +dd_api_key+ "\" .")
+                        sh(script: "echo '\n-- Ubuntu20.04 AMIs--' >>  "+env.WORKSPACE+ "/amis.log")
+                        sh(script: "awk '/(artifact_id)(\\\"\\:)/{print}' manifest.json | cut -d ':' -f 2- | sed 's/\\\"//g' | xargs | sed 's/,/\\n/g' | sed 's/:ami/: ami/g' >> "+env.WORKSPACE+ "/amis.log" )
+                    }
+                }
+            }
+
+            stage('AMZN LINUX EC2 Image'){
+                dir("${env.WORKSPACE}/${amazonLinuxEC2Image}"){
+                    sh(script: "packer init .")
+                    withCredentials([string(credentialsId: 'dd_api_key', variable: 'dd_api_key')]) {
+                        sh(script: "packer build -var-file=\"build/baseimage.pkrvars.hcl\"  -var-file=\"../accounts.pkrvars.hcl\" -var \"release=" +release+ "\" -var \"dd_api_key=" +dd_api_key+ "\" .")
+                        sh(script: "echo '\n-- Amazon LINUX 2 AMIs --' >>  "+env.WORKSPACE+ "/amis.log")
+                        sh(script: "awk '/(artifact_id)(\\\"\\:)/{print}' manifest.json | cut -d ':' -f 2- | sed 's/\\\"//g' | xargs | sed 's/,/\\n/g' | sed 's/:ami/: ami/g' >> "+env.WORKSPACE+ "/amis.log" )
+                    }
+                }
+            }
+
+            stage('EKS 1.21 Optmised EC2 Image'){
+                dir("${env.WORKSPACE}/${amazonEKS121EC2Image}"){
+                    sh(script: "packer init .")
+                    withCredentials([string(credentialsId: 'dd_api_key', variable: 'dd_api_key')]) {
+                        sh(script: "packer build -var-file=\"build/baseimage.pkrvars.hcl\"  -var-file=\"../accounts.pkrvars.hcl\" -var \"release=" +release+ "\" -var \"dd_api_key=" +dd_api_key+ "\" .")
+                        sh(script: "echo '\n-- Amazon EKS 1.21 Optmised AMIs --' >>  "+env.WORKSPACE+ "/amis.log")
+                        sh(script: "awk '/(artifact_id)(\\\"\\:)/{print}' manifest.json | cut -d ':' -f 2- | sed 's/\\\"//g' | xargs | sed 's/,/\\n/g' | sed 's/:ami/: ami/g' >> "+env.WORKSPACE+ "/amis.log" )
+                    }
+                }
+            }
+        }
+
+    } catch (e) {
+        currentBuild.result = "FAILED"
+        throw e
+    } finally {
+        def ami_list = readFile(file: "${env.WORKSPACE}/amis.log")
+        notifyBuild(currentBuild, ami_list)
+        cleanup()
+    }
+}
+
+def cleanup() {
+    sh(script: "unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY")
+    cleanWs()
+}
+
+def notifyBuild( build, ami_list) {
+    def release = new Date().format( 'dd/MM/yyyy' )
+    def buildStatus = build.result ?: "SUCCESS"
+    def buildStatusChanged = build.getPreviousBuild() == null || build.getPreviousBuild().result != buildStatus
+    def action = buildStatus == "SUCCESS" && build.getPreviousBuild() != null ? 'recovered' : "changed to $buildStatus"
+    def slackColours = [
+        SUCCESS: "#00FF00",
+        UNSTABLE: "#FFFF00",
+        FAILURE: "#FF0000",
+        ABORTED: "#A0A0A0"
+    ]
+
+    if (buildStatus == "SUCCESS") {
+        slackSend(
+            color: slackColours[buildStatus],
+            channel: "#infosec-notifications #sre-notifications",
+            message: """
+            AcmetoCasino Security Hardened AMIs Release - $release
+            $ami_list
+            """
+        )
+    }
+
+    if (buildStatus != "SUCCESS" || buildStatusChanged) {
+        slackSend(
+            color: slackColours[buildStatus],
+            channel: "#infosec-notifications",
+            message: "${env.JOB_NAME} build $action\n${env.BUILD_URL}"
+        )
+
+        emailext(
+            subject: "${env.JOB_NAME} build",
+            mimeType: 'text/html',
+            body: """
+                Build status is $buildStatus.
+                <p>Check console output at &QUOT;<a href='${env.BUILD_URL}'>${env.JOB_NAME} [${env.BUILD_NUMBER}]</a>&QUOT;</p>
+            """,
+            recipientProviders: [
+                [$class: 'CulpritsRecipientProvider'],
+                [$class: 'DevelopersRecipientProvider'],
+                [$class: 'RequesterRecipientProvider']
+            ]
+        )
+    }
+}

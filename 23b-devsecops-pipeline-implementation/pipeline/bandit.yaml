@@ -1,0 +1,58 @@
+# Companion code for "The Backend of Luck" - Chapter 23b, DevSecOps Pipeline Implementation.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# Bandit SAST configuration for egambling-book
+# Used by CI pipeline; pre-commit hook reads from pyproject.toml (see below).
+# Run manually: uv run bandit -c .bandit.yaml -r new-platform/app new-platform/scripts scripts
+
+# Directories to exclude from scanning
+exclude_dirs:
+  - writing
+  - support_material
+  - docs
+  - venv
+  - .venv
+  - node_modules
+  - __pycache__
+  - .git
+  - casino-games
+  - portrasdasorte
+  - tests
+  - test-platform
+
+# Target directories (used when running with -c .bandit.yaml and explicit targets)
+# Invoke as: uv run bandit -c .bandit.yaml -r new-platform/app new-platform/scripts scripts
+targets:
+  - new-platform/app
+  - new-platform/scripts
+  - scripts
+
+# Tests to skip — too noisy for this codebase
+skips:
+  # B101: assert_used — asserts are used extensively in tests and guards; acceptable
+  - B101
+  # B104: hardcoded_bind_all_interfaces — Docker/K8s services intentionally bind 0.0.0.0
+  - B104
+  # B311: random — standard random is acceptable for non-cryptographic game simulation
+  - B311
+  # B314/B318/B319: XML — lxml is used safely with explicit defusedxml in new-platform
+  # Uncomment if not using defusedxml:
+  # - B314
+  # - B318
+  # - B319
+
+# Minimum severity and confidence to report
+# low|medium|high
+level: medium
+confidence: medium
+
+# Output format for CI/DefectDojo integration
+# Options: csv, custom, html, json, sarif, screen, text, xml
+output_format: sarif

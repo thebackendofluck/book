@@ -1,0 +1,71 @@
+# Companion code for "The Backend of Luck" - Chapter 23b, DevSecOps Pipeline Implementation.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# ---------------------------------------------------------------------------
+# Kong Bot Detection Plugin
+#
+# Detects and blocks automated traffic based on User-Agent heuristics.
+# Apply to ingress routes with: konghq.com/plugins: bot-detection-casino
+#
+# Kong OSS ships with a basic bot-detection plugin that checks UA strings.
+# For richer fingerprinting (TLS JA3, TCP stack analysis) consider:
+#   - Kong Enterprise (bot-detection advanced)
+#   - Cloudflare Bot Management (already in place via CF Workers)
+#   - CrowdSec bouncer plugin for Kong
+# ---------------------------------------------------------------------------
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: bot-detection-casino
+  namespace: acmetocasino-prod
+  labels:
+    app.kubernetes.io/part-of: casino-security
+spec:
+  plugin: bot-detection
+  config:
+    # allow: whitelist of UA patterns that are permitted even if they look like bots
+    allow:
+      - "Prometheus"           # internal monitoring scraper
+      - "kube-probe"           # K8s liveness/readiness probes
+      - "Googlebot"            # allow indexing (adjust if SEO not needed)
+    # deny: additional patterns to block beyond Kong's built-in list
+    deny:
+      - "python-requests"      # raw script scanners
+      - "Go-http-client"       # raw Go scrapers
+      - "curl"                 # block raw curl by default (ops can whitelist by IP)
+      - "sqlmap"               # SQL injection scanner
+      - "nikto"                # web vulnerability scanner
+      - "nmap"                 # port scanner HTTP probe
+      - "masscan"              # mass scanner
+      - "zgrab"                # banner grabber
+      - "libwww-perl"          # old Perl bot/scanner
+      - "WPScan"               # WordPress scanner (irrelevant but common noise)
+      - "DirBuster"            # directory brute-forcer
+      - "Hydra"                # credential brute-forcer UA
+      - "Havij"                # SQL injection tool
+      - "acunetix"             # vulnerability scanner
+      - "nessus"               # vulnerability scanner
+
+---
+# Response Transformer — add challenge headers for bot traffic
+# (works in tandem with bot-detection; not a replacement for JS challenges)
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: bot-challenge-headers
+  namespace: acmetocasino-prod
+  labels:
+    app.kubernetes.io/part-of: casino-security
+spec:
+  plugin: response-transformer
+  config:
+    add:
+      headers:
+        - "X-Robots-Tag: noindex, nofollow, noarchive"

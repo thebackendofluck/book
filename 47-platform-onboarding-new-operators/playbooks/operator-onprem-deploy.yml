@@ -1,0 +1,95 @@
+# Companion code for "The Backend of Luck" - Chapter 47, Platform Onboarding.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# playbooks/operator-onprem-deploy.yml
+#
+# Chapter 47: Platform Onboarding — From Contract to First Real-Money Bet
+# Ansible Playbook: On-premises operator deployment.
+#
+# Handles everything from OS hardening to application deployment for
+# operators in jurisdictions that mandate physical servers (US states,
+# Italy, Romania). Uses CIS benchmark roles, PostgreSQL HA (Patroni),
+# Prometheus/Grafana monitoring stack.
+#
+# Usage:
+#   ansible-playbook playbooks/operator-onprem-deploy.yml \
+#     -i inventory/operator-acme.ini \
+#     -e "operator_slug=acme-casino release_version=2.5.1 jurisdiction=nj"
+#
+# Script reference: scripts/chapter-47/playbooks/operator-onprem-deploy.yml
+---
+- name: Harden base OS
+  hosts: operator_servers
+  become: true
+  roles:
+    - role: cis-benchmark
+      vars:
+        cis_level: 2
+        disable_usb: true
+        password_max_age: 90
+        ssh_permit_root: false
+        ssh_password_auth: false
+        firewall_allowed_ports:
+          - 22/tcp    # SSH (management network only)
+          - 443/tcp   # HTTPS
+          - 5432/tcp  # PostgreSQL (internal only)
+          - 6379/tcp  # Redis (internal only)
+          - 9090/tcp  # Prometheus (internal only)
+
+- name: Deploy platform application
+  hosts: app_servers
+  become: true
+  roles:
+    - role: platform-app
+      vars:
+        operator_slug: "{{ operator_slug }}"
+        app_version: "{{ release_version }}"
+        db_host: "{{ hostvars[groups['db_servers'][0]]['ansible_host'] }}"
+        redis_host: "{{ hostvars[groups['cache_servers'][0]]['ansible_host'] }}"
+        jurisdiction: "{{ jurisdiction }}"
+        worker_processes: "{{ ansible_processor_vcpus * 2 }}"
+        log_level: "info"
+        enable_audit_log: true
+
+- name: Deploy database with replication
+  hosts: db_servers
+  become: true
+  roles:
+    - role: postgresql-ha
+      vars:
+        pg_version: 16
+        pg_data_dir: /data/postgresql
+        pg_max_connections: 200
+        pg_shared_buffers: "{{ (ansible_memtotal_mb * 0.25) | int }}MB"
+        pg_effective_cache_size: "{{ (ansible_memtotal_mb * 0.75) | int }}MB"
+        pg_wal_level: replica
+        pg_max_wal_senders: 3
+        patroni_enabled: true
+        backup_schedule: "0 */4 * * *"  # Every 4 hours
+
+- name: Deploy monitoring stack
+  hosts: monitoring_servers
+  become: true
+  roles:
+    - role: prometheus
+      vars:
+        scrape_targets: "{{ groups['all'] }}"
+        retention_days: 90
+        alert_rules_dir: /etc/prometheus/rules.d/
+    - role: grafana
+      vars:
+        admin_password: "{{ vault_grafana_admin_password }}"
+        dashboards:
+          - platform-overview
+          - database-performance
+          - game-provider-latency
+          - payment-processing
+          - player-activity
+    - role: node-exporter

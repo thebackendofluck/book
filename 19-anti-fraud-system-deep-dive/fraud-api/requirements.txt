@@ -1,0 +1,48 @@
+# AcmeToCasino Fraud Detection API — Python dependencies
+#
+# Pin major versions to match production environment.
+# Run: pip install -r requirements.txt
+#
+# Python >= 3.11 required (uses match statements and asyncio.TaskGroup)
+
+# Web framework
+fastapi==0.136.3
+uvicorn[standard]==0.48.0
+uvloop==0.22.1
+
+# Pydantic v2 — data validation for all API models
+pydantic==2.13.4
+pydantic-settings==2.14.2
+
+# Elasticsearch 8.x async client
+elasticsearch[async]==9.4.1
+
+# Kafka async client
+aiokafka==0.14.0
+
+# Redis async client
+redis[hiredis]==7.4.0
+
+# Structured logging
+structlog==25.5.0
+
+# HTTP client (for health checks, KYC/AML webhook callbacks)
+httpx==0.28.1
+
+# OpenTelemetry tracing (matches the existing chapter-19 instrumentation pattern)
+opentelemetry-api==1.42.1
+opentelemetry-sdk==1.42.1
+opentelemetry-instrumentation-fastapi==0.63b1
+opentelemetry-exporter-otlp==1.42.1
+
+# Prometheus metrics
+prometheus-client==0.25.0
+
+# Date/time utilities
+python-dateutil==2.9.0.post0
+
+# Testing
+pytest==9.0.3
+pytest-asyncio==1.4.0
+pytest-cov==7.1.0
+httpx==0.28.1        # async test client for FastAPI

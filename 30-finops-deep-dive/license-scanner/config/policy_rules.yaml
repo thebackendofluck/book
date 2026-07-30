@@ -1,0 +1,172 @@
+# Companion code for "The Backend of Luck" - Chapter 30, FinOps Deep Dive.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# License Policy Rules for iGaming Operations
+# =============================================
+#
+# This file defines the license compliance policy for iGaming platforms.
+# Customize these rules based on your organization's requirements.
+
+name: iGaming License Policy
+description: Standard license policy for iGaming platform development
+version: "1.0.0"
+
+# Policy settings
+settings:
+  # Maximum allowed risk level (low, medium, high, critical)
+  max_risk_level: medium
+
+  # Require OSI-approved licenses only
+  require_osi_approved: true
+
+  # Allow copyleft licenses (weak copyleft like LGPL may be acceptable)
+  allow_copyleft: false
+
+  # Allow network copyleft (AGPL-style) - critical for SaaS
+  allow_network_copyleft: false
+
+  # Allow unknown licenses (requires manual review)
+  allow_unknown: false
+
+  # Fail pipeline on any violation
+  fail_on_violation: true
+
+  # Minimum compliance score (0-100)
+  min_compliance_score: 95
+
+# License classifications
+classifications:
+  # Permissive licenses - LOW risk
+  permissive:
+    risk_level: low
+    licenses:
+      - MIT
+      - Apache-2.0
+      - BSD-2-Clause
+      - BSD-3-Clause
+      - ISC
+      - CC0-1.0
+      - Unlicense
+      - 0BSD
+      - Zlib
+      - WTFPL
+      - Python-2.0
+
+  # Weak copyleft - MEDIUM risk (requires review)
+  weak_copyleft:
+    risk_level: medium
+    requires_review: true
+    licenses:
+      - LGPL-2.1-only
+      - LGPL-3.0-only
+      - MPL-2.0
+      - EPL-1.0
+      - EPL-2.0
+      - CDDL-1.0
+      - CDDL-1.1
+    conditions:
+      - Dynamic linking only
+      - Library modifications must be shared
+      - Legal review recommended
+
+  # Strong copyleft - HIGH risk
+  strong_copyleft:
+    risk_level: high
+    requires_approval: true
+    licenses:
+      - GPL-2.0-only
+      - GPL-3.0-only
+      - GPL-2.0-or-later
+      - GPL-3.0-or-later
+    conditions:
+      - Derivative works must be GPL
+      - Not suitable for proprietary software
+      - Requires legal approval
+
+  # Network copyleft - CRITICAL risk for SaaS
+  network_copyleft:
+    risk_level: critical
+    blocked: true
+    licenses:
+      - AGPL-3.0-only
+      - AGPL-3.0-or-later
+    reason: |
+      Network copyleft licenses require source disclosure for
+      software accessed over a network. This is incompatible
+      with proprietary SaaS/iGaming platforms.
+
+  # Source-available - CRITICAL risk
+  source_available:
+    risk_level: critical
+    blocked: true
+    licenses:
+      - SSPL-1.0
+      - BSL-1.1
+      - Elastic-2.0
+      - Commons-Clause
+    reason: |
+      Source-available licenses are NOT open source and may
+      restrict commercial use, managed services, or require
+      paid licensing for production use.
+
+# Package-specific overrides
+overrides:
+  # Example: Allow specific GPL package with justification
+  # - package: "linux-headers"
+  #   license: "GPL-2.0-only"
+  #   action: allow
+  #   justification: "Build dependency only, not distributed"
+  #   approved_by: "legal@company.com"
+  #   expires: "2026-01-01"
+
+  # Example: Block specific package
+  # - package: "problematic-package"
+  #   action: block
+  #   reason: "Known license compliance issues"
+
+# Reporting configuration
+reporting:
+  # Generate reports for these formats
+  formats:
+    - html
+    - json
+    - sarif
+
+  # Include in report
+  include:
+    - violations
+    - warnings
+    - license_summary
+    - dependency_tree
+    - sbom
+
+  # Notification settings
+  notifications:
+    on_violation: true
+    on_warning: false
+    channels:
+      - slack
+      - email
+
+# CI/CD integration
+ci_cd:
+  # Block merge on violations
+  block_merge: true
+
+  # Required checks
+  required_checks:
+    - license-scan
+    - sbom-generation
+
+  # Artifact retention
+  artifact_retention_days: 90
+
+  # Upload SBOM to dependency graph
+  upload_sbom: true

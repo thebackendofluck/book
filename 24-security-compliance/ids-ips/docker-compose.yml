@@ -1,0 +1,228 @@
+# Companion code for "The Backend of Luck" - Chapter 24, Security and Compliance.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# =============================================================================
+# Suricata IDS Deployment for Online Gambling Platform
+# =============================================================================
+# Deploys Suricata with gambling-specific rulesets, Elasticsearch for log
+# storage, and Kibana for visualization. Network mode is set to host for
+# full traffic visibility.
+#
+# Usage:
+#   docker compose up -d
+#   docker compose logs -f suricata
+#
+# Architecture:
+#   Suricata -> Filebeat -> Elasticsearch -> Kibana
+#   Custom gambling rules loaded from ./rules/
+# =============================================================================
+
+version: "3.8"
+
+services:
+  # ---------------------------------------------------------------------------
+  # Suricata IDS Engine
+  # ---------------------------------------------------------------------------
+  suricata:
+    image: jasonish/suricata:7.0
+    container_name: suricata-ids
+    restart: unless-stopped
+    # Host network mode required for full traffic visibility
+    # In production, use network TAP or SPAN port mirroring
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+      - SYS_NICE
+    volumes:
+      # Custom gambling rules
+      - ./suricata-gambling-rules.rules:/etc/suricata/rules/gambling.rules:ro
+      # Suricata configuration
+      - ./suricata.yaml:/etc/suricata/suricata.yaml:ro
+      # Log output directory
+      - suricata-logs:/var/log/suricata
+      # Rule updates (ET Open + custom)
+      - suricata-rules:/var/lib/suricata/rules
+    environment:
+      # Interface to monitor (change to match your environment)
+      - SURICATA_OPTIONS=-i eth0 --set vars.address-groups.HOME_NET=[10.0.0.0/8,172.16.0.0/12,192.168.0.0/16]
+    command: >
+      suricata -c /etc/suricata/suricata.yaml
+      -i eth0
+      --set default-rule-path=/etc/suricata/rules
+      --set classification-file=/etc/suricata/classification.config
+    healthcheck:
+      test: ["CMD", "suricatasc", "-c", "uptime"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 4G
+        reservations:
+          cpus: "2.0"
+          memory: 2G
+
+  # ---------------------------------------------------------------------------
+  # Suricata Rule Updater
+  # ---------------------------------------------------------------------------
+  rule-updater:
+    image: jasonish/suricata:7.0
+    container_name: suricata-rule-updater
+    restart: "no"
+    volumes:
+      - suricata-rules:/var/lib/suricata/rules
+    entrypoint: >
+      sh -c "suricata-update update
+      --suricata-conf /etc/suricata/suricata.yaml
+      && suricata-update enable-source et/open
+      && echo 'Rules updated successfully'"
+    profiles:
+      - update  # Run manually: docker compose --profile update run rule-updater
+
+  # ---------------------------------------------------------------------------
+  # Elasticsearch (Alert Storage)
+  # ---------------------------------------------------------------------------
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: elasticsearch
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=true
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:?ELASTIC_PASSWORD must be set}
+      - "ES_JAVA_OPTS=-Xms2g -Xmx2g"
+      # Audit logging index lifecycle
+      - xpack.security.audit.enabled=true
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+    ports:
+      - "127.0.0.1:9200:9200"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -u elastic:${ELASTIC_PASSWORD:?ELASTIC_PASSWORD must be set} http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\\|yellow\"'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+          cpus: "2.0"
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - ids-network
+
+  # ---------------------------------------------------------------------------
+  # Filebeat (Log Shipper: Suricata -> Elasticsearch)
+  # ---------------------------------------------------------------------------
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.11.0
+    container_name: filebeat
+    restart: unless-stopped
+    user: root
+    volumes:
+      - suricata-logs:/var/log/suricata:ro
+      - ./filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+    environment:
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:?ELASTIC_PASSWORD must be set}
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    command: filebeat -e -strict.perms=false
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+    networks:
+      - ids-network
+
+  # ---------------------------------------------------------------------------
+  # Kibana (Visualization & Alerting)
+  # ---------------------------------------------------------------------------
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.11.0
+    container_name: kibana
+    restart: unless-stopped
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - ELASTICSEARCH_USERNAME=elastic
+      - ELASTICSEARCH_PASSWORD=${ELASTIC_PASSWORD:?ELASTIC_PASSWORD must be set}
+      - SERVER_NAME=gambling-ids-dashboard
+    ports:
+      # Bind to localhost only - access via reverse proxy in production
+      - "127.0.0.1:5601:5601"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:5601/api/status | grep -q 'available'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - ids-network
+
+  # ---------------------------------------------------------------------------
+  # Alert Manager (Custom Gambling Alert Routing)
+  # ---------------------------------------------------------------------------
+  alert-manager:
+    image: python:3.11-slim
+    container_name: gambling-alert-manager
+    restart: unless-stopped
+    volumes:
+      - ./alert-manager.py:/app/alert-manager.py:ro
+      - suricata-logs:/var/log/suricata:ro
+    environment:
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
+      - PAGERDUTY_KEY=${PAGERDUTY_KEY:-}
+      - ELASTIC_HOST=http://elasticsearch:9200
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:?ELASTIC_PASSWORD must be set}
+      # Alert routing based on gambling rule categories
+      - BONUS_ABUSE_CHANNEL=${BONUS_ABUSE_CHANNEL:-#fraud-alerts}
+      - AML_CHANNEL=${AML_CHANNEL:-#aml-compliance}
+      - SECURITY_CHANNEL=${SECURITY_CHANNEL:-#security-ops}
+    command: python3 /app/alert-manager.py
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+    networks:
+      - ids-network
+
+volumes:
+  suricata-logs:
+    driver: local
+  suricata-rules:
+    driver: local
+  es-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /data/elasticsearch  # Use fast SSD storage
+
+networks:
+  ids-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/24

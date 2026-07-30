@@ -1,0 +1,48 @@
+# PgCat config for postgres-aegis.
+# Hash shards on `player_id` across {{ pgcat_shards | length }} shards.
+# Every backend conn authenticates with SCRAM-SHA-256 over TLS.
+
+[general]
+host              = "0.0.0.0"
+port              = {{ pgcat_port }}
+admin_host        = "127.0.0.1"
+admin_port        = {{ pgcat_admin_port }}
+admin_username    = "pgcat_admin"
+admin_password    = "{{ '{{' }}PGCAT_ADMIN_PW{{ '}}' }}"
+worker_threads    = 4
+tls_enabled       = true
+tls_certificate   = "/etc/pgcat/server.crt"
+tls_private_key   = "/etc/pgcat/server.key"
+prepared_statements          = true
+prepared_statements_cache_size = 500
+connect_timeout              = 5000
+idle_timeout                 = 30000
+server_lifetime              = 3600000
+server_round_robin           = true
+
+[pools.{{ pg_database }}]
+pool_mode = "transaction"
+sharding_function = "pg_bigint_hash"
+default_role      = "any"
+query_parser_enabled = true
+primary_reads_enabled = false
+automatic_sharding_key = "{{ pgcat_shard_key_column }}"
+
+{% set shard_index = 0 %}
+{% for shard_name, shard in pgcat_shards.items() %}
+[pools.{{ pg_database }}.users.0]
+username = "{{ pg_superuser }}"
+password = "{{ '{{' }}POSTGRES_SUPERUSER_PASSWORD{{ '}}' }}"
+pool_size = 50
+statement_timeout = 0
+
+[pools.{{ pg_database }}.shards.{{ shard_index }}]
+database = "{{ shard.database }}"
+servers = [
+  ["{{ shard.primary_host }}", {{ pg_port }}, "primary"],
+{% for r in shard.replicas %}
+  ["{{ r }}", {{ pg_port }}, "replica"],
+{% endfor %}
+]
+{% set shard_index = shard_index + 1 %}
+{% endfor %}

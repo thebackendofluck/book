@@ -1,0 +1,39 @@
+# Semgrep ignore — documentation, generated content, and third-party assets
+# Production code paths (new-platform/, dev-platform/, scripts/) are always scanned.
+
+# Book content and documentation — not executable code
+writing/
+support_material/
+docs/
+*.md
+
+# Third-party / vendored frontend games — not our code to fix
+casino-games/
+portrasdasorte/
+thebackendofluck/
+
+# Dependency and build artifacts
+node_modules/
+__pycache__/
+.git/
+venv/
+.venv/
+*.pyc
+*.pyo
+
+# Static assets
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+*.ico
+*.woff
+*.woff2
+*.ttf
+*.eot
+
+# Temporary and generated files
+tmp/
+*.min.js
+*.min.css

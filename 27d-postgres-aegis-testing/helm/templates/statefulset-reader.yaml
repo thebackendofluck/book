@@ -1,0 +1,133 @@
+# Companion code for "The Backend of Luck" - Chapter 27d, PostgreSQL Aegis.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "postgres-aegis.readerName" . }}
+  labels:
+    {{- include "postgres-aegis.labels" . | nindent 4 }}
+    postgres-aegis.io/role: reader
+spec:
+  serviceName: {{ include "postgres-aegis.readerName" . }}-headless
+  replicas: {{ .Values.readers.replicaCount }}
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      {{- include "postgres-aegis.selectorLabels" . | nindent 6 }}
+      postgres-aegis.io/role: reader
+  template:
+    metadata:
+      labels:
+        {{- include "postgres-aegis.selectorLabels" . | nindent 8 }}
+        postgres-aegis.io/role: reader
+    spec:
+      serviceAccountName: {{ include "postgres-aegis.fullname" . }}
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        fsGroup: 999
+        runAsUser: 999
+        runAsGroup: 999
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    {{- include "postgres-aegis.selectorLabels" . | nindent 20 }}
+                    postgres-aegis.io/role: reader
+                topologyKey: kubernetes.io/hostname
+      containers:
+        - name: patroni
+          image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: postgres
+              containerPort: 5432
+            - name: patroni-api
+              containerPort: 8008
+          envFrom:
+            - secretRef:
+                name: {{ include "postgres-aegis.fullname" . }}-aegis-dek
+          env:
+            - name: PATRONI_SCOPE
+              value: {{ .Values.patroni.scope | quote }}
+            - name: PATRONI_KUBERNETES_LABELS
+              value: '{app.kubernetes.io/name: {{ include "postgres-aegis.name" . }}, app.kubernetes.io/instance: {{ .Release.Name }}}'
+            - name: PATRONI_KUBERNETES_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: PATRONI_KUBERNETES_POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: PATRONI_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: PATRONI_POSTGRESQL_DATA_DIR
+              value: /var/lib/postgresql/data/pgdata
+            - name: PATRONI_POSTGRESQL_LISTEN
+              value: 0.0.0.0:5432
+            - name: PATRONI_RESTAPI_LISTEN
+              value: 0.0.0.0:8008
+            - name: PGSSLMODE
+              value: verify-full
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          resources:
+            {{- toYaml .Values.readers.resources | nindent 12 }}
+          volumeMounts:
+            - name: pgdata
+              mountPath: /var/lib/postgresql/data
+            - name: tls
+              mountPath: /etc/postgresql/tls
+              readOnly: true
+            - name: patroni-config
+              mountPath: /etc/patroni
+            - name: run
+              mountPath: /var/run/postgresql
+            - name: tmp
+              mountPath: /tmp
+          readinessProbe:
+            httpGet:
+              path: /replica
+              port: patroni-api
+            initialDelaySeconds: 15
+            periodSeconds: 5
+      volumes:
+        - name: tls
+          secret:
+            secretName: {{ include "postgres-aegis.fullname" . }}-tls
+            optional: false
+        - name: patroni-config
+          configMap:
+            name: {{ include "postgres-aegis.fullname" . }}-patroni
+        - name: run
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+  volumeClaimTemplates:
+    - metadata:
+        name: pgdata
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: {{ .Values.readers.persistence.storageClass | quote }}
+        resources:
+          requests:
+            storage: {{ .Values.readers.persistence.size | quote }}

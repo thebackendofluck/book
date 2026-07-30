@@ -1,0 +1,52 @@
+# Companion code for "The Backend of Luck" - Chapter 33e, Docker Disk Lifecycle, Truncation, and the Anatomy of a Disk.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+groups:
+  - name: filesystem-pressure
+    interval: 30s
+    rules:
+      - alert: FilesystemHighWarning
+        expr: |
+          (node_filesystem_size_bytes{mountpoint=~"/|/data-pool|/hdd-pool"}
+            - node_filesystem_avail_bytes{mountpoint=~"/|/data-pool|/hdd-pool"})
+          / node_filesystem_size_bytes{mountpoint=~"/|/data-pool|/hdd-pool"}
+          > 0.80
+        for: 10m
+        labels: { severity: warning, team: ops }
+        annotations:
+          summary: "{{ $labels.mountpoint }} on {{ $labels.instance }} is {{ $value | humanizePercentage }} full"
+
+      - alert: FilesystemHighCritical
+        expr: |
+          (node_filesystem_size_bytes{mountpoint=~"/|/data-pool|/hdd-pool"}
+            - node_filesystem_avail_bytes{mountpoint=~"/|/data-pool|/hdd-pool"})
+          / node_filesystem_size_bytes{mountpoint=~"/|/data-pool|/hdd-pool"}
+          > 0.90
+        for: 5m
+        labels: { severity: critical, team: ops, page: "true" }
+        annotations:
+          summary: "{{ $labels.mountpoint }} {{ $value | humanizePercentage }} full — page on-call"
+
+      - alert: FilesystemPredictedFullIn4Hours
+        expr: |
+          predict_linear(
+            node_filesystem_avail_bytes{mountpoint=~"/|/data-pool"}[1h], 4*3600
+          ) < 0
+        for: 15m
+        labels: { severity: warning, team: ops }
+        annotations:
+          summary: "{{ $labels.mountpoint }} predicted to fill in <4h at current rate"
+
+      - alert: ContainerLogOversize
+        expr: max by (container) (container_fs_usage_bytes{name=~".+"}) > 5e9
+        for: 10m
+        labels: { severity: warning, team: ops }
+        annotations:
+          summary: "Container {{ $labels.container }} stdout log >5 GB — log rotation may be missing"

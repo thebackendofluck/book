@@ -1,0 +1,48 @@
+<!-- Wazuh FIM (syscheck) configuration snippet for iGaming hosts -->
+<!-- Merge into /var/ossec/etc/ossec.conf <syscheck> block -->
+<!-- Paths: /etc, /opt/new-platform, /var/www, /root/.ssh          -->
+<!-- Apply to: casino (203.0.113.1) and ops-host (10.0.0.11)    -->
+
+<syscheck>
+  <disabled>no</disabled>
+  <frequency>43200</frequency>
+  <scan_on_start>yes</scan_on_start>
+  <alert_new_files>yes</alert_new_files>
+  <auto_ignore frequency="10" timeframe="3600">no</auto_ignore>
+
+  <!-- Critical system configuration -->
+  <directories check_all="yes" report_changes="yes" realtime="yes">/etc</directories>
+
+  <!-- Casino platform application files -->
+  <directories check_all="yes" report_changes="yes" realtime="yes">/opt/new-platform</directories>
+
+  <!-- Web root - detect webshell drops -->
+  <directories check_all="yes" report_changes="yes" realtime="yes">/var/www</directories>
+
+  <!-- SSH authorized keys - detect persistence -->
+  <directories check_all="yes" report_changes="yes" realtime="yes">/root/.ssh</directories>
+  <directories check_all="yes" report_changes="yes" realtime="yes">/home/*/.ssh</directories>
+
+  <!-- Postgres data dir - detect unauthorized modifications -->
+  <directories check_all="yes" report_changes="no">/var/lib/postgresql</directories>
+
+  <!-- Cron files - detect persistence -->
+  <directories check_all="yes" report_changes="yes" realtime="yes">/var/spool/cron/crontabs</directories>
+  <directories check_all="yes" report_changes="yes" realtime="yes">/etc/cron.d</directories>
+  <directories check_all="yes" report_changes="yes" realtime="yes">/etc/cron.daily</directories>
+
+  <!-- Ignore volatile paths to reduce noise -->
+  <ignore>/etc/mtab</ignore>
+  <ignore>/etc/hosts.deny</ignore>
+  <ignore>/etc/mail/statistics</ignore>
+  <ignore>/etc/random-seed</ignore>
+  <ignore>/etc/adjtime</ignore>
+  <ignore>/etc/resolv.conf</ignore>
+  <ignore type="sregex">/opt/new-platform/.*\.log$</ignore>
+  <ignore type="sregex">/opt/new-platform/.*\.tmp$</ignore>
+  <ignore>/var/www/new.acmetocasino.com/trivy-results.json</ignore>
+
+  <!-- Large dir - check only, no diff (reduces noise) -->
+  <nodiff>/etc/ssl/private</nodiff>
+
+</syscheck>

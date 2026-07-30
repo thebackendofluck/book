@@ -1,0 +1,43 @@
+# Companion code for "The Backend of Luck" - Chapter 23, DevSecOps for iGaming.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+- name: Create missing /run/sshd if not exists
+  file:
+    path: /run/sshd
+    owner: root
+    group: root
+    state: directory
+
+- name: Change cipher suite
+  lineinfile:
+    dest: /etc/ssh/sshd_config
+    regexp: "^(?!#)Ciphers.*"
+    line: "Ciphers aes128-ctr,aes192-ctr,aes256-ctr,aes128-cbc,3des-cbc,aes192-cbc,aes256-cbc"
+
+- name: Ensure line exists
+  lineinfile:
+    dest: /etc/ssh/sshd_config
+    line: "Ciphers aes128-ctr,aes192-ctr,aes256-ctr,aes128-cbc,3des-cbc,aes192-cbc,aes256-cbc"
+    state: present
+
+- name: Ensure config is correct
+  command: sshd -t
+  register: sshd_config_result
+
+- name: Revert if config not valid
+  lineinfile:
+    dest: /etc/ssh/sshd_config
+    line: "Ciphers aes128-ctr,aes192-ctr,aes256-ctr,aes128-cbc,3des-cbc,aes192-cbc,aes256-cbc"
+    state: absent
+  when: sshd_config_result.rc != 0
+
+- name: restart_sshd
+  service: name=sshd state=restarted
+  when: sshd_config_result.rc == 0

@@ -1,0 +1,439 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 24, Security and Compliance.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# roles/suricata/tasks/tuning.yml
+# Comprehensive performance tuning for Suricata on bare-metal and VM hosts.
+#
+# Tuning categories:
+#   1. NIC ring buffers, offloads, interrupt coalescing
+#   2. Kernel sysctl (socket buffers, backlog, hugepages)
+#   3. NUMA topology detection and CPU affinity assignment
+#   4. CPU frequency governor and C-state management
+#   5. Hugepages (optional; enable for high-throughput DPDK deployments)
+#   6. Disk I/O scheduler for EVE JSON partition
+#   7. AF_PACKET ring sizing based on interface speed
+#   8. Systemd resource limits
+#   9. Persistent sysctl and udev rules
+
+# =============================================================================
+# 1. NIC TUNING
+# =============================================================================
+
+- name: "Gather NIC statistics (pre-tuning baseline)"
+  ansible.builtin.command: "ethtool -S {{ monitored_interface }}"
+  register: nic_stats_before
+  changed_when: false
+  failed_when: false
+  tags: [tuning, nic]
+
+- name: "Increase NIC ring buffer (rx/tx)"
+  ansible.builtin.command: >
+    ethtool -G {{ monitored_interface }}
+    rx {{ nic_ring_rx }}
+    tx {{ nic_ring_tx }}
+  register: nic_ring_result
+  changed_when: nic_ring_result.rc == 0
+  failed_when: false   # some virtual NICs do not support ring tuning
+  tags: [tuning, nic]
+
+- name: "Enable Receive Side Scaling (RSS) / rxhash"
+  ansible.builtin.command: "ethtool -K {{ monitored_interface }} rxhash on"
+  register: nic_rss_result
+  changed_when: nic_rss_result.rc == 0
+  failed_when: false
+  tags: [tuning, nic]
+
+- name: "Disable flow control (avoids head-of-line blocking under load)"
+  ansible.builtin.command: >
+    ethtool -A {{ monitored_interface }} rx off tx off
+  register: nic_flowctl_result
+  changed_when: nic_flowctl_result.rc == 0
+  failed_when: false
+  tags: [tuning, nic]
+
+- name: "Disable GRO and LRO (offloads that reassemble frames before IDS sees them)"
+  ansible.builtin.command: >
+    ethtool -K {{ monitored_interface }} gro off lro off
+  register: nic_gro_result
+  changed_when: nic_gro_result.rc == 0
+  failed_when: false
+  tags: [tuning, nic]
+
+- name: "Keep beneficial offloads enabled (rx/tx checksums, scatter-gather, TSO)"
+  ansible.builtin.command: >
+    ethtool -K {{ monitored_interface }} rx on tx on sg on tso on
+  register: nic_offload_result
+  changed_when: nic_offload_result.rc == 0
+  failed_when: false
+  tags: [tuning, nic]
+
+- name: "Set interrupt coalescing (50 µs rx-usecs reduces IRQ storm)"
+  ansible.builtin.command: >
+    ethtool -C {{ monitored_interface }} rx-usecs {{ nic_coalescing_rx_usecs }}
+  register: nic_coalesce_result
+  changed_when: nic_coalesce_result.rc == 0
+  failed_when: false
+  tags: [tuning, nic]
+
+# ── Persist NIC settings via udev rules ──────────────────────────────────────
+
+- name: "Write udev rule to apply NIC tuning at boot"
+  ansible.builtin.template:
+    src: suricata-nic-tuning.rules.j2
+    dest: "/etc/udev/rules.d/99-suricata-nic-{{ monitored_interface }}.rules"
+    owner: root
+    group: root
+    mode: "0644"
+  tags: [tuning, nic, persistent]
+
+# ── NIC IRQ pinning ──────────────────────────────────────────────────────────
+
+- name: "Stop irqbalance (manual IRQ affinity provides better control)"
+  ansible.builtin.systemd:
+    name: irqbalance
+    state: stopped
+    enabled: false
+  failed_when: false
+  tags: [tuning, nic, irq]
+
+- name: "Find NIC IRQ numbers"
+  ansible.builtin.shell: |
+    grep -E "{{ monitored_interface }}" /proc/interrupts | awk '{print $1}' | tr -d ':'
+  register: nic_irq_numbers
+  changed_when: false
+  tags: [tuning, nic, irq]
+
+- name: "Pin NIC IRQs to NUMA-local CPUs via /proc/irq/*/smp_affinity_list"
+  ansible.builtin.shell: |
+    for irq in {{ nic_irq_numbers.stdout_lines | join(' ') }}; do
+      if [ -f /proc/irq/${irq}/smp_affinity_list ]; then
+        echo "{{ worker_cpu_set }}" > /proc/irq/${irq}/smp_affinity_list
+      fi
+    done
+  when: nic_irq_numbers.stdout_lines | length > 0
+  changed_when: true
+  tags: [tuning, nic, irq]
+
+# =============================================================================
+# 2. KERNEL SYSCTL TUNING
+# =============================================================================
+
+- name: "Write Suricata kernel tuning sysctl file"
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/99-suricata.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # ==========================================================
+      # Suricata performance tuning — managed by Ansible
+      # ==========================================================
+
+      # Socket receive buffer — must be >= afpacket_buffer_size
+      net.core.rmem_max = 67108864
+      net.core.rmem_default = 33554432
+      net.core.wmem_max = 67108864
+
+      # Network device backlog — packets queued before kernel drops
+      net.core.netdev_max_backlog = 250000
+
+      # Ancillary socket buffer
+      net.core.optmem_max = 67108864
+
+      # TCP socket buffers (for monitored workloads)
+      net.ipv4.tcp_rmem = 4096 87380 33554432
+      net.ipv4.tcp_wmem = 4096 65536 33554432
+      net.ipv4.tcp_max_syn_backlog = 65536
+      net.ipv4.tcp_tw_reuse = 1
+      net.core.somaxconn = 65535
+
+      # Increase netfilter conntrack table (needed if running IPS via NFQ)
+      net.netfilter.nf_conntrack_max = 1000000
+      net.netfilter.nf_conntrack_buckets = 250000
+
+      # Disable IPv6 on capture interface to reduce protocol overhead
+      net.ipv6.conf.{{ monitored_interface }}.disable_ipv6 = 1
+
+      # Hugepages (optional; set hugepages_count in group_vars)
+      vm.nr_hugepages = {{ hugepages_count if hugepages_enabled else 0 }}
+  notify:
+    - apply sysctl settings
+  tags: [tuning, sysctl, persistent]
+
+- name: "Apply sysctl settings immediately"
+  ansible.builtin.command: sysctl --system
+  changed_when: true
+  tags: [tuning, sysctl]
+
+# =============================================================================
+# 3. NUMA TOPOLOGY DETECTION
+# =============================================================================
+
+- name: "Detect NUMA node for capture interface"
+  ansible.builtin.slurp:
+    src: "/sys/class/net/{{ monitored_interface }}/device/numa_node"
+  register: nic_numa_raw
+  failed_when: false   # VMs / virtio NICs may not expose this file
+  tags: [tuning, numa]
+
+- name: "Set detected NUMA node fact"
+  ansible.builtin.set_fact:
+    detected_numa_node: >-
+      {{ (nic_numa_raw.content | b64decode | trim) if nic_numa_raw.content is defined else numa_node | string }}
+  tags: [tuning, numa]
+
+- name: "Get CPUs local to detected NUMA node"
+  ansible.builtin.command: "numactl --hardware"
+  register: numactl_output
+  changed_when: false
+  failed_when: false
+  tags: [tuning, numa]
+
+- name: "Display NUMA topology"
+  ansible.builtin.debug:
+    msg: >
+      NIC {{ monitored_interface }} is on NUMA node {{ detected_numa_node }}.
+      numactl output: {{ numactl_output.stdout }}
+  tags: [tuning, numa]
+
+# =============================================================================
+# 4. CPU FREQUENCY GOVERNOR
+# =============================================================================
+
+- name: "Set CPU frequency governor to performance (all cores)"
+  ansible.builtin.command: "cpupower frequency-set -g {{ cpu_governor }}"
+  register: cpupower_result
+  changed_when: cpupower_result.rc == 0
+  failed_when: false   # cpupower may not be available on all VMs
+  tags: [tuning, cpu]
+
+- name: "Persist CPU governor via cpufrequtils (Debian)"
+  ansible.builtin.lineinfile:
+    path: /etc/default/cpufrequtils
+    regexp: '^GOVERNOR='
+    line: 'GOVERNOR="{{ cpu_governor }}"'
+    create: true
+    mode: "0644"
+  when: ansible_os_family == "Debian"
+  tags: [tuning, cpu, persistent]
+
+- name: "Persist CPU governor via tuned (RHEL)"
+  ansible.builtin.copy:
+    dest: /etc/tuned/suricata-performance/tuned.conf
+    content: |
+      [main]
+      summary=Suricata IDS/IPS performance profile
+      include=network-latency
+
+      [cpu]
+      governor={{ cpu_governor }}
+      energy_perf_bias=performance
+
+      [vm]
+      transparent_hugepages=never
+    mode: "0644"
+  when: ansible_os_family == "RedHat"
+  tags: [tuning, cpu, persistent]
+
+- name: "Disable C-states for consistent packet processing latency"
+  ansible.builtin.shell: |
+    for cpu_dir in /sys/devices/system/cpu/cpu*/cpuidle; do
+      if [ -d "$cpu_dir" ]; then
+        for state_dir in "$cpu_dir"/state[1-9]; do
+          if [ -f "$state_dir/disable" ]; then
+            echo 1 > "$state_dir/disable"
+          fi
+        done
+      fi
+    done
+  when: disable_cstates | bool
+  changed_when: true
+  tags: [tuning, cpu]
+
+# =============================================================================
+# 5. HUGEPAGES
+# =============================================================================
+
+- name: "Disable Transparent Hugepages (THP) — reduces latency jitter"
+  ansible.builtin.shell: |
+    echo never > /sys/kernel/mm/transparent_hugepage/enabled
+    echo never > /sys/kernel/mm/transparent_hugepage/defrag
+  changed_when: true
+  tags: [tuning, hugepages]
+
+- name: "Persist THP disable via rc.local or systemd tmpfiles"
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/disable-thp.service
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Disable Transparent Hugepages
+      DefaultDependencies=no
+      After=sysinit.target local-fs.target
+      Before=basic.target
+
+      [Service]
+      Type=oneshot
+      ExecStart=/bin/sh -c "echo never > /sys/kernel/mm/transparent_hugepage/enabled"
+      ExecStart=/bin/sh -c "echo never > /sys/kernel/mm/transparent_hugepage/defrag"
+      RemainAfterExit=yes
+
+      [Install]
+      WantedBy=basic.target
+  tags: [tuning, hugepages, persistent]
+
+- name: "Enable THP disable service"
+  ansible.builtin.systemd:
+    name: disable-thp
+    enabled: true
+    state: started
+    daemon_reload: true
+  tags: [tuning, hugepages, persistent]
+
+- name: "Allocate static hugepages (when hugepages_enabled)"
+  ansible.builtin.sysctl:
+    name: vm.nr_hugepages
+    value: "{{ hugepages_count }}"
+    state: present
+    sysctl_file: /etc/sysctl.d/99-suricata.conf
+  when: hugepages_enabled | bool
+  tags: [tuning, hugepages]
+
+# =============================================================================
+# 6. DISK I/O TUNING (for EVE JSON log volume)
+# =============================================================================
+
+- name: "Detect block device backing the Suricata log directory"
+  ansible.builtin.command: "findmnt -n -o SOURCE --target {{ suricata_log_dir }}"
+  register: log_mount_source
+  changed_when: false
+  failed_when: false
+  tags: [tuning, disk]
+
+- name: "Set I/O scheduler to none (best for NVMe SSDs)"
+  ansible.builtin.shell: |
+    dev="{{ log_mount_source.stdout | regex_replace('^/dev/mapper/', '') | regex_replace('^/dev/', '') | regex_replace('[0-9]+$', '') }}"
+    sched_file="/sys/block/${dev}/queue/scheduler"
+    if [ -f "$sched_file" ]; then
+      echo none > "$sched_file" || echo mq-deadline > "$sched_file"
+    fi
+  when: log_mount_source.stdout != ""
+  changed_when: true
+  tags: [tuning, disk]
+
+- name: "Increase readahead on log partition device (256 KB)"
+  ansible.builtin.command: "blockdev --setra 256 {{ log_mount_source.stdout }}"
+  when: log_mount_source.stdout != ""
+  changed_when: true
+  failed_when: false
+  tags: [tuning, disk]
+
+- name: "Ensure log partition is mounted with noatime,nodiratime"
+  ansible.posix.mount:
+    path: "{{ suricata_log_dir }}"
+    src: "{{ log_mount_source.stdout }}"
+    fstype: "{{ ansible_mounts | selectattr('mount', 'equalto', suricata_log_dir) | map(attribute='fstype') | first | default('ext4') }}"
+    opts: "defaults,noatime,nodiratime"
+    state: mounted
+  when: log_mount_source.stdout != ""
+  failed_when: false
+  tags: [tuning, disk]
+
+# =============================================================================
+# 7. AF_PACKET RING SIZING
+# =============================================================================
+# Dynamically calculate optimal ring_size based on interface speed.
+# Formula: ring_size = (interface_speed_gbps * 125000000 * latency_budget_ms) / frame_size
+# For a 10 Gbps link with 10 ms budget and 2 KB average frame: ~600000
+# We cap at 2^17 = 131072 for memory constraints on medium operators.
+
+- name: "Calculate AF_PACKET ring size from interface speed"
+  ansible.builtin.set_fact:
+    computed_ring_size: >-
+      {{
+        [
+          ((interface_speed_gbps | default(10)) * 125000000 * 0.010 / 2048) | int,
+          131072
+        ] | min
+      }}
+  tags: [tuning, afpacket]
+
+- name: "Display computed ring size"
+  ansible.builtin.debug:
+    msg: >
+      Interface {{ monitored_interface }} ({{ interface_speed_gbps | default(10) }} Gbps):
+      computed ring_size = {{ computed_ring_size }}.
+      Configured afpacket_ring_size = {{ afpacket_ring_size }}.
+  tags: [tuning, afpacket]
+
+# =============================================================================
+# 8. SYSTEMD RESOURCE LIMITS
+# =============================================================================
+# These are enforced via the service unit template (suricata.service.j2).
+# Documented here for reference:
+#
+#   LimitNOFILE=1048576      — high fd count for large flow tables
+#   LimitMEMLOCK=infinity    — required for AF_PACKET mmap rings
+#   LimitNPROC=infinity      — large worker counts
+#   Nice=-19                 — real-time scheduling priority
+#   CPUSchedulingPolicy=fifo — FIFO real-time scheduling
+#   CPUSchedulingPriority=99 — highest FIFO priority
+
+- name: "Ensure systemd limits directory for suricata override exists"
+  ansible.builtin.file:
+    path: /etc/systemd/system/suricata.service.d
+    state: directory
+    mode: "0755"
+  tags: [tuning, systemd]
+
+- name: "Write systemd override for suricata resource limits"
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/suricata.service.d/limits.conf
+    mode: "0644"
+    content: |
+      # Managed by Ansible — suricata performance limits
+      [Service]
+      LimitNOFILE=1048576
+      LimitMEMLOCK=infinity
+      LimitNPROC=infinity
+      Nice=-19
+      CPUSchedulingPolicy=fifo
+      CPUSchedulingPriority=99
+  notify:
+    - restart suricata
+  tags: [tuning, systemd]
+
+- name: "Reload systemd after override"
+  ansible.builtin.systemd:
+    daemon_reload: true
+  tags: [tuning, systemd]
+
+# =============================================================================
+# 9. PERSISTENT UDEV RULES FOR NIC TUNING
+# =============================================================================
+
+- name: "Write udev rule to restore NIC tuning on interface up"
+  ansible.builtin.copy:
+    dest: "/etc/udev/rules.d/99-suricata-nic-{{ monitored_interface }}.rules"
+    mode: "0644"
+    content: |
+      # Managed by Ansible — Suricata NIC tuning for {{ monitored_interface }}
+      ACTION=="add", SUBSYSTEM=="net", KERNEL=="{{ monitored_interface }}", \
+        RUN+="/usr/sbin/ethtool -G {{ monitored_interface }} rx {{ nic_ring_rx }} tx {{ nic_ring_tx }}", \
+        RUN+="/usr/sbin/ethtool -K {{ monitored_interface }} gro off lro off rxhash on", \
+        RUN+="/usr/sbin/ethtool -A {{ monitored_interface }} rx off tx off", \
+        RUN+="/usr/sbin/ethtool -C {{ monitored_interface }} rx-usecs {{ nic_coalescing_rx_usecs }}"
+  tags: [tuning, nic, persistent]
+
+- name: "Reload udev rules"
+  ansible.builtin.command: udevadm control --reload-rules
+  changed_when: true
+  tags: [tuning, nic, persistent]

@@ -1,0 +1,421 @@
+# Companion code for "The Backend of Luck" - Chapter 23, DevSecOps for iGaming.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# =============================================================================
+# SOAR System Configuration
+# AcmeToCasino iGaming Platform - Security Orchestration, Automation & Response
+# =============================================================================
+# This file is the single source of truth for all SOAR component settings.
+# Environment variable interpolation is supported using ${VAR_NAME} syntax.
+# Sensitive values (passwords, tokens) should always be set via env vars.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# General system settings
+# -----------------------------------------------------------------------------
+system:
+  # Human-readable name for this deployment (used in alert messages)
+  name: "AcmeToCasino SOAR"
+
+  # Deployment environment: production | staging | development
+  environment: "${SOAR_ENV:production}"
+
+  # Log level for all SOAR components: DEBUG | INFO | WARNING | ERROR
+  log_level: "INFO"
+
+  # All timestamps are stored and transmitted in UTC
+  timezone: "UTC"
+
+  # Directory where SOAR components write state files and fallback logs
+  data_dir: "/var/lib/soar"
+
+# -----------------------------------------------------------------------------
+# Collectors – ingestion settings for each log source
+# -----------------------------------------------------------------------------
+collectors:
+
+  # --- Nginx access log (combined format) ------------------------------------
+  nginx_access:
+    enabled: true
+    # Absolute path to the Nginx access log file
+    path: "/var/log/nginx/access.log"
+    # How often (seconds) to check for new data when the file hasn't changed
+    poll_interval_seconds: 1
+    # Number of lines to read from the tail on first startup (0 = skip history)
+    backfill_lines: 0
+
+  # --- Nginx error log -------------------------------------------------------
+  nginx_error:
+    enabled: true
+    path: "/var/log/nginx/error.log"
+    poll_interval_seconds: 1
+    backfill_lines: 0
+
+  # --- Application logs (JSON structured, one object per line) ---------------
+  application:
+    enabled: true
+    path: "/var/log/app/application.log"
+    poll_interval_seconds: 1
+    # JSON key that holds the log timestamp; leave empty to use ingest time
+    timestamp_field: "timestamp"
+    # Expected timestamp format (Python strptime notation)
+    timestamp_format: "%Y-%m-%dT%H:%M:%S.%fZ"
+
+  # --- Auth service logs -----------------------------------------------------
+  auth_service:
+    enabled: true
+    path: "/var/log/app/auth.log"
+    poll_interval_seconds: 1
+    timestamp_field: "ts"
+    timestamp_format: "%Y-%m-%dT%H:%M:%SZ"
+
+  # --- AWS WAF logs (delivered by Kinesis Firehose into S3) ------------------
+  aws_waf:
+    enabled: "${AWS_WAF_COLLECTOR_ENABLED:false}"
+    # S3 bucket that receives WAF Firehose deliveries
+    s3_bucket: "${WAF_LOG_BUCKET:}"
+    # Key prefix where WAF logs land (no trailing slash)
+    s3_prefix: "waf-logs"
+    # AWS region of the bucket
+    aws_region: "${AWS_REGION:eu-west-1}"
+    # Polling interval for new S3 objects (seconds)
+    poll_interval_seconds: 30
+    # Maximum number of S3 objects to process per polling cycle
+    max_objects_per_cycle: 100
+    # How far back (hours) to look for unprocessed files on startup
+    lookback_hours: 2
+    # Path to a local DynamoDB-less checkpoint file; leave empty to use S3
+    checkpoint_file: "/var/lib/soar/waf_collector_checkpoint.json"
+
+  # --- Kafka topic consumer --------------------------------------------------
+  kafka:
+    enabled: "${KAFKA_COLLECTOR_ENABLED:false}"
+    # Comma-separated list of Kafka bootstrap brokers
+    bootstrap_servers: "${KAFKA_BROKERS:localhost:9092}"
+    # Topics to subscribe to (list)
+    topics:
+      - "security-events"
+      - "auth-events"
+      - "transaction-events"
+    # Kafka consumer group ID (must be unique per SOAR deployment)
+    group_id: "soar-log-collector"
+    # How long (ms) to wait for messages before polling again
+    poll_timeout_ms: 1000
+    # SASL/SSL settings for production Kafka clusters
+    security_protocol: "${KAFKA_SECURITY_PROTOCOL:PLAINTEXT}"
+    sasl_mechanism: "${KAFKA_SASL_MECHANISM:}"
+    sasl_username: "${KAFKA_SASL_USERNAME:}"
+    sasl_password: "${KAFKA_SASL_PASSWORD:}"
+    ssl_ca_file: "${KAFKA_SSL_CA_FILE:}"
+
+# -----------------------------------------------------------------------------
+# Normalizer – schema mapping for the common event format
+# -----------------------------------------------------------------------------
+normalizer:
+  # Schema version emitted in every normalized event (bump when breaking change)
+  schema_version: "1.0"
+
+  # Fields that must be present after normalization; events missing these are
+  # discarded with a WARNING log entry
+  required_fields:
+    - "event_id"
+    - "timestamp"
+    - "source_ip"
+    - "event_type"
+
+  # Maximum size (bytes) of the raw log line before it is truncated
+  max_raw_size_bytes: 16384
+
+# -----------------------------------------------------------------------------
+# Detectors – threat detection engine configuration
+# -----------------------------------------------------------------------------
+detectors:
+
+  # --- Brute force login detection -------------------------------------------
+  brute_force:
+    enabled: true
+    # Sliding window duration (seconds)
+    window_seconds: 300
+    # Number of failed logins within the window before triggering an alert
+    threshold_failures: 10
+    # Alert severity: critical | high | medium | low | info
+    severity: "high"
+    # Block the source IP automatically after this many failures
+    # Set to 0 to disable automatic blocking (alert only)
+    auto_block_threshold: 20
+    # How long (seconds) an auto-blocked IP stays blocked (0 = indefinite)
+    block_duration_seconds: 3600
+
+  # --- DDoS / volumetric attack detection ------------------------------------
+  ddos:
+    enabled: true
+    # Requests per second threshold for a single IP before alerting
+    rps_threshold: 500
+    # Requests per second for the whole site before raising a site-wide alert
+    global_rps_threshold: 50000
+    # Slowloris detection: connections open longer than this (seconds) are suspect
+    slowloris_connection_age_seconds: 30
+    # Number of slow connections per IP before alerting
+    slowloris_threshold: 20
+    # Percentage of incomplete connections (SYN without ACK) that triggers SYN flood alert
+    syn_flood_incomplete_pct: 80
+    severity: "critical"
+
+  # --- Injection attack detection (SQLi, XSS, command injection) -------------
+  injection:
+    enabled: true
+    # Minimum confidence score (0.0 – 1.0) to emit an alert
+    confidence_threshold: 0.7
+    # Scan these request components for injection patterns
+    scan_targets:
+      - "uri"
+      - "query_string"
+      - "user_agent"
+      - "referer"
+      - "post_body"     # requires body logging to be enabled in Nginx
+    severity: "high"
+
+  # --- Automated bot detection -----------------------------------------------
+  bot:
+    enabled: true
+    # User-agent substrings that are always allowed (monitoring, uptime checks)
+    whitelist_user_agents:
+      - "Googlebot"
+      - "Bingbot"
+      - "UptimeRobot"
+      - "Pingdom"
+      - "StatusCake"
+    # Minimum request timing jitter (milliseconds) below which requests look automated
+    timing_jitter_threshold_ms: 50
+    # Ratio of 404/400 errors to total requests that suggests a scanner
+    error_ratio_threshold: 0.4
+    # Number of distinct paths hit within window_seconds before flagging as crawler
+    distinct_path_threshold: 100
+    window_seconds: 60
+    severity: "medium"
+
+  # --- Account takeover (ATO) detection --------------------------------------
+  account_takeover:
+    enabled: true
+    # Flag logins from a country not seen in the past N days for this account
+    new_country_lookback_days: 30
+    # Number of distinct countries in a single session window that triggers alert
+    country_velocity_threshold: 3
+    # Session window for velocity checks (seconds)
+    velocity_window_seconds: 3600
+    # Suspicious login time: hour range (UTC) that is unusual for the account
+    off_hours_start: 2   # 02:00 UTC
+    off_hours_end: 5     # 05:00 UTC
+    severity: "high"
+
+  # --- Bonus abuse detection (iGaming-specific) ------------------------------
+  bonus_abuse:
+    enabled: true
+    # Maximum accounts allowed to share the same device fingerprint
+    max_accounts_per_device: 3
+    # Maximum accounts allowed from the same /24 subnet
+    max_accounts_per_subnet_24: 5
+    # Treat registrations from known VPN/proxy exit nodes as suspicious
+    flag_vpn_registrations: true
+    # Treat registrations from known datacenter IP ranges as suspicious
+    flag_datacenter_registrations: true
+    # Number of bonus claims per device fingerprint within window before alerting
+    bonus_claim_threshold: 5
+    bonus_window_seconds: 86400  # 24 hours
+    severity: "high"
+
+# -----------------------------------------------------------------------------
+# Enrichment – add context to events before detection and alerting
+# -----------------------------------------------------------------------------
+enrichment:
+
+  geoip:
+    enabled: true
+    # Path to the MaxMind GeoLite2 City database (.mmdb)
+    db_city_path: "${GEOIP_DB_CITY:/usr/share/GeoIP/GeoLite2-City.mmdb}"
+    # Path to the MaxMind GeoLite2 ASN database (.mmdb)
+    db_asn_path: "${GEOIP_DB_ASN:/usr/share/GeoIP/GeoLite2-ASN.mmdb}"
+    # In-memory LRU cache size (number of IP addresses)
+    cache_size: 65536
+    # Cache TTL (seconds); set to 0 to disable TTL (cache until restart)
+    cache_ttl_seconds: 3600
+
+  vpn_proxy:
+    enabled: true
+    # Provider: maxmind | ipinfo | local_list
+    provider: "maxmind"
+    # Path to the MaxMind GeoLite2 Anonymous IP database (optional)
+    db_anon_path: "${GEOIP_DB_ANON:/usr/share/GeoIP/GeoLite2-Anonymous-IP.mmdb}"
+    # Path to a local plain-text file with known VPN/proxy CIDRs (one per line)
+    local_list_path: "/etc/soar/vpn_cidr_list.txt"
+
+  datacenter:
+    enabled: true
+    # Path to a CSV/text file mapping datacenter IP ranges to provider names
+    # Format: CIDR,ProviderName  (e.g. 3.0.0.0/8,Amazon AWS)
+    datacenter_list_path: "/etc/soar/datacenter_cidrs.txt"
+
+# -----------------------------------------------------------------------------
+# Redis – shared state store for all detector sliding windows
+# -----------------------------------------------------------------------------
+redis:
+  host: "${REDIS_HOST:localhost}"
+  port: "${REDIS_PORT:6379}"
+  db: 0
+  password: "${REDIS_PASSWORD:}"
+  # Connection pool size per process
+  max_connections: 20
+  # Key prefix to namespace all SOAR keys
+  key_prefix: "soar:"
+  # Default key expiry (seconds) for window counters; should exceed longest window
+  default_ttl_seconds: 86400
+
+# -----------------------------------------------------------------------------
+# Responders – automated response actions triggered by detector alerts
+# -----------------------------------------------------------------------------
+responders:
+
+  # n8n workflow orchestrator
+  n8n:
+    enabled: true
+    base_url: "${N8N_BASE_URL:http://n8n:5678}"
+    # Webhook path that receives all normalized SOAR events
+    event_webhook_path: "/webhook/soar-events"
+    # Webhook path specifically for high-severity alerts
+    alert_webhook_path: "/webhook/soar-alerts"
+    # n8n API key (set in n8n via Settings > API > Create API Key)
+    api_key: "${N8N_API_KEY:}"
+    # Request timeout (seconds)
+    timeout_seconds: 10
+    # Retry settings for failed webhook deliveries
+    max_retries: 5
+    retry_backoff_base_seconds: 2   # exponential: 2, 4, 8, 16, 32 seconds
+    # Local fallback file when n8n is unreachable
+    fallback_file: "/var/lib/soar/n8n_fallback_queue.jsonl"
+
+  # AWS WAF – direct IP blocking via the waf_auto_block.py script
+  aws_waf:
+    enabled: "${AWS_WAF_RESPONDER_ENABLED:false}"
+    scope: "${WAF_SCOPE:REGIONAL}"
+    aws_region: "${AWS_REGION:eu-west-1}"
+    dry_run: false
+
+  # CrowdSec – collaborative threat intelligence
+  crowdsec:
+    enabled: "${CROWDSEC_ENABLED:false}"
+    lapi_url: "${CROWDSEC_LAPI_URL:http://crowdsec:8080}"
+    api_key: "${CROWDSEC_API_KEY:}"
+    # How often (seconds) to pull new decisions from CrowdSec LAPI
+    pull_interval_seconds: 60
+    # Push local detections back to CrowdSec for community benefit
+    push_detections: true
+
+  # iptables / nftables – on-premise firewall (used when not on AWS)
+  local_firewall:
+    enabled: "${LOCAL_FIREWALL_ENABLED:false}"
+    # backend: iptables | nftables | ipset
+    backend: "iptables"
+    # Chain where SOAR block rules are inserted
+    chain: "SOAR_BLOCK"
+    # How long (seconds) to keep a block rule before auto-removal (0 = permanent)
+    default_block_duration_seconds: 3600
+
+# -----------------------------------------------------------------------------
+# Notifications – alerting channels
+# -----------------------------------------------------------------------------
+notifications:
+
+  slack:
+    enabled: "${SLACK_ENABLED:true}"
+    # Slack Bot OAuth token (xoxb-...)
+    bot_token: "${SLACK_BOT_TOKEN:}"
+    # Default channel for security alerts
+    default_channel: "#security-alerts"
+    # Channel for critical/P1 incidents
+    critical_channel: "#security-p1"
+    # Channel for informational events
+    info_channel: "#security-info"
+    # Minimum severity level to send to Slack: critical | high | medium | low | info
+    min_severity: "medium"
+    # Rate limit: maximum Slack messages per minute (Slack limit is ~60/min)
+    rate_limit_per_minute: 50
+    # Thread updates instead of new messages for the same incident
+    use_threads: true
+
+  pagerduty:
+    enabled: "${PAGERDUTY_ENABLED:false}"
+    # PagerDuty Events API v2 routing key
+    routing_key: "${PAGERDUTY_ROUTING_KEY:}"
+    # Only page for these severity levels
+    page_for_severities:
+      - "critical"
+    # Deduplicate events with the same dedup_key for this many seconds
+    dedup_window_seconds: 300
+
+  email:
+    enabled: "${EMAIL_ALERTS_ENABLED:false}"
+    smtp_host: "${SMTP_HOST:localhost}"
+    smtp_port: "${SMTP_PORT:587}"
+    smtp_tls: true
+    smtp_username: "${SMTP_USERNAME:}"
+    smtp_password: "${SMTP_PASSWORD:}"
+    from_address: "soar-alerts@acme.casino"
+    to_addresses:
+      - "${SECURITY_EMAIL:security@acme.casino}"
+    # Minimum severity to send email
+    min_severity: "high"
+
+# -----------------------------------------------------------------------------
+# Buffering – event batching for high-volume ingestion
+# -----------------------------------------------------------------------------
+buffering:
+  # Maximum number of events to hold in memory before flushing
+  max_batch_size: 500
+  # Maximum time (seconds) to wait before flushing a partial batch
+  max_batch_age_seconds: 5
+  # Number of parallel sender workers (threads)
+  sender_workers: 4
+  # In-memory queue depth; events beyond this are written to overflow_file
+  queue_depth: 10000
+  # Overflow file path; events are replayed when queue drains
+  overflow_file: "/var/lib/soar/event_overflow.jsonl"
+
+# -----------------------------------------------------------------------------
+# Thresholds – centralized numeric limits referenced across components
+# -----------------------------------------------------------------------------
+thresholds:
+  # Events per second above which the collector emits a WARN about ingestion lag
+  ingestion_lag_warn_eps: 10000
+
+  # Minimum confidence required to auto-block an IP (overrides per-detector settings)
+  global_auto_block_confidence: 0.85
+
+  # IP reputation score (0–100) from CrowdSec below which an IP is auto-blocked
+  crowdsec_block_score: 80
+
+  # Maximum incidents in the PostgreSQL incidents table before old ones are archived
+  max_open_incidents: 10000
+
+# -----------------------------------------------------------------------------
+# Storage – PostgreSQL incident database
+# -----------------------------------------------------------------------------
+storage:
+  postgres:
+    host: "${POSTGRES_HOST:postgres}"
+    port: "${POSTGRES_PORT:5432}"
+    database: "${POSTGRES_DB:soar}"
+    username: "${POSTGRES_USER:soar}"
+    password: "${POSTGRES_PASSWORD:}"
+    # SQLAlchemy connection pool settings
+    pool_size: 10
+    max_overflow: 20
+    pool_timeout_seconds: 30
+    # How long (days) to retain closed incidents before archiving/deleting
+    incident_retention_days: 90

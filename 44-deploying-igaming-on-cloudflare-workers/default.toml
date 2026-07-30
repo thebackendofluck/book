@@ -1,0 +1,97 @@
+# default.toml — Default wrangler configuration for AcmeToCasino (primary brand)
+#
+# This is the base wrangler config used when no --config flag is provided.
+# It targets the primary AcmeToCasino brand and the production environment.
+#
+# For multi-brand deployments, use the brand-specific configs:
+#   wrangler.acmevegas.toml
+#   wrangler.acmegate.toml
+#   wrangler.acmedice.toml
+#
+# Chapter 44, Section 6: Resource Provisioning
+
+name                = "acmetocasino-api"
+main                = "src/index.ts"
+compatibility_date  = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# ─── Plaintext vars ──────────────────────────────────────────────────────────
+# JWT_SECRET and ENCRYPTION_KEY are secrets — never put them here.
+# Set them with: npx wrangler secret put JWT_SECRET
+
+[vars]
+ENVIRONMENT   = "development"
+PLATFORM_NAME = "AcmeToCasino Platform"
+
+# ─── D1 Database ─────────────────────────────────────────────────────────────
+# Database created with: npx wrangler d1 create acmetocasino-db
+# Schema applied with:   npx wrangler d1 migrations apply acmetocasino-db --local
+#                        npx wrangler d1 migrations apply acmetocasino-prod
+
+[[d1_databases]]
+binding       = "DB"
+database_name = "acmetocasino-db"
+database_id   = "a2a40f31-e9c4-49fb-96a8-1c2ef8b8d70c"
+
+# ─── KV Namespaces ───────────────────────────────────────────────────────────
+# CACHE:    game catalog cache, user objects, brute-force login counters
+# SESSIONS: refresh tokens (30-day TTL; auto-expire on logout/exclusion)
+
+[[kv_namespaces]]
+binding    = "CACHE"
+id         = "f3402e71217142949c225532256c0577"
+preview_id = "f3402e71217142949c225532256c0577"
+
+[[kv_namespaces]]
+binding    = "SESSIONS"
+id         = "3ccc3e92d7af452782f4780f0ae32ced"
+preview_id = "3ccc3e92d7af452782f4780f0ae32ced"
+
+# ─── R2 Bucket ───────────────────────────────────────────────────────────────
+# KYC document storage — private bucket, no public access.
+# Created with: npx wrangler r2 bucket create acmetocasino-kyc-docs
+
+[[r2_buckets]]
+binding     = "STORAGE"
+bucket_name = "acmetocasino-kyc-docs"
+
+# ─── Custom domain route ─────────────────────────────────────────────────────
+# Traffic to cloudflare.cloud-acmetocasino.com is handled by this Worker.
+# The DNS A record is managed by Terraform (terraform/dns.tf).
+
+[[routes]]
+pattern   = "cloudflare.cloud-acmetocasino.com/*"
+zone_name = "cloud-acmetocasino.com"
+
+# ─── Staging environment ─────────────────────────────────────────────────────
+# Deploy with: npx wrangler deploy --env staging
+
+[env.staging]
+name = "acmetocasino-api-staging"
+
+[env.staging.vars]
+ENVIRONMENT   = "staging"
+PLATFORM_NAME = "AcmeToCasino Platform (Staging)"
+
+[[env.staging.d1_databases]]
+binding       = "DB"
+database_name = "acmetocasino-staging-db"
+database_id   = "00000000-0000-0000-0000-staging00001"  # Replace with real staging DB ID
+
+[[env.staging.kv_namespaces]]
+binding    = "CACHE"
+id         = "00000000000000000000000000000001"  # Replace with staging CACHE namespace ID
+preview_id = "00000000000000000000000000000001"
+
+[[env.staging.kv_namespaces]]
+binding    = "SESSIONS"
+id         = "00000000000000000000000000000002"  # Replace with staging SESSIONS namespace ID
+preview_id = "00000000000000000000000000000002"
+
+[[env.staging.r2_buckets]]
+binding     = "STORAGE"
+bucket_name = "acmetocasino-kyc-docs-staging"
+
+[[env.staging.routes]]
+pattern   = "staging.cloud-acmetocasino.com/*"
+zone_name = "cloud-acmetocasino.com"

@@ -1,0 +1,725 @@
+# Companion code for "The Backend of Luck" - Chapter 23, DevSecOps for iGaming.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# Azure DevOps Pipeline for Security Scanning
+# Container scanning and Infracost are DISABLED by default
+# Enable only if needed (not using Aquasec for containers)
+
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+      - feature/*
+  paths:
+    exclude:
+      - '*.md'
+      - 'docs/*'
+
+pr:
+  branches:
+    include:
+      - main
+      - develop
+  autoCancel: true
+
+schedules:
+  - cron: "0 0 * * 1"  # Weekly security scan on Monday
+    displayName: Weekly Security Scan
+    branches:
+      include:
+        - main
+    always: true
+
+variables:
+  # System
+  - name: System.Debug
+    value: false
+
+  # Tool versions
+  - name: TERRAFORM_VERSION
+    value: '1.9.0'
+  - name: PYTHON_VERSION
+    value: '3.11'
+  - name: NODE_VERSION
+    value: '18.x'
+
+  # Security thresholds
+  - name: CHECKOV_SKIP_CHECKS
+    value: ''  # Add checks to skip: CKV_AZURE_1,CKV_AZURE_2
+  - name: TFSEC_SEVERITY
+    value: 'WARNING'  # CRITICAL, HIGH, MEDIUM, LOW
+  - name: BANDIT_SEVERITY
+    value: 'medium'   # low, medium, high
+
+  # Report paths
+  - name: REPORTS_PATH
+    value: '$(Build.ArtifactStagingDirectory)/security-reports'
+
+  # Configuration - Features disabled by default
+  - name: ENABLE_CONTAINER_SCAN
+    value: false  # Set to true to enable Trivy/Hadolint (already covered by Aquasec)
+  - name: ENABLE_COST_ESTIMATION
+    value: false  # Set to true to enable Infracost
+  - name: ENABLE_COMPLIANCE_CHECK
+    value: true
+  - name: FAIL_ON_CRITICAL
+    value: true
+
+# Agent pool
+pool:
+  vmImage: 'ubuntu-latest'
+
+stages:
+  # ============================================================================
+  # STAGE 1: Setup and Dependencies
+  # ============================================================================
+  - stage: Setup
+    displayName: 'Setup Security Tools'
+    jobs:
+      - job: InstallTools
+        displayName: 'Install Security Tools'
+        steps:
+          # Checkout code
+          - checkout: self
+            fetchDepth: 0  # Full history for secret scanning
+            clean: true
+            persistCredentials: true
+
+          # Setup Python
+          - task: UsePythonVersion@0
+            displayName: 'Setup Python $(PYTHON_VERSION)'
+            inputs:
+              versionSpec: '$(PYTHON_VERSION)'
+              addToPath: true
+
+          # Setup Node.js
+          - task: NodeTool@0
+            displayName: 'Setup Node.js $(NODE_VERSION)'
+            inputs:
+              versionSpec: '$(NODE_VERSION)'
+
+          # Setup Terraform
+          - task: TerraformInstaller@0
+            displayName: 'Install Terraform $(TERRAFORM_VERSION)'
+            inputs:
+              terraformVersion: '$(TERRAFORM_VERSION)'
+
+          # Create reports directory
+          - script: |
+              mkdir -p $(REPORTS_PATH)
+              mkdir -p $(REPORTS_PATH)/checkov
+              mkdir -p $(REPORTS_PATH)/tfsec
+              mkdir -p $(REPORTS_PATH)/terrascan
+              mkdir -p $(REPORTS_PATH)/secrets
+              mkdir -p $(REPORTS_PATH)/bandit
+              mkdir -p $(REPORTS_PATH)/semgrep
+              mkdir -p $(REPORTS_PATH)/infracost
+            displayName: 'Create report directories'
+
+          # Install Python security tools
+          - script: |
+              echo "##[group]Installing Python-based security tools"
+
+              # Upgrade pip
+              python -m pip install --upgrade pip
+
+              # Install security tools
+              pip install checkov==3.2.521
+              pip install detect-secrets==1.5.0
+              pip install bandit==1.9.4
+              pip install semgrep==1.159.0
+              pip install safety==3.7.0
+
+              TERRASCAN_VERSION="v1.19.9"
+              curl -fsSL "https://github.com/tenable/terrascan/releases/download/${TERRASCAN_VERSION}/terrascan_${TERRASCAN_VERSION#v}_Linux_x86_64.tar.gz" -o terrascan.tar.gz
+              tar -xzf terrascan.tar.gz terrascan
+              sudo install terrascan /usr/local/bin/terrascan
+              rm -f terrascan terrascan.tar.gz
+
+              # Install code quality tools
+              pip install black==23.12.1
+              pip install flake8==7.0.0
+              pip install pylint==3.0.3
+              pip install yamllint==1.33.0
+
+              # Install Terraform tools
+              pip install terraform-compliance==1.3.48
+              pip install python-hcl2==4.3.2
+
+              echo "##[endgroup]"
+
+              # Verify installations
+              echo "##[group]Verifying Python tool installations"
+              checkov --version
+              detect-secrets --version
+              bandit --version
+              semgrep --version
+              safety --version
+              terrascan version
+              echo "##[endgroup]"
+            displayName: 'Install Python Security Tools'
+
+          # Install binary tools
+          - script: |
+              echo "##[group]Installing binary security tools"
+
+              # Install TFSec
+              echo "Installing TFSec..."
+              curl -s https://raw.githubusercontent.com/aquasecurity/tfsec/master/scripts/install_linux.sh | bash
+              sudo mv /tmp/tfsec /usr/local/bin/
+
+              # Install TFLint
+              echo "Installing TFLint..."
+              curl -s https://raw.githubusercontent.com/terraform-linters/tflint/master/install_linux.sh | bash
+
+              # Install TFLint Azure plugin
+              mkdir -p ~/.tflint.d/plugins
+              tflint --init
+
+              # Install Gitleaks
+              echo "Installing Gitleaks..."
+              wget -q -O - https://github.com/gitleaks/gitleaks/releases/download/v8.18.2/gitleaks_8.18.2_linux_x64.tar.gz | tar xz
+              sudo mv gitleaks /usr/local/bin/
+
+              # Install TruffleHog
+              echo "Installing TruffleHog..."
+              curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh | sh -s -- -b /usr/local/bin
+
+              # Install ShellCheck
+              echo "Installing ShellCheck..."
+              sudo apt-get update && sudo apt-get install -y shellcheck
+
+              # Install Trivy for container scanning (if explicitly enabled)
+              if [ "$ENABLE_CONTAINER_SCAN" = "true" ]; then
+                echo "##[section]Installing Trivy (explicitly enabled)"
+                wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+                echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
+                sudo apt-get update && sudo apt-get install -y trivy
+                trivy --version
+
+                echo "##[section]Installing Hadolint (explicitly enabled)"
+                wget -O /usr/local/bin/hadolint https://github.com/hadolint/hadolint/releases/latest/download/hadolint-Linux-x86_64
+                chmod +x /usr/local/bin/hadolint
+                hadolint --version
+              else
+                echo "##[section]Container scanning tools skipped (disabled by default - using Aquasec)"
+              fi
+
+              echo "##[endgroup]"
+
+              # Verify installations
+              echo "##[group]Verifying binary tool installations"
+              tfsec --version
+              tflint --version
+              gitleaks version
+              trufflehog --version
+              shellcheck --version
+              echo "##[endgroup]"
+            displayName: 'Install Binary Security Tools'
+
+          # Install Infracost (if explicitly enabled)
+          - script: |
+              if [ "$ENABLE_COST_ESTIMATION" = "true" ]; then
+                echo "##[section]Installing Infracost (explicitly enabled)"
+                curl -fsSL https://raw.githubusercontent.com/infracost/infracost/master/scripts/install.sh | sh
+                sudo mv infracost /usr/local/bin/
+                infracost --version
+                echo "##[command]Infracost installed successfully"
+              else
+                echo "##[section]Infracost installation skipped (disabled by default)"
+              fi
+            displayName: 'Install Infracost (Optional)'
+            condition: and(succeeded(), eq(variables['ENABLE_COST_ESTIMATION'], 'true'))
+
+          # Install Node.js tools
+          - script: |
+              echo "##[group]Installing Node.js-based tools"
+
+              npm install -g prettier@3.2.0
+              npm install -g markdownlint-cli@0.38.0
+              npm install -g @commitlint/cli@18.4.4
+
+              echo "##[endgroup]"
+            displayName: 'Install Node.js Tools'
+
+          # Save tool versions for reference
+          - script: |
+              echo "# Security Tools Versions - $(date)" > $(REPORTS_PATH)/tool-versions.txt
+              echo "======================================" >> $(REPORTS_PATH)/tool-versions.txt
+              echo "Configuration:" >> $(REPORTS_PATH)/tool-versions.txt
+              echo "  Container Scanning: $ENABLE_CONTAINER_SCAN (default: false)" >> $(REPORTS_PATH)/tool-versions.txt
+              echo "  Cost Estimation: $ENABLE_COST_ESTIMATION (default: false)" >> $(REPORTS_PATH)/tool-versions.txt
+              echo "" >> $(REPORTS_PATH)/tool-versions.txt
+              echo "Installed Tools:" >> $(REPORTS_PATH)/tool-versions.txt
+              echo "Python: $(python --version)" >> $(REPORTS_PATH)/tool-versions.txt
+              echo "Terraform: $(terraform version -json | jq -r .terraform_version)" >> $(REPORTS_PATH)/tool-versions.txt
+              echo "Checkov: $(checkov --version)" >> $(REPORTS_PATH)/tool-versions.txt
+              echo "TFSec: $(tfsec --version)" >> $(REPORTS_PATH)/tool-versions.txt
+              echo "TFLint: $(tflint --version | head -1)" >> $(REPORTS_PATH)/tool-versions.txt
+              echo "Gitleaks: $(gitleaks version)" >> $(REPORTS_PATH)/tool-versions.txt
+              echo "Bandit: $(bandit --version)" >> $(REPORTS_PATH)/tool-versions.txt
+              echo "Semgrep: $(semgrep --version)" >> $(REPORTS_PATH)/tool-versions.txt
+              echo "Safety: $(safety --version)" >> $(REPORTS_PATH)/tool-versions.txt
+              echo "Terrascan: $(terrascan version)" >> $(REPORTS_PATH)/tool-versions.txt
+
+              if [ "$ENABLE_CONTAINER_SCAN" = "true" ]; then
+                echo "Trivy: $(trivy --version)" >> $(REPORTS_PATH)/tool-versions.txt
+                echo "Hadolint: $(hadolint --version)" >> $(REPORTS_PATH)/tool-versions.txt
+              else
+                echo "Trivy: DISABLED (using Aquasec)" >> $(REPORTS_PATH)/tool-versions.txt
+                echo "Hadolint: DISABLED (using Aquasec)" >> $(REPORTS_PATH)/tool-versions.txt
+              fi
+
+              if [ "$ENABLE_COST_ESTIMATION" = "true" ]; then
+                echo "Infracost: $(infracost --version)" >> $(REPORTS_PATH)/tool-versions.txt
+              else
+                echo "Infracost: DISABLED" >> $(REPORTS_PATH)/tool-versions.txt
+              fi
+
+              cat $(REPORTS_PATH)/tool-versions.txt
+            displayName: 'Document Tool Versions'
+
+  # ============================================================================
+  # STAGE 2: Security Scanning
+  # ============================================================================
+  - stage: SecurityScan
+    displayName: 'Security Scanning'
+    dependsOn: Setup
+    jobs:
+      # --------------------------------------------------------------------------
+      # Job: Infrastructure Security
+      # --------------------------------------------------------------------------
+      - job: InfrastructureSecurity
+        displayName: 'Infrastructure Security Scans'
+        steps:
+          - checkout: self
+            fetchDepth: 0
+
+          # Checkov Scan
+          - script: |
+              echo "##[section]Running Checkov Security Scan"
+
+              checkov -d . \
+                --framework terraform \
+                --output cli \
+                --output junitxml \
+                --output-file-path $(REPORTS_PATH)/checkov \
+                --skip-check $CHECKOV_SKIP_CHECKS \
+                --compact \
+                --quiet || EXIT_CODE=$?
+
+              checkov -d . \
+                --framework terraform \
+                --output sarif \
+                --output-file-path $(REPORTS_PATH)/checkov/results.sarif \
+                --skip-check $CHECKOV_SKIP_CHECKS \
+                --quiet || true
+
+              checkov -d . \
+                --framework terraform \
+                --output json \
+                --output-file-path $(REPORTS_PATH)/checkov/results.json \
+                --skip-check $CHECKOV_SKIP_CHECKS \
+                --quiet || true
+
+              if [ "$EXIT_CODE" != "0" ] && [ "$FAIL_ON_CRITICAL" = "true" ]; then
+                echo "##vso[task.logissue type=error]Checkov found critical security issues"
+                exit $EXIT_CODE
+              fi
+            displayName: 'Run Checkov'
+            continueOnError: true
+
+          # TFSec Scan
+          - script: |
+              echo "##[section]Running TFSec Security Scan"
+
+              tfsec . \
+                --format default \
+                --minimum-severity $TFSEC_SEVERITY \
+                --no-color || EXIT_CODE=$?
+
+              tfsec . \
+                --format json \
+                --out $(REPORTS_PATH)/tfsec/results.json \
+                --minimum-severity $TFSEC_SEVERITY || true
+
+              tfsec . \
+                --format junit \
+                --out $(REPORTS_PATH)/tfsec/results.xml \
+                --minimum-severity $TFSEC_SEVERITY || true
+
+              tfsec . \
+                --format sarif \
+                --out $(REPORTS_PATH)/tfsec/results.sarif \
+                --minimum-severity $TFSEC_SEVERITY || true
+
+              if [ "$EXIT_CODE" != "0" ] && [ "$FAIL_ON_CRITICAL" = "true" ]; then
+                echo "##vso[task.logissue type=error]TFSec found critical security issues"
+                exit $EXIT_CODE
+              fi
+            displayName: 'Run TFSec'
+            continueOnError: true
+
+          # Terrascan Scan
+          - script: |
+              echo "##[section]Running Terrascan Policy Scan"
+
+              terrascan scan \
+                --iac-type terraform \
+                --policy-type azure \
+                --output json \
+                --output-file $(REPORTS_PATH)/terrascan/results.json \
+                --verbose || EXIT_CODE=$?
+
+              terrascan scan \
+                --iac-type terraform \
+                --policy-type azure \
+                --output sarif \
+                --output-file $(REPORTS_PATH)/terrascan/results.sarif || true
+
+              if [ "$EXIT_CODE" != "0" ] && [ "$FAIL_ON_CRITICAL" = "true" ]; then
+                echo "##vso[task.logissue type=error]Terrascan found policy violations"
+                exit $EXIT_CODE
+              fi
+            displayName: 'Run Terrascan'
+            continueOnError: true
+
+          # TFLint Scan
+          - script: |
+              echo "##[section]Running TFLint"
+
+              cat > .tflint.hcl << 'EOF'
+              plugin "azurerm" {
+                enabled = true
+                version = "0.25.1"
+                source  = "github.com/terraform-linters/tflint-ruleset-azurerm"
+              }
+
+              config {
+                module = true
+                force = false
+              }
+
+              rule "terraform_deprecated_interpolation" {
+                enabled = true
+              }
+
+              rule "terraform_documented_outputs" {
+                enabled = true
+              }
+
+              rule "terraform_documented_variables" {
+                enabled = true
+              }
+
+              rule "terraform_typed_variables" {
+                enabled = true
+              }
+
+              rule "terraform_naming_convention" {
+                enabled = true
+              }
+
+              rule "terraform_required_version" {
+                enabled = true
+              }
+
+              rule "terraform_required_providers" {
+                enabled = true
+              }
+              EOF
+
+              tflint --init
+              tflint --format json > $(REPORTS_PATH)/tflint-results.json || true
+              tflint --format default
+            displayName: 'Run TFLint'
+            continueOnError: true
+
+          # Infracost Estimation (Optional - disabled by default)
+          - script: |
+              echo "##[section]Infracost Cost Estimation"
+
+              if [ "$ENABLE_COST_ESTIMATION" != "true" ]; then
+                echo "##[warning]Infracost is disabled. Set ENABLE_COST_ESTIMATION=true to enable."
+                exit 0
+              fi
+
+              # Setup Infracost API key if available
+              if [ -n "$INFRACOST_API_KEY" ]; then
+                export INFRACOST_API_KEY=$INFRACOST_API_KEY
+              fi
+
+              # Generate cost breakdown
+              infracost breakdown \
+                --path . \
+                --format json \
+                --out-file $(REPORTS_PATH)/infracost/breakdown.json || true
+
+              # Generate cost diff if this is a PR
+              if [ "$BUILD_REASON" = "PullRequest" ]; then
+                infracost diff \
+                  --path . \
+                  --format json \
+                  --out-file $(REPORTS_PATH)/infracost/diff.json || true
+              fi
+
+              # Display summary
+              infracost breakdown --path . --format table || true
+            displayName: 'Run Infracost (Optional)'
+            condition: and(succeeded(), eq(variables['ENABLE_COST_ESTIMATION'], 'true'))
+            continueOnError: true
+            env:
+              INFRACOST_API_KEY: $(INFRACOST_API_KEY)
+
+      # --------------------------------------------------------------------------
+      # Job: Secret Detection
+      # --------------------------------------------------------------------------
+      - job: SecretDetection
+        displayName: 'Secret Detection Scans'
+        steps:
+          - checkout: self
+            fetchDepth: 0
+
+          # Gitleaks Scan
+          - script: |
+              echo "##[section]Running Gitleaks Secret Detection"
+
+              gitleaks detect \
+                --source . \
+                --report-format sarif \
+                --report-path $(REPORTS_PATH)/secrets/gitleaks.sarif \
+                --verbose || EXIT_CODE=$?
+
+              gitleaks detect \
+                --source . \
+                --report-format json \
+                --report-path $(REPORTS_PATH)/secrets/gitleaks.json \
+                --verbose || true
+
+              if [ "$EXIT_CODE" != "0" ]; then
+                echo "##vso[task.logissue type=error]Gitleaks found exposed secrets"
+                if [ "$FAIL_ON_CRITICAL" = "true" ]; then
+                  exit $EXIT_CODE
+                fi
+              fi
+            displayName: 'Run Gitleaks'
+            continueOnError: true
+
+          # TruffleHog Scan
+          - script: |
+              echo "##[section]Running TruffleHog Secret Scan"
+
+              trufflehog git file://. \
+                --json \
+                --no-verification \
+                --max-depth=1000 > $(REPORTS_PATH)/secrets/trufflehog.json || true
+
+              if [ -s $(REPORTS_PATH)/secrets/trufflehog.json ]; then
+                echo "##vso[task.logissue type=warning]TruffleHog found potential secrets"
+                cat $(REPORTS_PATH)/secrets/trufflehog.json | jq '.'
+              fi
+            displayName: 'Run TruffleHog'
+            continueOnError: true
+
+          # Detect-Secrets Scan
+          - script: |
+              echo "##[section]Running Detect-Secrets Scan"
+
+              if [ ! -f .secrets.baseline ]; then
+                detect-secrets scan --baseline .secrets.baseline
+              fi
+
+              detect-secrets scan \
+                --baseline .secrets.baseline \
+                --exclude-files '.*\.lock$|.*\.tfstate.*$' > $(REPORTS_PATH)/secrets/detect-secrets.json || true
+
+              detect-secrets audit .secrets.baseline || true
+            displayName: 'Run Detect-Secrets'
+            continueOnError: true
+
+      # --------------------------------------------------------------------------
+      # Job: Code Quality
+      # --------------------------------------------------------------------------
+      - job: CodeQuality
+        displayName: 'Code Quality Checks'
+        steps:
+          - checkout: self
+
+          # Python Security (Bandit)
+          - script: |
+              echo "##[section]Running Bandit Python Security Scan"
+
+              if find . -name "*.py" -not -path "./.venv/*" | grep -q .; then
+                bandit -r . \
+                  -f json \
+                  -o $(REPORTS_PATH)/bandit/results.json \
+                  --severity-level $BANDIT_SEVERITY || true
+
+                bandit -r . \
+                  -f csv \
+                  -o $(REPORTS_PATH)/bandit/results.csv \
+                  --severity-level $BANDIT_SEVERITY || true
+
+                bandit -r . --severity-level $BANDIT_SEVERITY || true
+              else
+                echo "No Python files found to scan"
+              fi
+            displayName: 'Run Bandit'
+            continueOnError: true
+
+          # Semgrep Scan
+          - script: |
+              echo "##[section]Running Semgrep Security Patterns"
+
+              semgrep \
+                --config=auto \
+                --json \
+                --output=$(REPORTS_PATH)/semgrep/results.json \
+                . || true
+
+              semgrep \
+                --config=auto \
+                --sarif \
+                --output=$(REPORTS_PATH)/semgrep/results.sarif \
+                . || true
+
+              semgrep --config=auto . || true
+            displayName: 'Run Semgrep'
+            continueOnError: true
+
+          # Safety Check (Python Dependencies)
+          - script: |
+              echo "##[section]Running Safety Dependency Check"
+
+              if find . -name "requirements*.txt" | grep -q .; then
+                for req_file in $(find . -name "requirements*.txt"); do
+                  echo "Checking $req_file..."
+                  safety check \
+                    --file=$req_file \
+                    --output json \
+                    --save-json $(REPORTS_PATH)/safety-$(basename $req_file).json || true
+
+                  safety check --file=$req_file || true
+                done
+              else
+                echo "No requirements files found"
+              fi
+            displayName: 'Run Safety Check'
+            continueOnError: true
+
+          # YAML Lint
+          - script: |
+              echo "##[section]Running YAML Lint"
+
+              if find . -name "*.yml" -o -name "*.yaml" | grep -q .; then
+                yamllint . || true
+              fi
+            displayName: 'Run YAMLLint'
+            continueOnError: true
+
+          # ShellCheck
+          - script: |
+              echo "##[section]Running ShellCheck"
+
+              if find . -name "*.sh" | grep -q .; then
+                find . -name "*.sh" -exec shellcheck {} \; || true
+              fi
+            displayName: 'Run ShellCheck'
+            continueOnError: true
+
+          # Hadolint Docker Scan (Optional - disabled by default)
+          - script: |
+              echo "##[section]Docker Security Scan"
+
+              if [ "$ENABLE_CONTAINER_SCAN" != "true" ]; then
+                echo "##[warning]Container scanning is disabled (using Aquasec). Set ENABLE_CONTAINER_SCAN=true to enable."
+                exit 0
+              fi
+
+              echo "Running Hadolint Docker Scan"
+              if find . -name "Dockerfile*" | grep -q .; then
+                find . -name "Dockerfile*" -exec hadolint {} \; || true
+              else
+                echo "No Dockerfiles found to scan"
+              fi
+            displayName: 'Run Hadolint (Optional)'
+            condition: and(succeeded(), eq(variables['ENABLE_CONTAINER_SCAN'], 'true'))
+            continueOnError: true
+
+          # Trivy Container Scan (Optional - disabled by default)
+          - script: |
+              echo "##[section]Trivy Container Scan"
+
+              if [ "$ENABLE_CONTAINER_SCAN" != "true" ]; then
+                echo "##[warning]Container scanning is disabled (using Aquasec). Set ENABLE_CONTAINER_SCAN=true to enable."
+                exit 0
+              fi
+
+              echo "Running Trivy Container Scan"
+              if find . -name "Dockerfile*" | grep -q .; then
+                # Scan Dockerfiles for misconfigurations
+                trivy config . \
+                  --format json \
+                  --output $(REPORTS_PATH)/trivy-config.json || true
+
+                trivy config . || true
+              else
+                echo "No Dockerfiles found to scan"
+              fi
+            displayName: 'Run Trivy (Optional)'
+            condition: and(succeeded(), eq(variables['ENABLE_CONTAINER_SCAN'], 'true'))
+            continueOnError: true
+
+  # ============================================================================
+  # STAGE 3: Report Generation
+  # ============================================================================
+  - stage: Report
+    displayName: 'Generate Security Report'
+    dependsOn: SecurityScan
+    condition: always()
+    jobs:
+      - job: GenerateReport
+        displayName: 'Generate Consolidated Report'
+        steps:
+          - checkout: none
+
+          # Generate summary
+          - script: |
+              echo "##[section]Security Scan Complete"
+              echo ""
+              echo "Configuration:"
+              echo "  Container Scanning: $ENABLE_CONTAINER_SCAN (default: false - using Aquasec)"
+              echo "  Cost Estimation: $ENABLE_COST_ESTIMATION (default: false)"
+              echo ""
+              echo "Tools Executed:"
+              echo "  ✅ Checkov, TFSec, Terrascan"
+              echo "  ✅ Gitleaks, TruffleHog, Detect-Secrets"
+              echo "  ✅ Bandit, Semgrep, Safety"
+              echo "  ✅ TFLint, ShellCheck, YAMLLint"
+              if [ "$ENABLE_CONTAINER_SCAN" = "true" ]; then
+                echo "  ✅ Trivy, Hadolint (explicitly enabled)"
+              else
+                echo "  ⏭️  Trivy, Hadolint (skipped - using Aquasec)"
+              fi
+              if [ "$ENABLE_COST_ESTIMATION" = "true" ]; then
+                echo "  ✅ Infracost (explicitly enabled)"
+              else
+                echo "  ⏭️  Infracost (skipped - disabled by default)"
+              fi
+            displayName: 'Generate Summary'
+
+          # Publish all reports
+          - task: PublishPipelineArtifact@1
+            displayName: 'Publish Security Reports'
+            inputs:
+              targetPath: '$(Build.ArtifactStagingDirectory)'
+              artifactName: 'SecurityReports'
+              publishLocation: 'pipeline'

@@ -1,0 +1,28 @@
+#!/bin/bash
+
+BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+COMMIT_MSG=$(cat $1)
+# BRANCH_NAME != Empty and not in detached HEAD state (i.e rebase)
+# Allow to skip with SKIP_PRE_COMMIT_CHECK
+if [ ! -z "$BRANCH_NAME" ] && [ "$BRANCH_NAME" != "HEAD" ] && [ "$SKIP_PRE_COMMIT_CHECK" != 1 ]; then
+
+  PREFIX_PATTERN='^((\s+)?(#+)?(\s+)?[A-Za-z]{2,5}-[0-9]{1,5})|(\s+)?(JIRA:)(\s+)?[A-Za-z]{2,5}-[0-9]{1,5}'
+  BRANCH_PATTERN='^([A-Za-z]+\/)?([A-Za-z]{2,5}-[0-9]{1,5})'
+  [[ $BRANCH_NAME =~ $BRANCH_PATTERN ]]
+
+  TICKET=${BASH_REMATCH[0]}
+
+  [[ $COMMIT_MSG =~ $PREFIX_PATTERN ]]
+
+  MSG=${BASH_REMATCH[0]}
+
+  if [[ -z "$TICKET" ]] && [[ -z "$MSG" ]]; then
+      echo "VALID USAGE: [msg] JIRA:<TICKET> [msg]"
+      echo "             <TICKET>[msg]"
+      echo "             [#]+<TICKET> [msg]"
+      echo "EXAMPLE:##  PLAT-1234 / JIRA:PLAT-1234 / Initial commit for JIRA:PLAT-1234"
+      echo "ERROR: Ticket not found in branch name nor on commit msg.";
+      echo "ERROR: Please make sure the JIRA ticket is in the branch name or commit msg.";
+      echo "ERROR: Aborting commit..."; exit 1
+  fi
+fi

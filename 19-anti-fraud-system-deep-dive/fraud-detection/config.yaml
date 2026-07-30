@@ -1,0 +1,185 @@
+# Companion code for "The Backend of Luck" - Chapter 19, Anti-Fraud System Deep Dive.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# Fraud Detection System -- Default Configuration
+# Reference for Chapter 41: Anti-Fraud System Deep Dive
+
+environment: development
+log_level: INFO
+service_name: fraud-detection-system
+
+host: 0.0.0.0
+port: 8080
+
+# --- Kafka ---
+kafka:
+  bootstrap_servers: localhost:9092
+  security_protocol: PLAINTEXT
+  topics:
+    transactions: transactions
+    user_events: user-events
+    game_events: game-events
+    alerts: fraud-alerts
+
+schema_registry:
+  url: http://localhost:8081
+
+# --- PostgreSQL (TimescaleDB) ---
+database:
+  host: localhost
+  port: 5432
+  name: fraud_detection
+  user: fraud_user
+  password: ${DB_PASSWORD:?set DB_PASSWORD}
+  ssl_mode: prefer
+  pool_size: 20
+  max_overflow: 30
+
+# --- Redis ---
+redis:
+  host: localhost
+  port: 6379
+  db: 0
+  max_connections: 20
+
+# --- External enrichment APIs ---
+external_apis:
+  maxmind:
+    api_key: ""
+    enabled: false
+  fingerprintjs:
+    api_key: ""
+    enabled: false
+
+# --- Security ---
+security:
+  jwt_secret_key: ${JWT_SECRET_KEY:?set JWT_SECRET_KEY}
+  jwt_algorithm: HS256
+  jwt_expiration_hours: 24
+
+# --- Rate limiting ---
+rate_limiting:
+  requests_per_minute: 1000
+  burst_limit: 2000
+
+# --- Data validation ---
+data_validation:
+  max_transaction_amount: 1000000.0
+  min_transaction_amount: 0.01
+  allowed_currencies: [USD, EUR, GBP, CAD, AUD, CHF, JPY]
+
+# --- Feature engineering ---
+feature_engineering:
+  polars_max_threads: 4
+  window_sizes: [10, 50, 100, 500]
+  enable_ip_geolocation: true
+  enable_device_fingerprinting: true
+
+# --- ML model hyper-parameters ---
+ml_models:
+  isolation_forest:
+    contamination: 0.1
+    n_estimators: 100
+    random_state: 42
+  xgboost:
+    max_depth: 6
+    learning_rate: 0.1
+    n_estimators: 500
+    scale_pos_weight: 10
+    random_state: 42
+  random_forest:
+    n_estimators: 200
+    max_depth: 20
+    class_weight: balanced
+    random_state: 42
+  lstm:
+    sequence_length: 50
+    lstm_units: 64
+    dropout_rate: 0.2
+    epochs: 50
+    batch_size: 32
+
+# --- Alerting ---
+alerting:
+  channels:
+    email:
+      smtp_server: localhost
+      smtp_port: 1025
+      from_address: alerts@fraud-detection.local
+    slack:
+      webhook_url: ""
+      channel: "#fraud-alerts"
+    sms:
+      provider: twilio
+      account_sid: ""
+      auth_token: ""
+  rules:
+    fraud_score_high:
+      threshold: 0.9
+      severity: critical
+      channels: [email, slack, sms]
+    velocity_high:
+      threshold: 50
+      severity: high
+      channels: [email, slack]
+    amount_outlier:
+      threshold: 10000
+      severity: medium
+      channels: [email]
+
+# --- Monitoring ---
+monitoring:
+  prometheus:
+    port: 9090
+    scrape_interval: 15s
+  grafana:
+    port: 3000
+    admin_user: admin
+    admin_password: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD}
+  metrics:
+    request_duration_buckets: [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 2.0, 5.0]
+
+# --- Performance targets ---
+performance:
+  targets:
+    latency_p50: 10      # ms
+    latency_p95: 50
+    latency_p99: 100
+    throughput: 100000    # TPS
+    availability: 99.99  # %
+    error_rate: 0.01     # %
+
+# --- Compliance ---
+compliance:
+  gdpr:
+    enabled: true
+    data_retention_days: 2555   # 7 years
+  aml:
+    enabled: true
+    sanctions_check: true
+    pep_check: true
+    kyc_required: true
+  pci_dss:
+    enabled: true
+    encryption_required: true
+    tokenization_enabled: true
+
+# --- Backup & recovery ---
+backup_recovery:
+  database:
+    schedule: "0 2 * * *"
+    retention_days: 30
+    compression: true
+    encryption: true
+  redis:
+    schedule: "0 */4 * * *"
+    retention_hours: 24
+  logs:
+    retention_days: 90

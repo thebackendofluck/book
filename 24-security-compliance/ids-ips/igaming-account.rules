@@ -1,0 +1,200 @@
+# ==============================================================================
+# igaming-account.rules
+# Account Security Rules for iGaming Platforms
+# SID Range: 9000200 - 9000299
+#
+# Coverage:
+#   - Credential stuffing (high-velocity multi-username login attempts)
+#   - Account takeover cascade (password + email change via flowbits)
+#   - Session token reuse from multiple source IPs
+#   - Registration flooding / bot signup
+#   - Headless browser and automation framework detection
+#   - Known credential stuffing tool user-agents
+#   - Post-login immediate password change (ATO indicator)
+#
+# Deployment notes:
+#   - Rules 9000201, 9000202, 9000207 use flowbits and must be loaded together
+#   - Rule 9000203 (session from multiple IPs) requires application-layer
+#     session token visibility; ensure TLS inspection is in place
+#   - Automation UA rules (9000205, 9000206) should be tuned if your platform
+#     uses any legitimate headless browser pipelines (e.g., PDF generation)
+# ==============================================================================
+
+
+# ------------------------------------------------------------------------------
+# Section 1: Credential Stuffing
+# ------------------------------------------------------------------------------
+
+# SID 9000200 - Credential stuffing - many distinct usernames from same IP
+# Credential stuffing tools iterate through breach databases testing username/
+# password pairs. 15 distinct login attempts from one IP in 60 seconds far
+# exceeds human typing speed and indicates automated tooling.
+alert http $EXTERNAL_NET any -> $HTTP_SERVERS $HTTP_PORTS \
+    (msg:"IGAMING ACCOUNT Credential Stuffing - High Velocity Login Attempts"; \
+     flow:established,to_server; \
+     http.method; content:"POST"; \
+     http.uri; pcre:"/\/(login|signin|auth|authenticate|session)/"; \
+     http.request_body; content:"username"; \
+     threshold:type threshold, track by_src, count 15, seconds 60; \
+     classtype:attempted-user; \
+     sid:9000200; rev:1; \
+     metadata:affected_product iGaming_Platform, attack_target Authentication, \
+               created_at 2024_01_01, deployment Perimeter, \
+               performance_impact Low, signature_severity Critical, tag CredStuffing;)
+
+
+# ------------------------------------------------------------------------------
+# Section 2: Account Takeover - Password + Email Change Cascade
+# ------------------------------------------------------------------------------
+
+# SID 9000202 - Password change flowbit setter (noalert)
+# Sets a flowbit when a password change request is observed from a source IP.
+# This flowbit is checked by rule 9000201 for the cascade pattern.
+alert http $EXTERNAL_NET any -> $HTTP_SERVERS $HTTP_PORTS \
+    (msg:"IGAMING ACCOUNT ATO Password Change Flowbit Setter"; \
+     flow:established,to_server; \
+     http.method; content:"POST"; \
+     http.uri; pcre:"/\/(password|change.password|update.password|reset)/"; \
+     flowbits:set,igaming.account.password_changed; \
+     flowbits:noalert; \
+     classtype:attempted-user; \
+     sid:9000202; rev:1; \
+     metadata:affected_product iGaming_Platform, attack_target Authentication, \
+               created_at 2024_01_01, deployment Perimeter, \
+               performance_impact Low, signature_severity Informational, tag ATO;)
+
+# SID 9000201 - Account takeover - password + email change cascade
+# Changing both the password and the email address in quick succession is the
+# canonical account takeover lockout pattern. An attacker changes both to
+# prevent the legitimate owner from recovering the account.
+alert http $EXTERNAL_NET any -> $HTTP_SERVERS $HTTP_PORTS \
+    (msg:"IGAMING ACCOUNT ATO - Password and Email Change Cascade Detected"; \
+     flow:established,to_server; \
+     http.method; content:"POST"; \
+     http.uri; pcre:"/\/(email|profile|account.settings|update.email)/"; \
+     http.request_body; content:"email"; \
+     flowbits:isset,igaming.account.password_changed; \
+     classtype:attempted-user; \
+     sid:9000201; rev:1; \
+     metadata:affected_product iGaming_Platform, attack_target Authentication, \
+               created_at 2024_01_01, deployment Perimeter, \
+               performance_impact Low, signature_severity Critical, tag ATO;)
+
+
+# ------------------------------------------------------------------------------
+# Section 3: Session Token from Multiple IPs
+# ------------------------------------------------------------------------------
+
+# SID 9000203 - Session token from multiple IPs (session hijacking indicator)
+# A valid session token presented from more than one source IP in rapid
+# succession indicates session token theft and replay, a key ATO indicator.
+# Inspect the Authorization header or session cookie value.
+alert http $EXTERNAL_NET any -> $HTTP_SERVERS $HTTP_PORTS \
+    (msg:"IGAMING ACCOUNT Session Token Used From Multiple Source IPs"; \
+     flow:established,to_server; \
+     http.header; content:"Authorization"; content:"Bearer "; within:30; \
+     pcre:"/Authorization\s*:\s*Bearer\s+[A-Za-z0-9\-_\.]+/Hi"; \
+     threshold:type both, track by_rule, count 3, seconds 60; \
+     classtype:attempted-user; \
+     sid:9000203; rev:1; \
+     metadata:affected_product iGaming_Platform, attack_target Session_Management, \
+               created_at 2024_01_01, deployment Perimeter, \
+               performance_impact Medium, signature_severity High, tag SessionHijack;)
+
+
+# ------------------------------------------------------------------------------
+# Section 4: Registration Flooding / Bot Signup
+# ------------------------------------------------------------------------------
+
+# SID 9000204 - Registration flooding / bot signup
+# Mass account creation from a single IP is a prerequisite for bonus abuse,
+# multi-accounting, and money laundering via synthetic identities.
+# 10 registrations within 120 seconds from one IP is highly anomalous.
+alert http $EXTERNAL_NET any -> $HTTP_SERVERS $HTTP_PORTS \
+    (msg:"IGAMING ACCOUNT Registration Flooding - Bot Signup Detected"; \
+     flow:established,to_server; \
+     http.method; content:"POST"; \
+     http.uri; pcre:"/\/(register|signup|create.account|new.account)/"; \
+     threshold:type threshold, track by_src, count 10, seconds 120; \
+     classtype:policy-violation; \
+     sid:9000204; rev:1; \
+     metadata:affected_product iGaming_Platform, attack_target Registration, \
+               created_at 2024_01_01, deployment Perimeter, \
+               performance_impact Low, signature_severity High, tag BonusAbuse;)
+
+
+# ------------------------------------------------------------------------------
+# Section 5: Headless Browser / Automation Framework Detection
+# ------------------------------------------------------------------------------
+
+# SID 9000205 - Headless browser and automation framework user-agent detection
+# Selenium, Playwright, Puppeteer, and PhantomJS each expose identifiable
+# strings in their User-Agent or custom headers. These are used by fraud bots,
+# scrapers, and account takeover tools.
+alert http $EXTERNAL_NET any -> $HTTP_SERVERS $HTTP_PORTS \
+    (msg:"IGAMING ACCOUNT Automation Framework Detected - Headless Browser UA"; \
+     flow:established,to_server; \
+     http.user_agent; \
+     pcre:"/(HeadlessChrome|PhantomJS|Selenium|WebDriver|selenium|playwright|puppeteer|cypress|nightwatch)/i"; \
+     classtype:policy-violation; \
+     sid:9000205; rev:1; \
+     metadata:affected_product iGaming_Platform, attack_target All_Endpoints, \
+               created_at 2024_01_01, deployment Perimeter, \
+               performance_impact Low, signature_severity High, tag AutomationBot;)
+
+
+# ------------------------------------------------------------------------------
+# Section 6: Known Credential Stuffing Tool User-Agents
+# ------------------------------------------------------------------------------
+
+# SID 9000206 - Known credential stuffing tool user-agents
+# OpenBullet, Snipr, Sentry MBA, SilverBullet, and STORM are well-documented
+# credential stuffing platforms. Their default user-agents are identifiable
+# and should be blocked immediately when observed.
+alert http $EXTERNAL_NET any -> $HTTP_SERVERS $HTTP_PORTS \
+    (msg:"IGAMING ACCOUNT Known Credential Stuffing Tool User-Agent Detected"; \
+     flow:established,to_server; \
+     http.user_agent; \
+     pcre:"/(OpenBullet|SilverBullet|Snipr|SentryMBA|STORM|Vertex|Loli|Anomaly|Account.Checker|Cracking|Config.Maker)/i"; \
+     classtype:attempted-user; \
+     sid:9000206; rev:1; \
+     metadata:affected_product iGaming_Platform, attack_target Authentication, \
+               created_at 2024_01_01, deployment Perimeter, \
+               performance_impact Low, signature_severity Critical, tag CredStuffingTool;)
+
+
+# ------------------------------------------------------------------------------
+# Section 7: Post-Login Immediate Password Change (ATO Indicator)
+# ------------------------------------------------------------------------------
+
+# SID 9000207 - Successful login followed by immediate password change
+# Flowbit-based rule: detects the pattern of a successful authentication
+# response (HTTP 200 on login endpoint) immediately followed by a password
+# change request from the same source — a primary account takeover indicator.
+alert http $HTTP_SERVERS $HTTP_PORTS -> $EXTERNAL_NET any \
+    (msg:"IGAMING ACCOUNT ATO - Successful Login Followed by Immediate Password Change"; \
+     flow:established,to_client; \
+     http.stat_code; content:"200"; \
+     http.uri; pcre:"/\/(login|signin|auth|session)/"; \
+     flowbits:set,igaming.account.login_success; \
+     flowbits:noalert; \
+     classtype:attempted-user; \
+     sid:9000207; rev:2; \
+     metadata:affected_product iGaming_Platform, attack_target Authentication, \
+               created_at 2024_01_01, deployment Perimeter, \
+               performance_impact Low, signature_severity Informational, tag ATO;)
+
+# Companion rule: fires when password_changed flowbit is set after login_success
+# Note: load this after 9000207 and 9000202 to ensure flowbit availability.
+alert http $EXTERNAL_NET any -> $HTTP_SERVERS $HTTP_PORTS \
+    (msg:"IGAMING ACCOUNT ATO - Immediate Password Change After Login Confirmed"; \
+     flow:established,to_server; \
+     http.method; content:"POST"; \
+     http.uri; pcre:"/\/(password|change.password|update.password)/"; \
+     flowbits:isset,igaming.account.login_success; \
+     threshold:type threshold, track by_src, count 1, seconds 300; \
+     classtype:attempted-user; \
+     sid:9000208; rev:1; \
+     metadata:affected_product iGaming_Platform, attack_target Authentication, \
+               created_at 2024_01_01, deployment Perimeter, \
+               performance_impact Low, signature_severity Critical, tag ATO;)

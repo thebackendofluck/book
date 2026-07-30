@@ -1,0 +1,148 @@
+{
+  "name": "[book-cap24m §10.4] Incident Response: Wazuh + fail2ban -> pfSense ban",
+  "active": false,
+  "tags": [{"name": "book-cap24m"}, {"name": "incident-response"}, {"name": "secops"}],
+  "settings": {"executionOrder": "v1"},
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Incident Response (cap 24m §10.4)\n\n**Trigger:** Webhook from Wazuh SIEM (cap 24b) OR from fail2ban (ops-host).\n**Enrichment:** AbuseIPDB IP reputation lookup.\n**Action:** Auto-ban via pfSense REST API V2 (cap 24f).\n  - Endpoint: https://10.0.10.1/api/v2/firewall/alias\n  - Header: X-API-Key (NOT Bearer)\n  - Pattern: read-modify-PATCH alias `fail2ban_banned` (id=2)\n  - Then: POST /api/v2/firewall/apply\n**Escalation:** PagerDuty if severity >= high OR confidence_score >= 75.\n\n**Credentials:**\n- pfSense: API key from OpenBao secret/ops-host/pfsense.api_key\n- AbuseIPDB: API key from OpenBao\n- PagerDuty: routing key\n\n**This workflow is the LIVE end-to-end version validated 2026-04-26**\n(prior versions used pfSense V1 which returned 404 — pre-session fix).",
+        "height": 360,
+        "width": 420,
+        "color": 3
+      },
+      "id": "note-4",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [0, -300]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "incident-trigger",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "wh-1",
+      "name": "Webhook: incident-trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 200],
+      "webhookId": "incident-cap24m"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalize input from either Wazuh or fail2ban shape\nconst body = $json.body;\nconst src_ip = body.source_ip || body.data?.srcip || body.ip || body.host;\nconst severity = body.severity || (body.rule?.level >= 12 ? 'critical' : body.rule?.level >= 9 ? 'high' : 'medium');\nconst rule = body.rule?.description || body.jail || 'unknown';\nreturn [{ json: { src_ip, severity, rule, raw: body } }];"
+      },
+      "id": "norm-1",
+      "name": "Normalize Wazuh|fail2ban",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 200]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.abuseipdb.com/api/v2/check?ipAddress={{ $json.src_ip }}&maxAgeInDays=90",
+        "sendHeaders": true,
+        "headerParameters": {"parameters": [{"name": "Key", "value": "={{ $credentials.abuseipdbKey }}"}, {"name": "Accept", "value": "application/json"}]},
+        "options": {"timeout": 6000}
+      },
+      "id": "abuse-1",
+      "name": "AbuseIPDB Lookup",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [720, 200]
+    },
+    {
+      "parameters": {
+        "url": "=https://10.0.10.1/api/v2/firewall/aliases",
+        "sendHeaders": true,
+        "headerParameters": {"parameters": [{"name": "X-API-Key", "value": "={{ $credentials.pfsenseApiKey }}"}]},
+        "options": {"allowUnauthorizedCerts": true, "timeout": 6000}
+      },
+      "id": "pf-list",
+      "name": "pfSense: list aliases",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [960, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Compute next address[] for alias 'fail2ban_banned' (id=2)\nconst aliases = $node['pfSense: list aliases'].json.data;\nconst alias = aliases.find(a => a.name === 'fail2ban_banned');\nif (!alias) throw new Error(\"alias 'fail2ban_banned' missing — create via cap 24m §13.4\");\nconst src_ip = $node['Normalize Wazuh|fail2ban'].json.src_ip;\nconst newAddr = [...new Set([...alias.address, src_ip])];\nreturn [{ json: { id: alias.id, address: newAddr, src_ip, abuse: $node['AbuseIPDB Lookup'].json.data, severity: $node['Normalize Wazuh|fail2ban'].json.severity } }];"
+      },
+      "id": "compute-1",
+      "name": "Compute PATCH body",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1200, 200]
+    },
+    {
+      "parameters": {
+        "url": "=https://10.0.10.1/api/v2/firewall/alias",
+        "method": "PATCH",
+        "sendHeaders": true,
+        "headerParameters": {"parameters": [{"name": "X-API-Key", "value": "={{ $credentials.pfsenseApiKey }}"}, {"name": "Content-Type", "value": "application/json"}]},
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"id\": {{ $json.id }},\n  \"address\": {{ JSON.stringify($json.address) }}\n}",
+        "options": {"allowUnauthorizedCerts": true, "timeout": 8000}
+      },
+      "id": "pf-patch",
+      "name": "pfSense: PATCH alias",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1440, 200]
+    },
+    {
+      "parameters": {
+        "url": "=https://10.0.10.1/api/v2/firewall/apply",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {"parameters": [{"name": "X-API-Key", "value": "={{ $credentials.pfsenseApiKey }}"}]},
+        "options": {"allowUnauthorizedCerts": true, "timeout": 10000}
+      },
+      "id": "pf-apply",
+      "name": "pfSense: apply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1680, 200]
+    },
+    {
+      "parameters": {
+        "rules": {"values": [{"conditions": {"options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict"}, "conditions": [{"leftValue": "={{ $node['Normalize Wazuh|fail2ban'].json.severity }}", "rightValue": "high", "operator": {"type": "string", "operation": "equals"}}, {"leftValue": "={{ $node['Normalize Wazuh|fail2ban'].json.severity }}", "rightValue": "critical", "operator": {"type": "string", "operation": "equals"}}], "combinator": "or"}, "outputKey": "page"}]},
+        "options": {"fallbackOutput": "extra"}
+      },
+      "id": "switch-page",
+      "name": "Severity >= high?",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [1920, 200]
+    },
+    {
+      "parameters": {
+        "url": "https://events.pagerduty.com/v2/enqueue",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"routing_key\": \"{{ $credentials.pagerdutyRoutingKey }}\",\n  \"event_action\": \"trigger\",\n  \"payload\": {\n    \"summary\": \"[book-cap24m] {{ $node['Normalize Wazuh|fail2ban'].json.severity }} : {{ $node['Normalize Wazuh|fail2ban'].json.rule }} from {{ $node['Normalize Wazuh|fail2ban'].json.src_ip }}\",\n    \"source\": \"n8n-incident-response\",\n    \"severity\": \"{{ $node['Normalize Wazuh|fail2ban'].json.severity }}\"\n  }\n}",
+        "options": {}
+      },
+      "id": "pd-1",
+      "name": "Page On-Call (PagerDuty)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2160, 80]
+    }
+  ],
+  "connections": {
+    "Webhook: incident-trigger": {"main": [[{"node": "Normalize Wazuh|fail2ban", "type": "main", "index": 0}]]},
+    "Normalize Wazuh|fail2ban": {"main": [[{"node": "AbuseIPDB Lookup", "type": "main", "index": 0}]]},
+    "AbuseIPDB Lookup": {"main": [[{"node": "pfSense: list aliases", "type": "main", "index": 0}]]},
+    "pfSense: list aliases": {"main": [[{"node": "Compute PATCH body", "type": "main", "index": 0}]]},
+    "Compute PATCH body": {"main": [[{"node": "pfSense: PATCH alias", "type": "main", "index": 0}]]},
+    "pfSense: PATCH alias": {"main": [[{"node": "pfSense: apply", "type": "main", "index": 0}]]},
+    "pfSense: apply": {"main": [[{"node": "Severity >= high?", "type": "main", "index": 0}]]},
+    "Severity >= high?": {"main": [[{"node": "Page On-Call (PagerDuty)", "type": "main", "index": 0}]]}
+  }
+}

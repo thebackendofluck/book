@@ -1,0 +1,881 @@
+# Companion code for "The Backend of Luck" - Chapter 31, Performance Benchmarks and Metrics.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# =============================================================================
+# Full Prometheus + Grafana + AlertManager Stack for Casino Platforms
+# =============================================================================
+# Deploy: kubectl apply -f prometheus-stack.yaml
+# Or use with kube-prometheus-stack Helm chart for production deployments.
+#
+# This manifest deploys:
+#   - Prometheus server with casino-specific scrape targets
+#   - Grafana with pre-configured datasources
+#   - AlertManager with PagerDuty/Slack/email routing
+#   - Node Exporter for host-level metrics
+#   - Blackbox Exporter for endpoint probing
+#
+# Namespace: monitoring
+# =============================================================================
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    app.kubernetes.io/part-of: casino-monitoring
+
+---
+# =============================================================================
+# Prometheus Configuration
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: monitoring
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+      scrape_timeout: 10s
+      external_labels:
+        cluster: casino-production
+        environment: production
+
+    rule_files:
+      - /etc/prometheus/rules/*.yaml
+
+    alerting:
+      alertmanagers:
+        - static_configs:
+            - targets: ['alertmanager:9093']
+
+    scrape_configs:
+      # -- Prometheus self-monitoring --
+      - job_name: 'prometheus'
+        static_configs:
+          - targets: ['localhost:9090']
+
+      # -- Casino API Gateway --
+      - job_name: 'casino-api-gateway'
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names: ['casino-platform']
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            regex: api-gateway
+            action: keep
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+            target_label: __address__
+            replacement: ${1}:${2}
+            regex: (.+);(.+)
+        metrics_path: /metrics
+
+      # -- Game Servers (slots, table games, live dealer) --
+      - job_name: 'game-servers'
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names: ['casino-games']
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app_type]
+            regex: game-server
+            action: keep
+          - source_labels: [__meta_kubernetes_pod_label_game_type]
+            target_label: game_type
+        metrics_path: /actuator/prometheus
+
+      # -- Wallet / Payment Service --
+      - job_name: 'wallet-service'
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names: ['casino-payments']
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            regex: wallet-service
+            action: keep
+        metrics_path: /metrics
+
+      # -- Bonus Engine --
+      - job_name: 'bonus-engine'
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names: ['casino-platform']
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            regex: bonus-engine
+            action: keep
+        metrics_path: /metrics
+
+      # -- RNG Service --
+      - job_name: 'rng-service'
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names: ['casino-games']
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            regex: rng-service
+            action: keep
+        metrics_path: /metrics
+        scrape_interval: 5s  # Higher frequency for RNG monitoring
+
+      # -- PostgreSQL (via postgres_exporter) --
+      - job_name: 'postgres'
+        static_configs:
+          - targets:
+              - 'postgres-exporter-primary:9187'
+              - 'postgres-exporter-replica-1:9187'
+              - 'postgres-exporter-replica-2:9187'
+            labels:
+              service: postgresql
+
+      # -- Redis (via redis_exporter) --
+      - job_name: 'redis'
+        static_configs:
+          - targets:
+              - 'redis-exporter-sessions:9121'
+              - 'redis-exporter-cache:9121'
+              - 'redis-exporter-pubsub:9121'
+            labels:
+              service: redis
+
+      # -- Kafka (via kafka_exporter) --
+      - job_name: 'kafka'
+        static_configs:
+          - targets: ['kafka-exporter:9308']
+          labels:
+            service: kafka
+
+      # -- Node Exporter (host metrics) --
+      - job_name: 'node-exporter'
+        kubernetes_sd_configs:
+          - role: node
+        relabel_configs:
+          - source_labels: [__address__]
+            regex: '(.+):10250'
+            replacement: '${1}:9100'
+            target_label: __address__
+
+      # -- Blackbox Exporter (synthetic probes) --
+      - job_name: 'blackbox-http'
+        metrics_path: /probe
+        params:
+          module: [http_2xx]
+        static_configs:
+          - targets:
+              - https://www.casino.example.com
+              - https://api.casino.example.com/health
+              - https://ws.casino.example.com/health
+              - https://cdn.casino.example.com/health
+              - https://backoffice.casino.example.com/health
+            labels:
+              probe_type: http
+        relabel_configs:
+          - source_labels: [__address__]
+            target_label: __param_target
+          - source_labels: [__param_target]
+            target_label: instance
+          - target_label: __address__
+            replacement: blackbox-exporter:9115
+
+      - job_name: 'blackbox-tcp'
+        metrics_path: /probe
+        params:
+          module: [tcp_connect]
+        static_configs:
+          - targets:
+              - ws.casino.example.com:443
+              - db-primary.casino.internal:5432
+              - redis-primary.casino.internal:6379
+              - kafka-broker-1.casino.internal:9092
+            labels:
+              probe_type: tcp
+        relabel_configs:
+          - source_labels: [__address__]
+            target_label: __param_target
+          - source_labels: [__param_target]
+            target_label: instance
+          - target_label: __address__
+            replacement: blackbox-exporter:9115
+
+      # -- JVM metrics from game servers --
+      - job_name: 'jvm-metrics'
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names: ['casino-games']
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_jvm]
+            regex: "true"
+            action: keep
+        metrics_path: /actuator/prometheus
+        scrape_interval: 10s
+
+---
+# =============================================================================
+# Prometheus Deployment
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: monitoring
+  labels:
+    app: prometheus
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      serviceAccountName: prometheus
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        fsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v3.13.1
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          args:
+            - '--config.file=/etc/prometheus/prometheus.yml'
+            - '--storage.tsdb.path=/prometheus'
+            - '--storage.tsdb.retention.time=30d'
+            - '--storage.tsdb.retention.size=50GB'
+            # Config reload endpoint. Keep it reachable only from the
+            # cluster network; never expose it through the ingress.
+            - '--web.enable-lifecycle'
+            # --web.enable-admin-api is deliberately NOT set: it allows any
+            # caller that reaches the endpoint to delete time series.
+            - '--web.external-url=https://prometheus.casino.example.com'
+          ports:
+            - containerPort: 9090
+              name: http
+          resources:
+            requests:
+              cpu: "1"
+              memory: 4Gi
+            limits:
+              cpu: "4"
+              memory: 8Gi
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus
+            - name: rules
+              mountPath: /etc/prometheus/rules
+            - name: storage
+              mountPath: /prometheus
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: 9090
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: 9090
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: config
+          configMap:
+            name: prometheus-config
+        - name: rules
+          configMap:
+            name: casino-recording-rules
+        - name: storage
+          persistentVolumeClaim:
+            claimName: prometheus-data
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: prometheus-data
+  namespace: monitoring
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: gp3-encrypted
+  resources:
+    requests:
+      storage: 100Gi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: monitoring
+spec:
+  selector:
+    app: prometheus
+  ports:
+    - port: 9090
+      targetPort: 9090
+      name: http
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus
+  namespace: monitoring
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: prometheus
+rules:
+  - apiGroups: [""]
+    resources: [nodes, services, endpoints, pods]
+    verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [configmaps]
+    verbs: [get]
+  - nonResourceURLs: [/metrics]
+    verbs: [get]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: prometheus
+subjects:
+  - kind: ServiceAccount
+    name: prometheus
+    namespace: monitoring
+
+---
+# =============================================================================
+# AlertManager Configuration
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager-config
+  namespace: monitoring
+data:
+  alertmanager.yml: |
+    global:
+      resolve_timeout: 5m
+      smtp_smarthost: 'smtp.casino.example.com:587'
+      smtp_from: 'alerts@casino.example.com'
+      smtp_auth_username: 'alerts@casino.example.com'
+      smtp_auth_password_file: /etc/alertmanager/secrets/smtp-password
+      pagerduty_url: 'https://events.pagerduty.com/v2/enqueue'
+      slack_api_url_file: /etc/alertmanager/secrets/slack-webhook
+
+    templates:
+      - '/etc/alertmanager/templates/*.tmpl'
+
+    route:
+      group_by: ['alertname', 'service', 'severity']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+      receiver: 'default-receiver'
+      routes:
+        # Critical: Game server down, payment failures, RNG issues
+        - match:
+            severity: critical
+          receiver: 'pagerduty-critical'
+          group_wait: 10s
+          repeat_interval: 15m
+
+        # High: Performance degradation, SLO violations
+        - match:
+            severity: high
+          receiver: 'pagerduty-high'
+          group_wait: 30s
+          repeat_interval: 1h
+
+        # Warning: Capacity issues, cache misses, slow queries
+        - match:
+            severity: warning
+          receiver: 'slack-warnings'
+          repeat_interval: 4h
+
+        # Regulatory: Compliance-related alerts go to compliance team
+        - match:
+            category: regulatory
+          receiver: 'compliance-team'
+          group_wait: 10s
+          repeat_interval: 30m
+
+    receivers:
+      - name: 'default-receiver'
+        slack_configs:
+          - channel: '#casino-alerts'
+            title: '{{ .GroupLabels.alertname }}'
+            text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
+
+      - name: 'pagerduty-critical'
+        pagerduty_configs:
+          - routing_key_file: /etc/alertmanager/secrets/pagerduty-critical-key
+            severity: critical
+            description: '{{ .GroupLabels.alertname }}: {{ .CommonAnnotations.summary }}'
+            details:
+              service: '{{ .GroupLabels.service }}'
+              environment: production
+        slack_configs:
+          - channel: '#casino-critical'
+            title: 'CRITICAL: {{ .GroupLabels.alertname }}'
+
+      - name: 'pagerduty-high'
+        pagerduty_configs:
+          - routing_key_file: /etc/alertmanager/secrets/pagerduty-high-key
+            severity: error
+
+      - name: 'slack-warnings'
+        slack_configs:
+          - channel: '#casino-warnings'
+            title: 'Warning: {{ .GroupLabels.alertname }}'
+            text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
+
+      - name: 'compliance-team'
+        email_configs:
+          - to: 'compliance@casino.example.com'
+            headers:
+              Subject: '[COMPLIANCE ALERT] {{ .GroupLabels.alertname }}'
+        slack_configs:
+          - channel: '#compliance-alerts'
+
+    inhibit_rules:
+      - source_match:
+          severity: critical
+        target_match:
+          severity: warning
+        equal: ['alertname', 'service']
+      - source_match:
+          severity: critical
+        target_match:
+          severity: high
+        equal: ['alertname', 'service']
+
+---
+# =============================================================================
+# AlertManager Deployment
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alertmanager
+  namespace: monitoring
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: alertmanager
+  template:
+    metadata:
+      labels:
+        app: alertmanager
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        fsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: alertmanager
+          image: prom/alertmanager:v0.33.1
+          args:
+            - '--config.file=/etc/alertmanager/alertmanager.yml'
+            - '--storage.path=/alertmanager'
+            - '--cluster.listen-address=0.0.0.0:9094'
+            - '--web.external-url=https://alertmanager.casino.example.com'
+          ports:
+            - containerPort: 9093
+              name: http
+            - containerPort: 9094
+              name: cluster
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: config
+              mountPath: /etc/alertmanager
+            - name: secrets
+              mountPath: /etc/alertmanager/secrets
+              readOnly: true
+            - name: storage
+              mountPath: /alertmanager
+      volumes:
+        - name: config
+          configMap:
+            name: alertmanager-config
+        - name: storage
+          emptyDir: {}
+        - name: secrets
+          secret:
+            secretName: alertmanager-secrets
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alertmanager
+  namespace: monitoring
+spec:
+  selector:
+    app: alertmanager
+  ports:
+    - port: 9093
+      targetPort: 9093
+      name: http
+
+---
+# =============================================================================
+# Grafana Deployment
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  namespace: monitoring
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://prometheus:9090
+        isDefault: true
+        editable: false
+      - name: AlertManager
+        type: alertmanager
+        access: proxy
+        url: http://alertmanager:9093
+        editable: false
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 472
+        runAsGroup: 472
+        fsGroup: 472
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: grafana
+          image: grafana/grafana:13.1.1
+          env:
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-secrets
+                  key: admin-password
+            - name: GF_SERVER_ROOT_URL
+              value: https://grafana.casino.example.com
+            - name: GF_AUTH_GENERIC_OAUTH_ENABLED
+              value: "true"
+          ports:
+            - containerPort: 3000
+              name: http
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          volumeMounts:
+            - name: datasources
+              mountPath: /etc/grafana/provisioning/datasources
+            - name: dashboards-provider
+              mountPath: /etc/grafana/provisioning/dashboards
+            - name: dashboards
+              mountPath: /var/lib/grafana/dashboards
+            - name: storage
+              mountPath: /var/lib/grafana
+            - name: tmp
+              mountPath: /tmp
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: datasources
+          configMap:
+            name: grafana-datasources
+        - name: dashboards-provider
+          configMap:
+            name: grafana-dashboard-provider
+        - name: dashboards
+          configMap:
+            name: grafana-performance-dashboard
+        - name: storage
+          persistentVolumeClaim:
+            claimName: grafana-data
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-provider
+  namespace: monitoring
+data:
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: 'casino-dashboards'
+        orgId: 1
+        folder: 'Casino Performance'
+        type: file
+        disableDeletion: false
+        updateIntervalSeconds: 30
+        options:
+          path: /var/lib/grafana/dashboards
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: grafana-data
+  namespace: monitoring
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: gp3-encrypted
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: monitoring
+spec:
+  selector:
+    app: grafana
+  ports:
+    - port: 3000
+      targetPort: 3000
+      name: http
+
+---
+# =============================================================================
+# Blackbox Exporter for Synthetic Probes
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: blackbox-config
+  namespace: monitoring
+data:
+  blackbox.yml: |
+    modules:
+      http_2xx:
+        prober: http
+        timeout: 5s
+        http:
+          valid_http_versions: ["HTTP/1.1", "HTTP/2.0"]
+          valid_status_codes: [200]
+          method: GET
+          follow_redirects: true
+          preferred_ip_protocol: ip4
+          tls_config:
+            insecure_skip_verify: false
+      tcp_connect:
+        prober: tcp
+        timeout: 5s
+      icmp_ping:
+        prober: icmp
+        timeout: 5s
+        icmp:
+          preferred_ip_protocol: ip4
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: blackbox-exporter
+  namespace: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: blackbox-exporter
+  template:
+    metadata:
+      labels:
+        app: blackbox-exporter
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        fsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: blackbox-exporter
+          image: prom/blackbox-exporter:v0.28.0
+          args:
+            - '--config.file=/config/blackbox.yml'
+          ports:
+            - containerPort: 9115
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: config
+              mountPath: /config
+      volumes:
+        - name: config
+          configMap:
+            name: blackbox-config
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: blackbox-exporter
+  namespace: monitoring
+spec:
+  selector:
+    app: blackbox-exporter
+  ports:
+    - port: 9115
+      targetPort: 9115
+
+---
+# =============================================================================
+# Node Exporter DaemonSet
+# =============================================================================
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-exporter
+  namespace: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: node-exporter
+  template:
+    metadata:
+      labels:
+        app: node-exporter
+    spec:
+      hostPID: true
+      hostNetwork: true
+      tolerations:
+        - operator: Exists
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: node-exporter
+          image: prom/node-exporter:v1.12.1
+          args:
+            - '--path.procfs=/host/proc'
+            - '--path.sysfs=/host/sys'
+            - '--path.rootfs=/host/root'
+            - '--collector.filesystem.mount-points-exclude=^/(dev|proc|sys|var/lib/docker/.+)($|/)'
+          ports:
+            - containerPort: 9100
+              hostPort: 9100
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: proc
+              mountPath: /host/proc
+              readOnly: true
+            - name: sys
+              mountPath: /host/sys
+              readOnly: true
+            - name: root
+              mountPath: /host/root
+              readOnly: true
+      volumes:
+        - name: proc
+          hostPath:
+            path: /proc
+        - name: sys
+          hostPath:
+            path: /sys
+        - name: root
+          hostPath:
+            path: /

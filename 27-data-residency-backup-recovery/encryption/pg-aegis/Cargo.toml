@@ -1,0 +1,43 @@
+[package]
+name = "pg_aegis"
+version = "0.1.0"
+edition = "2021"
+description = "PostgreSQL extension: AEGIS-128L AEAD column encryption, a high-throughput replacement for pgcrypto AES-256-CBC."
+license = "Apache-2.0"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[[bin]]
+name = "pgrx_embed_pg_aegis"
+path = "src/bin/pgrx_embed.rs"
+
+[features]
+default = ["pg16"]
+pg14 = ["pgrx/pg14", "pgrx-tests/pg14"]
+pg15 = ["pgrx/pg15", "pgrx-tests/pg15"]
+pg16 = ["pgrx/pg16", "pgrx-tests/pg16"]
+pg17 = ["pgrx/pg17", "pgrx-tests/pg17"]
+pg18 = ["pgrx/pg18", "pgrx-tests/pg18"]
+pg_test = []
+
+[dependencies]
+pgrx = "=0.19.1"
+aegis = "0.9"
+chacha20poly1305 = "0.11"
+rand = "0.10"
+base64 = "0.22"
+zeroize = { version = "1.7", features = ["derive"] }
+thiserror = "2.0"
+
+[dev-dependencies]
+pgrx-tests = "=0.19.1"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "unwind"
+
+[profile.dev]
+panic = "unwind"

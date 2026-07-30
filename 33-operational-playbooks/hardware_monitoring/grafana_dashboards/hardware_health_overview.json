@@ -1,0 +1,88 @@
+{
+  "dashboard": {
+    "title": "Hardware Health Overview",
+    "tags": ["hardware", "monitoring", "igaming"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "title": "Risk Score Distribution",
+        "type": "bargauge",
+        "targets": [
+          {
+            "expr": "count by (risk_level) (hardware_risk_score)",
+            "legendFormat": "{{ risk_level }}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "green", "value": null },
+                { "color": "yellow", "value": 20 },
+                { "color": "orange", "value": 40 },
+                { "color": "red", "value": 70 }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "title": "Component Age Distribution",
+        "type": "histogram",
+        "targets": [
+          {
+            "expr": "hardware_age_days",
+            "legendFormat": "{{ component_type }}"
+          }
+        ]
+      },
+      {
+        "title": "Disk Wear Levels",
+        "type": "table",
+        "targets": [
+          {
+            "expr": "hardware_wear_level{component_type=\"disk\"}",
+            "legendFormat": "{{ component_id }}"
+          }
+        ],
+        "fieldConfig": {
+          "overrides": [
+            {
+              "matcher": { "id": "byName", "options": "value" },
+              "properties": [
+                {
+                  "id": "thresholds",
+                  "value": {
+                    "mode": "absolute",
+                    "steps": [
+                      { "color": "green", "value": null },
+                      { "color": "yellow", "value": 70 },
+                      { "color": "orange", "value": 80 },
+                      { "color": "red", "value": 90 }
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "title": "ML Failure Predictions",
+        "type": "timeSeries",
+        "targets": [
+          {
+            "expr": "ml_failure_probability",
+            "legendFormat": "{{ component_type }}/{{ component_id }}"
+          }
+        ]
+      }
+    ],
+    "time": { "from": "now-1h", "to": "now" },
+    "refresh": "30s"
+  }
+}

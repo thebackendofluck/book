@@ -1,0 +1,1 @@
+tid=U202B39A052C776F4E93&mc=0&mc_desc=&dead=&watch=&PEP=&err_code={{regexExtract (regexExtract request.body 'address=kyc_fail_\d{1,4}') '\d{1,4}'}}&err_desc=&KYC_Result=&KYC=N

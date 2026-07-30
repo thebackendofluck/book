@@ -1,0 +1,399 @@
+-- Fraud Detection System Database Initialization
+-- TimescaleDB setup for time-series data
+
+-- Enable TimescaleDB extension
+CREATE EXTENSION IF NOT EXISTS timescaledb;
+
+-- Create schemas
+CREATE SCHEMA IF NOT EXISTS fraud_detection;
+CREATE SCHEMA IF NOT EXISTS audit;
+CREATE SCHEMA IF NOT EXISTS features;
+
+-- Set search path
+SET search_path TO fraud_detection, public;
+
+-- Players table
+CREATE TABLE IF NOT EXISTS players (
+    player_id VARCHAR(50) PRIMARY KEY,
+    registration_date TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    last_login TIMESTAMP WITH TIME ZONE,
+    email VARCHAR(255),
+    phone VARCHAR(50),
+    country VARCHAR(3),
+    date_of_birth DATE,
+    vip_status BOOLEAN DEFAULT FALSE,
+    risk_score DECIMAL(5,4) DEFAULT 0.5,
+    total_deposits DECIMAL(15,2) DEFAULT 0,
+    total_withdrawals DECIMAL(15,2) DEFAULT 0,
+    account_status VARCHAR(20) DEFAULT 'active',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Transactions table (hypertable for time-series)
+CREATE TABLE IF NOT EXISTS transactions (
+    transaction_id VARCHAR(100) NOT NULL,
+    player_id VARCHAR(50) NOT NULL REFERENCES players(player_id),
+    amount DECIMAL(15,2) NOT NULL,
+    currency VARCHAR(3) DEFAULT 'USD',
+    transaction_type VARCHAR(20) NOT NULL, -- 'deposit', 'withdrawal', 'bet', 'win'
+    payment_method VARCHAR(50),
+    game_type VARCHAR(50),
+    game_session_id VARCHAR(100),
+    status VARCHAR(20) DEFAULT 'pending', -- 'pending', 'completed', 'failed', 'cancelled'
+    external_transaction_id VARCHAR(100),
+    ip_address INET,
+    user_agent TEXT,
+    device_fingerprint VARCHAR(255),
+    location_data JSONB,
+    risk_score DECIMAL(5,4),
+    fraud_flags JSONB DEFAULT '[]'::jsonb,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    processed_at TIMESTAMP WITH TIME ZONE,
+    completed_at TIMESTAMP WITH TIME ZONE,
+    PRIMARY KEY (transaction_id, created_at)
+);
+
+-- Convert transactions to hypertable
+SELECT create_hypertable('transactions', 'created_at', if_not_exists => TRUE);
+
+-- Create indexes for transactions
+CREATE INDEX IF NOT EXISTS idx_transactions_player_id ON transactions (player_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_created_at ON transactions (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_transactions_status ON transactions (status);
+CREATE INDEX IF NOT EXISTS idx_transactions_type ON transactions (transaction_type);
+CREATE INDEX IF NOT EXISTS idx_transactions_risk_score ON transactions (risk_score);
+CREATE INDEX IF NOT EXISTS idx_transactions_player_created ON transactions (player_id, created_at DESC);
+
+-- Game sessions table
+CREATE TABLE IF NOT EXISTS game_sessions (
+    session_id VARCHAR(100) NOT NULL,
+    player_id VARCHAR(50) NOT NULL REFERENCES players(player_id),
+    game_type VARCHAR(50) NOT NULL,
+    start_time TIMESTAMP WITH TIME ZONE NOT NULL,
+    end_time TIMESTAMP WITH TIME ZONE,
+    duration_minutes INTEGER,
+    total_bets DECIMAL(15,2) DEFAULT 0,
+    total_wins DECIMAL(15,2) DEFAULT 0,
+    net_result DECIMAL(15,2) DEFAULT 0,
+    session_risk_score DECIMAL(5,4),
+    ip_address INET,
+    device_fingerprint VARCHAR(255),
+    location_data JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    PRIMARY KEY (session_id, start_time)
+);
+
+-- Convert game_sessions to hypertable
+SELECT create_hypertable('game_sessions', 'start_time', if_not_exists => TRUE);
+
+-- Create indexes for game sessions
+CREATE INDEX IF NOT EXISTS idx_game_sessions_player_id ON game_sessions (player_id);
+CREATE INDEX IF NOT EXISTS idx_game_sessions_start_time ON game_sessions (start_time DESC);
+CREATE INDEX IF NOT EXISTS idx_game_sessions_game_type ON game_sessions (game_type);
+
+-- Fraud alerts table
+CREATE TABLE IF NOT EXISTS fraud_alerts (
+    alert_id VARCHAR(100) PRIMARY KEY,
+    rule_id VARCHAR(100) NOT NULL,
+    alert_type VARCHAR(50) NOT NULL,
+    severity VARCHAR(20) NOT NULL DEFAULT 'medium',
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    player_id VARCHAR(50) REFERENCES players(player_id),
+    transaction_id VARCHAR(100),  -- references transactions(transaction_id) - no FK due to composite PK
+    session_id VARCHAR(100),      -- references game_sessions(session_id) - no FK due to composite PK
+    alert_data JSONB,
+    status VARCHAR(20) DEFAULT 'open', -- 'open', 'investigating', 'resolved', 'dismissed'
+    assigned_to VARCHAR(100),
+    resolved_at TIMESTAMP WITH TIME ZONE,
+    resolution_notes TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Create indexes for fraud alerts
+CREATE INDEX IF NOT EXISTS idx_fraud_alerts_player_id ON fraud_alerts (player_id);
+CREATE INDEX IF NOT EXISTS idx_fraud_alerts_status ON fraud_alerts (status);
+CREATE INDEX IF NOT EXISTS idx_fraud_alerts_created_at ON fraud_alerts (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_fraud_alerts_severity ON fraud_alerts (severity);
+
+-- Cases table for investigation management
+CREATE TABLE IF NOT EXISTS investigation_cases (
+    case_id VARCHAR(100) PRIMARY KEY,
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    priority VARCHAR(20) DEFAULT 'medium',
+    status VARCHAR(20) DEFAULT 'open', -- 'open', 'investigating', 'resolved', 'closed'
+    assigned_to VARCHAR(100),
+    created_by VARCHAR(100) NOT NULL,
+    resolved_at TIMESTAMP WITH TIME ZONE,
+    resolution TEXT,
+    sla_deadline TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Case alerts junction table
+CREATE TABLE IF NOT EXISTS case_alerts (
+    case_id VARCHAR(100) REFERENCES investigation_cases(case_id),
+    alert_id VARCHAR(100) REFERENCES fraud_alerts(alert_id),
+    added_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    PRIMARY KEY (case_id, alert_id)
+);
+
+-- Case notes table
+CREATE TABLE IF NOT EXISTS case_notes (
+    note_id SERIAL PRIMARY KEY,
+    case_id VARCHAR(100) NOT NULL REFERENCES investigation_cases(case_id),
+    user_id VARCHAR(100) NOT NULL,
+    note_text TEXT NOT NULL,
+    note_type VARCHAR(50) DEFAULT 'general', -- 'general', 'evidence', 'resolution'
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Features schema tables
+SET search_path TO features, public;
+
+-- Player behavior features
+CREATE TABLE IF NOT EXISTS player_behavior_features (
+    player_id VARCHAR(50) PRIMARY KEY,
+    feature_timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    avg_session_duration DECIMAL(10,2),
+    session_duration_std DECIMAL(10,2),
+    total_sessions INTEGER DEFAULT 0,
+    avg_bet_amount DECIMAL(15,2),
+    bet_amount_volatility DECIMAL(15,2),
+    win_ratio DECIMAL(5,4),
+    games_played_unique INTEGER DEFAULT 0,
+    last_activity TIMESTAMP WITH TIME ZONE,
+    risk_trend DECIMAL(5,4),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Transaction features
+CREATE TABLE IF NOT EXISTS transaction_features (
+    player_id VARCHAR(50) PRIMARY KEY,
+    feature_timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    total_deposits DECIMAL(15,2) DEFAULT 0,
+    total_withdrawals DECIMAL(15,2) DEFAULT 0,
+    avg_deposit_amount DECIMAL(15,2),
+    avg_withdrawal_amount DECIMAL(15,2),
+    deposit_withdrawal_ratio DECIMAL(5,4),
+    unique_payment_methods INTEGER DEFAULT 0,
+    transactions_last_24h INTEGER DEFAULT 0,
+    transactions_last_7d INTEGER DEFAULT 0,
+    velocity_score DECIMAL(5,4),
+    chargeback_count INTEGER DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Network features
+CREATE TABLE IF NOT EXISTS network_features (
+    player_id VARCHAR(50) PRIMARY KEY,
+    feature_timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    unique_ips INTEGER DEFAULT 0,
+    unique_devices INTEGER DEFAULT 0,
+    connection_count INTEGER DEFAULT 0,
+    suspicious_connections INTEGER DEFAULT 0,
+    ip_risk_score DECIMAL(5,4),
+    device_risk_score DECIMAL(5,4),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Audit schema tables
+SET search_path TO audit, public;
+
+-- Audit log table
+CREATE TABLE IF NOT EXISTS audit_log (
+    audit_id BIGSERIAL,
+    table_name VARCHAR(100) NOT NULL,
+    record_id VARCHAR(100),
+    operation VARCHAR(10) NOT NULL, -- INSERT, UPDATE, DELETE
+    old_values JSONB,
+    new_values JSONB,
+    user_id VARCHAR(100),
+    session_id VARCHAR(100),
+    ip_address INET,
+    user_agent TEXT,
+    timestamp TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (audit_id, timestamp)
+);
+
+-- Convert audit_log to hypertable
+SELECT create_hypertable('audit.audit_log', 'timestamp', if_not_exists => TRUE);
+
+-- Create indexes for audit log
+CREATE INDEX IF NOT EXISTS idx_audit_log_table_record ON audit.audit_log (table_name, record_id);
+CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp ON audit.audit_log (timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_log_user ON audit.audit_log (user_id);
+
+-- System events table
+CREATE TABLE IF NOT EXISTS system_events (
+    event_id BIGSERIAL,
+    event_type VARCHAR(100) NOT NULL,
+    severity VARCHAR(20) DEFAULT 'info',
+    message TEXT NOT NULL,
+    details JSONB,
+    source VARCHAR(100),
+    timestamp TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (event_id, timestamp)
+);
+
+-- Convert system_events to hypertable
+SELECT create_hypertable('audit.system_events', 'timestamp', if_not_exists => TRUE);
+
+-- Create indexes for system events
+CREATE INDEX IF NOT EXISTS idx_system_events_type ON audit.system_events (event_type);
+CREATE INDEX IF NOT EXISTS idx_system_events_timestamp ON audit.system_events (timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_system_events_severity ON audit.system_events (severity);
+
+-- Functions for audit triggers
+CREATE OR REPLACE FUNCTION audit.audit_trigger_function() RETURNS TRIGGER AS $$
+DECLARE
+    old_row JSONB;
+    new_row JSONB;
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        old_row = row_to_json(OLD)::JSONB;
+        new_row = NULL;
+    ELSIF TG_OP = 'UPDATE' THEN
+        old_row = row_to_json(OLD)::JSONB;
+        new_row = row_to_json(NEW)::JSONB;
+    ELSIF TG_OP = 'INSERT' THEN
+        old_row = NULL;
+        new_row = row_to_json(NEW)::JSONB;
+    END IF;
+
+    INSERT INTO audit.audit_log (
+        table_name, record_id, operation, old_values, new_values,
+        user_id, timestamp
+    ) VALUES (
+        TG_TABLE_NAME,
+        COALESCE(new_row->>TG_ARGV[0], old_row->>TG_ARGV[0]),
+        TG_OP,
+        old_row,
+        new_row,
+        COALESCE(current_setting('app.user_id', TRUE), 'system'),
+        NOW()
+    );
+
+    RETURN COALESCE(NEW, OLD);
+END;
+$$ LANGUAGE plpgsql;
+
+-- Create audit triggers for critical tables
+SET search_path TO fraud_detection, public;
+
+CREATE TRIGGER audit_players_trigger
+    AFTER INSERT OR UPDATE OR DELETE ON players
+    FOR EACH ROW EXECUTE FUNCTION audit.audit_trigger_function('player_id');
+
+CREATE TRIGGER audit_transactions_trigger
+    AFTER INSERT OR UPDATE OR DELETE ON transactions
+    FOR EACH ROW EXECUTE FUNCTION audit.audit_trigger_function('transaction_id');
+
+CREATE TRIGGER audit_fraud_alerts_trigger
+    AFTER INSERT OR UPDATE OR DELETE ON fraud_alerts
+    FOR EACH ROW EXECUTE FUNCTION audit.audit_trigger_function('alert_id');
+
+-- Create views for common queries
+CREATE OR REPLACE VIEW player_summary AS
+SELECT
+    p.player_id,
+    p.registration_date,
+    p.last_login,
+    p.country,
+    p.vip_status,
+    p.risk_score,
+    p.total_deposits,
+    p.total_withdrawals,
+    p.account_status,
+    COUNT(t.transaction_id) as total_transactions,
+    COALESCE(SUM(CASE WHEN t.transaction_type = 'deposit' THEN t.amount END), 0) as lifetime_deposits,
+    COALESCE(SUM(CASE WHEN t.transaction_type = 'withdrawal' THEN t.amount END), 0) as lifetime_withdrawals,
+    COALESCE(SUM(CASE WHEN t.transaction_type = 'bet' THEN t.amount END), 0) as lifetime_bets,
+    COALESCE(SUM(CASE WHEN t.transaction_type = 'win' THEN t.amount END), 0) as lifetime_wins,
+    COUNT(CASE WHEN t.created_at >= NOW() - INTERVAL '24 hours' THEN 1 END) as transactions_24h,
+    COUNT(CASE WHEN fa.alert_id IS NOT NULL THEN 1 END) as active_alerts
+FROM players p
+LEFT JOIN transactions t ON p.player_id = t.player_id
+LEFT JOIN fraud_alerts fa ON p.player_id = fa.player_id AND fa.status IN ('open', 'investigating')
+GROUP BY p.player_id, p.registration_date, p.last_login, p.country, p.vip_status,
+         p.risk_score, p.total_deposits, p.total_withdrawals, p.account_status;
+
+-- Create indexes for the view
+CREATE INDEX IF NOT EXISTS idx_player_summary_risk_score ON players (risk_score);
+CREATE INDEX IF NOT EXISTS idx_player_summary_country ON players (country);
+
+-- Insert sample data for testing
+INSERT INTO players (player_id, registration_date, country, vip_status, risk_score)
+VALUES
+    ('player_001', NOW() - INTERVAL '30 days', 'US', true, 0.1),
+    ('player_002', NOW() - INTERVAL '15 days', 'CA', false, 0.3),
+    ('player_003', NOW() - INTERVAL '7 days', 'GB', false, 0.7)
+ON CONFLICT (player_id) DO NOTHING;
+
+-- Create retention policies for TimescaleDB
+SELECT add_retention_policy('transactions', INTERVAL '1 year', if_not_exists => TRUE);
+SELECT add_retention_policy('game_sessions', INTERVAL '6 months', if_not_exists => TRUE);
+SELECT add_retention_policy('audit.audit_log', INTERVAL '2 years', if_not_exists => TRUE);
+SELECT add_retention_policy('audit.system_events', INTERVAL '1 year', if_not_exists => TRUE);
+
+-- Set up continuous aggregates for real-time analytics
+CREATE MATERIALIZED VIEW IF NOT EXISTS hourly_transaction_summary
+WITH (timescaledb.continuous) AS
+SELECT
+    time_bucket('1 hour', created_at) AS bucket,
+    player_id,
+    COUNT(*) as transaction_count,
+    SUM(amount) as total_amount,
+    AVG(amount) as avg_amount,
+    MIN(amount) as min_amount,
+    MAX(amount) as max_amount
+FROM transactions
+GROUP BY bucket, player_id
+WITH NO DATA;
+
+-- Enable automatic refresh for continuous aggregates
+SELECT add_continuous_aggregate_policy('hourly_transaction_summary',
+    start_offset => INTERVAL '3 hours',
+    end_offset => INTERVAL '1 hour',
+    schedule_interval => INTERVAL '1 hour',
+    if_not_exists => TRUE);
+
+-- Grant permissions
+DO $$ BEGIN
+    CREATE ROLE fraud_user;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+GRANT USAGE ON SCHEMA fraud_detection TO fraud_user;
+GRANT USAGE ON SCHEMA audit TO fraud_user;
+GRANT USAGE ON SCHEMA features TO fraud_user;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA fraud_detection TO fraud_user;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA audit TO fraud_user;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA features TO fraud_user;
+
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA fraud_detection TO fraud_user;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA audit TO fraud_user;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA features TO fraud_user;
+
+-- Create read-only user for analytics
+DO $$ BEGIN CREATE USER analytics_user WITH PASSWORD 'analytics_read_2024!';
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+GRANT CONNECT ON DATABASE casino_fraud TO analytics_user;
+GRANT USAGE ON SCHEMA fraud_detection TO analytics_user;
+GRANT USAGE ON SCHEMA features TO analytics_user;
+GRANT SELECT ON ALL TABLES IN SCHEMA fraud_detection TO analytics_user;
+GRANT SELECT ON ALL TABLES IN SCHEMA features TO analytics_user;
+
+-- Final setup message
+DO $$
+BEGIN
+    RAISE NOTICE 'Fraud Detection Database initialized successfully';
+    RAISE NOTICE 'Schemas created: fraud_detection, audit, features';
+    RAISE NOTICE 'Hypertables created for time-series data';
+    RAISE NOTICE 'Audit triggers enabled for critical tables';
+    RAISE NOTICE 'Sample data inserted for testing';
+END $$;

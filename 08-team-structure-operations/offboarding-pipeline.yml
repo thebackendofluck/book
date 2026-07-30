@@ -1,0 +1,306 @@
+# Companion code for "The Backend of Luck" - Chapter 08, Team Structure and Operations.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# offboarding-pipeline.yml
+# Automated employee offboarding pipeline for iGaming operators.
+# Triggered by HR system webhook on employee status change to "terminated".
+#
+# This pipeline implements the 4-phase security deprovisioning process described
+# in Chapter 8: immediate access revocation, infrastructure cleanup, secret
+# rotation, and post-offboarding audit.
+#
+# Integration requirements:
+#   - HR system (BambooHR/Workday/HiBob) sends webhook on termination
+#   - Keycloak/Okta SSO API credentials in secrets.KEYCLOAK_ADMIN_TOKEN
+#   - AWS IAM credentials in secrets.AWS_OFFBOARDING_ROLE_ARN
+#   - Kubernetes cluster credentials in secrets.K8S_OFFBOARDING_KUBECONFIG
+#   - HashiCorp Vault token in secrets.VAULT_OFFBOARDING_TOKEN
+#   - GitHub org token in secrets.GITHUB_ORG_ADMIN_TOKEN
+#   - PagerDuty API key in secrets.PAGERDUTY_API_KEY
+#   - Slack bot token in secrets.SLACK_BOT_TOKEN
+
+offboarding_pipeline:
+  trigger:
+    source: "hr_system_webhook"
+    event: "employee.terminated"
+    fields:
+      - employee_id
+      - email
+      - termination_type   # voluntary | involuntary | emergency
+      - termination_date
+      - manager_id
+      - is_regulated_role  # true if PML/MLRO/compliance officer holder
+      - had_production_access
+
+  # -------------------------------------------------------------------------
+  # Phase 1: Immediate Actions (T+0 to T+1h)
+  # Execute immediately, in parallel where possible
+  # -------------------------------------------------------------------------
+  immediate_actions:
+    timeout_global: "1h"
+    on_failure: "alert_security_team_and_continue"
+
+    - name: "Disable SSO / Keycloak"
+      id: disable_sso
+      action: "keycloak_disable_user"
+      params:
+        realm: "igaming-platform"
+        identifier_field: "email"
+      timeout: "30s"
+      verify: "confirm_no_active_sessions"
+      on_failure: "alert_and_continue"
+
+    - name: "Revoke VPN certificates"
+      id: revoke_vpn
+      action: "vpn_disable_user"
+      params:
+        vpn_provider: "wireguard"
+        revoke_certificates: true
+      timeout: "30s"
+      verify: "confirm_vpn_session_terminated"
+      on_failure: "alert_and_continue"
+
+    - name: "Revoke MFA tokens"
+      id: revoke_mfa
+      action: "mfa_revoke_all_tokens"
+      params:
+        providers: ["google_authenticator", "yubikey", "duo"]
+      timeout: "30s"
+      on_failure: "alert_and_continue"
+
+    - name: "Disable email account"
+      id: disable_email
+      action: "email_disable_account"
+      params:
+        preserve_mailbox: true
+        archive_duration_days: 730   # 2 years for regulatory compliance
+      pre_check: "audit_email_forwarding_rules"
+      timeout: "60s"
+      on_failure: "alert_and_continue"
+
+    - name: "Deactivate physical access badge"
+      id: revoke_badge
+      action: "physical_access_revoke"
+      params:
+        systems: ["office_door", "server_room", "cage_access"]
+      timeout: "30s"
+      on_failure: "alert_and_continue"
+
+    - name: "Remove from PagerDuty on-call"
+      id: remove_pagerduty
+      action: "pagerduty_remove_user"
+      params:
+        reassign_open_incidents: true
+        reassign_to: "manager_id"
+      timeout: "30s"
+      on_failure: "alert_and_continue"
+
+  # -------------------------------------------------------------------------
+  # Phase 2: Infrastructure Access (T+0 to T+1h, after immediate)
+  # -------------------------------------------------------------------------
+  infrastructure_actions:
+    delay: "5m"   # Allow Phase 1 to complete first
+    timeout_global: "1h"
+    on_failure: "alert_security_team_and_continue"
+
+    - name: "Revoke AWS / GCP IAM"
+      id: revoke_cloud_iam
+      action: "cloud_iam_remove_user"
+      params:
+        providers: ["aws", "gcp"]
+        remove_access_keys: true
+        remove_console_access: true
+        remove_group_memberships: true
+      verify: "cloud_iam_audit_user"
+      on_failure: "alert_and_continue"
+
+    - name: "Revoke Kubernetes RBAC"
+      id: revoke_k8s
+      action: "k8s_remove_user_bindings"
+      params:
+        clusters: ["production", "staging", "dev"]
+        remove_rolebindings: true
+        remove_clusterrolebindings: true
+      verify: "k8s_audit_user_access"
+      on_failure: "alert_and_continue"
+
+    - name: "Revoke database access"
+      id: revoke_db
+      action: "db_revoke_all_grants"
+      params:
+        targets:
+          - env: "production"
+            engines: ["postgresql", "mysql"]
+          - env: "staging"
+            engines: ["postgresql", "mysql"]
+          - env: "dev"
+            engines: ["postgresql", "mysql"]
+        kill_active_sessions: true
+      verify: "db_audit_user_sessions"
+      on_failure: "alert_and_continue"
+
+    - name: "Remove from GitHub organisation"
+      id: revoke_github
+      action: "github_remove_from_org"
+      params:
+        transfer_open_prs: true
+        transfer_to: "manager_id"
+        revoke_personal_access_tokens: true
+        revoke_oauth_apps: true
+      verify: "github_audit_user_tokens"
+      on_failure: "alert_and_continue"
+
+    - name: "Remove from CI/CD pipelines"
+      id: revoke_cicd
+      action: "cicd_remove_user"
+      params:
+        platforms: ["gitlab", "jenkins", "github_actions"]
+      on_failure: "alert_and_continue"
+
+  # -------------------------------------------------------------------------
+  # Phase 3: Secret Rotation (T+4h)
+  # Rotate any shared secrets the user had access to
+  # -------------------------------------------------------------------------
+  delayed_actions:
+    delay: "4h"
+    timeout_global: "2h"
+    condition: "had_production_access == true"
+
+    - name: "Rotate shared secrets in Vault"
+      id: rotate_vault_secrets
+      action: "vault_rotate_shared_secrets"
+      params:
+        scope: "secrets_accessed_by_employee_in_last_90_days"
+        notify_dependent_services: true
+      on_failure: "escalate_to_ciso"
+
+    - name: "Rotate external API keys"
+      id: rotate_api_keys
+      action: "rotate_external_api_keys"
+      params:
+        services: ["payment_gateways", "game_providers", "kyc_providers"]
+        scope: "accessed_by_employee"
+      on_failure: "escalate_to_ciso"
+
+    - name: "Remove from Slack / Teams"
+      id: deactivate_chat
+      action: "chat_deactivate_user"
+      params:
+        platforms: ["slack", "microsoft_teams"]
+        archive_dm_channels: true
+      on_failure: "alert_and_continue"
+
+    - name: "Transfer document ownership"
+      id: transfer_docs
+      action: "transfer_document_ownership"
+      params:
+        platforms: ["google_workspace", "confluence", "notion"]
+        transfer_to: "manager_id"
+      on_failure: "alert_and_continue"
+
+  # -------------------------------------------------------------------------
+  # Phase 4: Verification Audit (T+24h)
+  # -------------------------------------------------------------------------
+  verification:
+    delay: "24h"
+    timeout_global: "4h"
+
+    - name: "Comprehensive access audit"
+      id: full_audit
+      action: "run_full_access_audit"
+      params:
+        lookback_days: 30
+        check_systems:
+          - "sso"
+          - "vpn"
+          - "cloud_iam"
+          - "kubernetes"
+          - "databases"
+          - "github"
+          - "cicd"
+          - "vault"
+          - "chat"
+      report_to:
+        - "it_security_lead"
+        - "manager_id"
+        - "compliance_team"
+      fail_action: "escalate_to_ciso_and_cto"
+
+    - name: "Regulatory notification if required"
+      id: regulatory_notification
+      condition: "is_regulated_role == true"
+      action: "notify_regulator"
+      params:
+        regulators: ["mga", "ukgc", "nje_dge"]
+        notification_template: "key_person_departure"
+        deadline_hours: 72
+      on_failure: "escalate_to_compliance_officer"
+
+  # -------------------------------------------------------------------------
+  # Phase 5: Final Closeout (T+30d)
+  # -------------------------------------------------------------------------
+  final_closeout:
+    delay: "30d"
+
+    - name: "Collect equipment"
+      id: collect_equipment
+      action: "equipment_return_checklist"
+      params:
+        items: ["laptop", "yubikey", "access_cards", "phone"]
+      on_failure: "alert_hr"
+
+    - name: "Wipe returned devices"
+      id: wipe_devices
+      action: "remote_wipe_returned_devices"
+      params:
+        wipe_standard: "NIST_800_88"
+        issue_destruction_certificate: true
+      on_failure: "alert_it_security"
+
+    - name: "Archive email account permanently"
+      id: archive_email
+      action: "email_archive_account"
+      params:
+        retention_years: 7  # MGA/UKGC regulatory requirement
+      on_failure: "alert_compliance"
+
+    - name: "Confirm zero remaining access"
+      id: final_access_confirmation
+      action: "run_full_access_audit"
+      params:
+        final_confirmation: true
+      report_to:
+        - "it_security_lead"
+        - "ciso"
+        - "hr_lead"
+
+  # -------------------------------------------------------------------------
+  # Notifications
+  # -------------------------------------------------------------------------
+  notifications:
+    on_start:
+      channel: "security-alerts"
+      message: "Offboarding pipeline started for employee {{ employee_id }}"
+
+    on_complete:
+      channel: "security-alerts"
+      message: "Offboarding pipeline completed for employee {{ employee_id }}. All access revoked."
+
+    on_failure:
+      channel: "security-incidents"
+      escalate_to: ["it_security_lead", "ciso"]
+      message: "Offboarding pipeline FAILED for employee {{ employee_id }}. Manual intervention required."
+
+    emergency_termination:
+      condition: "termination_type == 'emergency'"
+      channel: "security-incidents"
+      priority: "P1"
+      escalate_to: ["ciso", "cto", "legal"]
+      message: "EMERGENCY TERMINATION - Immediate all-systems access revocation for {{ employee_id }}"

@@ -1,0 +1,187 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 27d, PostgreSQL Aegis.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# postgres-16 — installs PostgreSQL 16 from PGDG and applies performance
+# tuning for a high-connection iGaming OLTP workload (5k+ concurrent app
+# clients after PgBouncer pooling, so each PG instance caps max_connections
+# at 500 and relies on PgBouncer transaction mode to multiplex).
+
+- name: Add PGDG apt key
+  ansible.builtin.apt_key:
+    url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+    state: present
+
+- name: Add PGDG repo
+  ansible.builtin.apt_repository:
+    repo: "deb http://apt.postgresql.org/pub/repos/apt {{ ansible_distribution_release }}-pgdg main"
+    state: present
+    filename: pgdg
+
+- name: Install Postgres {{ pg_version }}
+  ansible.builtin.apt:
+    name:
+      - "postgresql-{{ pg_version }}"
+      - "postgresql-contrib-{{ pg_version }}"
+      - "postgresql-client-{{ pg_version }}"
+      - "postgresql-{{ pg_version }}-pgaudit"
+    state: present
+    update_cache: true
+
+- name: Kernel tuning for high-connection Postgres
+  ansible.posix.sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    sysctl_file: /etc/sysctl.d/99-pg-aegis.conf
+    state: present
+    reload: true
+  loop:
+    - { name: kernel.shmmax,                 value: "68719476736" }       # 64 GiB
+    - { name: kernel.shmall,                 value: "16777216" }          # 64 GiB / 4K
+    - { name: kernel.sem,                    value: "250 32000 32 512" }
+    - { name: vm.overcommit_memory,          value: "2" }
+    - { name: vm.overcommit_ratio,           value: "95" }
+    - { name: vm.swappiness,                 value: "1" }
+    - { name: vm.dirty_background_ratio,     value: "3" }
+    - { name: vm.dirty_ratio,                value: "10" }
+    - { name: vm.dirty_expire_centisecs,     value: "500" }
+    - { name: vm.dirty_writeback_centisecs,  value: "100" }
+    - { name: vm.max_map_count,              value: "1048576" }
+    - { name: fs.file-max,                   value: "2097152" }
+    - { name: fs.aio-max-nr,                 value: "1048576" }
+    - { name: net.core.somaxconn,            value: "65535" }
+    - { name: net.core.netdev_max_backlog,   value: "65536" }
+    - { name: net.ipv4.tcp_max_syn_backlog,  value: "65536" }
+    - { name: net.ipv4.tcp_tw_reuse,         value: "1" }
+    - { name: net.ipv4.tcp_fin_timeout,      value: "5" }
+    - { name: net.ipv4.tcp_keepalive_time,   value: "300" }
+    - { name: net.ipv4.tcp_keepalive_intvl,  value: "60" }
+    - { name: net.ipv4.tcp_keepalive_probes, value: "3" }
+
+- name: Ulimits for postgres user (high-connection)
+  ansible.builtin.blockinfile:
+    path: /etc/security/limits.d/99-pg-aegis.conf
+    create: true
+    owner: root
+    group: root
+    mode: "0644"
+    block: |
+      postgres soft nofile 65535
+      postgres hard nofile 65535
+      postgres soft nproc  65535
+      postgres hard nproc  65535
+      postgres soft memlock unlimited
+      postgres hard memlock unlimited
+
+- name: Transparent Huge Pages (disable — Postgres recommendation)
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/disable-thp.service
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Disable Transparent Huge Pages
+      Before=postgresql.service
+      [Service]
+      Type=oneshot
+      ExecStart=/bin/sh -c 'echo never >/sys/kernel/mm/transparent_hugepage/enabled; echo never >/sys/kernel/mm/transparent_hugepage/defrag'
+      RemainAfterExit=yes
+      [Install]
+      WantedBy=multi-user.target
+
+- name: Enable disable-thp
+  ansible.builtin.systemd:
+    name: disable-thp.service
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Remove ext4 lost+found so initdb sees an empty PGDATA
+  ansible.builtin.file:
+    path: "{{ pgdata_mount }}/lost+found"
+    state: absent
+
+- name: Chown PGDATA to postgres (required after LUKS ext4 mount)
+  ansible.builtin.file:
+    path: "{{ pgdata_mount }}"
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: "0700"
+
+- name: Initialise cluster if missing (Debian pg_createcluster is safe + idempotent)
+  ansible.builtin.command: "pg_createcluster {{ pg_version }} main --start -d {{ pgdata_mount }}"
+  args:
+    creates: "{{ pgdata_mount }}/PG_VERSION"
+
+- name: Render postgresql.conf
+  ansible.builtin.template:
+    src: postgresql.conf.j2
+    dest: "/etc/postgresql/{{ pg_version }}/main/postgresql.conf"
+    owner: postgres
+    group: postgres
+    mode: "0640"
+    backup: true
+  notify: Restart postgres
+
+- name: Ensure TLS material exists (self-signed for non-prod; cert-manager in prod)
+  ansible.builtin.command:
+    argv:
+      - openssl
+      - req
+      - -x509
+      - -newkey
+      - rsa:4096
+      - -nodes
+      - -keyout
+      - "/etc/postgresql/{{ pg_version }}/main/server.key"
+      - -out
+      - "/etc/postgresql/{{ pg_version }}/main/server.crt"
+      - -days
+      - "30"
+      - -subj
+      - "/CN={{ inventory_hostname }}"
+  args:
+    creates: "/etc/postgresql/{{ pg_version }}/main/server.crt"
+
+- name: Fix TLS perms
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    owner: postgres
+    group: postgres
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "/etc/postgresql/{{ pg_version }}/main/server.key", mode: "0600" }
+    - { path: "/etc/postgresql/{{ pg_version }}/main/server.crt", mode: "0644" }
+
+- name: Copy server.crt to root.crt (ca file for same-cluster mTLS during smoke)
+  ansible.builtin.copy:
+    src: "/etc/postgresql/{{ pg_version }}/main/server.crt"
+    dest: "/etc/postgresql/{{ pg_version }}/main/root.crt"
+    remote_src: true
+    owner: postgres
+    group: postgres
+    mode: "0644"
+
+- name: Render pg_hba.conf
+  ansible.builtin.template:
+    src: pg_hba.conf.j2
+    dest: "/etc/postgresql/{{ pg_version }}/main/pg_hba.conf"
+    owner: postgres
+    group: postgres
+    mode: "0640"
+    backup: true
+  notify: Reload postgres
+
+- name: Ensure postgres enabled (will be taken over by Patroni later)
+  ansible.builtin.systemd:
+    name: "postgresql@{{ pg_version }}-main"
+    enabled: true

@@ -1,0 +1,57 @@
+# CODEOWNERS for iGaming Platform Security
+# Enforces mandatory security team review on sensitive file changes.
+# Adapt team handles (@org/team-name) to your GitHub organization.
+
+# Global -- security team reviews everything by default
+* @your-org/security-team @your-org/devops-team
+
+# CI/CD and pipeline definitions
+.github/ @your-org/security-team @your-org/devops-team
+.github/workflows/ @your-org/security-team @your-org/devops-team
+
+# Security configuration files
+.checkov.yml @your-org/security-team @your-org/infrastructure-team
+.pre-commit-config.yaml @your-org/security-team @your-org/devops-team
+sonar-project.properties @your-org/security-team @your-org/quality-team
+
+# Infrastructure as Code
+*.tf @your-org/infrastructure-team @your-org/security-team
+*.tfvars @your-org/infrastructure-team @your-org/security-team
+terraform/ @your-org/infrastructure-team @your-org/security-team
+
+# Container and deployment files
+Dockerfile* @your-org/devops-team @your-org/security-team
+docker-compose* @your-org/devops-team @your-org/security-team
+k8s/ @your-org/devops-team @your-org/security-team
+helm/ @your-org/devops-team @your-org/security-team
+
+# Security scripts and tools
+setup-*.sh @your-org/security-team @your-org/devops-team
+install-*.sh @your-org/security-team @your-org/devops-team
+
+# Environment and secrets (should rarely change)
+.env* @your-org/security-team @your-org/devops-team
+**/secrets* @your-org/security-team @your-org/devops-team
+**/credentials* @your-org/security-team @your-org/devops-team
+**/keys* @your-org/security-team @your-org/devops-team
+
+# Compliance and audit
+compliance/ @your-org/compliance-team @your-org/security-team
+policies/ @your-org/compliance-team @your-org/security-team
+
+# Package management -- dependency changes need security review
+requirements*.txt @your-org/platform-team @your-org/security-team
+package.json @your-org/platform-team @your-org/security-team
+go.mod @your-org/platform-team @your-org/security-team
+
+# Database migrations
+migrations/ @your-org/database-team @your-org/security-team
+*.sql @your-org/database-team @your-org/security-team
+
+# Payment processing code (PCI DSS scope)
+payments/ @your-org/payments-team @your-org/security-team @your-org/compliance-team
+billing/ @your-org/payments-team @your-org/security-team @your-org/compliance-team
+
+# Player data handling (GDPR scope)
+player/ @your-org/platform-team @your-org/security-team @your-org/compliance-team
+kyc/ @your-org/platform-team @your-org/security-team @your-org/compliance-team

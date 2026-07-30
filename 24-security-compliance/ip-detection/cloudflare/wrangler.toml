@@ -1,0 +1,133 @@
+# Chapter 24 — IP Detection Pipeline
+# Wrangler configuration for the edge security worker.
+#
+# Deployment targets:
+#   Production:  wrangler deploy --env production
+#   Staging:     wrangler deploy --env staging
+#   Local dev:   wrangler dev
+#
+# KV namespaces and D1 databases are created via Terraform (see terraform/).
+# After running `terraform apply`, copy the output IDs into the [vars] or
+# binding sections below (the Terraform output is also passed through the
+# wrangler-id-inject.sh helper).
+
+name = "ip-detection-pipeline"
+main = "src/ip-detection-worker.ts"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+# Workers Trace Events → Logpush
+[observability]
+enabled = true
+head_sampling_rate = 1  # 100% sampling; tune down for high-traffic
+
+# ─── KV Namespaces ────────────────────────────────────────────────────────────
+# Replace <ID> placeholders with real IDs from `wrangler kv:namespace list`
+# or from the Terraform output.
+
+[[kv_namespaces]]
+binding  = "IP_BLACKLIST"
+id       = "IP_BLACKLIST_KV_ID"           # replace with real ID
+preview_id = "IP_BLACKLIST_KV_PREVIEW_ID" # replace with preview ID
+
+[[kv_namespaces]]
+binding  = "DEVICE_FINGERPRINTS"
+id       = "DEVICE_FINGERPRINTS_KV_ID"
+preview_id = "DEVICE_FINGERPRINTS_KV_PREVIEW_ID"
+
+[[kv_namespaces]]
+binding  = "FRAUD_VELOCITY"
+id       = "FRAUD_VELOCITY_KV_ID"
+preview_id = "FRAUD_VELOCITY_KV_PREVIEW_ID"
+
+[[kv_namespaces]]
+binding  = "SANCTIONS_LIST"
+id       = "SANCTIONS_LIST_KV_ID"
+preview_id = "SANCTIONS_LIST_KV_PREVIEW_ID"
+
+# ─── D1 Database ──────────────────────────────────────────────────────────────
+
+[[d1_databases]]
+binding      = "PLAYER_DB"
+database_name = "casino-player-db"
+database_id  = "PLAYER_DB_D1_ID"  # replace with real D1 database ID
+
+# ─── Worker limits ────────────────────────────────────────────────────────────
+
+[limits]
+cpu_ms = 10  # hard budget: 10 ms CPU (our target is <5 ms wall-clock)
+
+# ─── Routes ───────────────────────────────────────────────────────────────────
+# Adjust the zone_name and pattern to match your domain.
+
+[[routes]]
+pattern  = "casino.example.com/api/*"
+zone_name = "example.com"
+
+# ─── Environment: staging ─────────────────────────────────────────────────────
+
+[env.staging]
+name = "ip-detection-pipeline-staging"
+
+[[env.staging.kv_namespaces]]
+binding    = "IP_BLACKLIST"
+id         = "IP_BLACKLIST_KV_STAGING_ID"
+preview_id = "IP_BLACKLIST_KV_STAGING_ID"
+
+[[env.staging.kv_namespaces]]
+binding    = "DEVICE_FINGERPRINTS"
+id         = "DEVICE_FINGERPRINTS_KV_STAGING_ID"
+preview_id = "DEVICE_FINGERPRINTS_KV_STAGING_ID"
+
+[[env.staging.kv_namespaces]]
+binding    = "FRAUD_VELOCITY"
+id         = "FRAUD_VELOCITY_KV_STAGING_ID"
+preview_id = "FRAUD_VELOCITY_KV_STAGING_ID"
+
+[[env.staging.kv_namespaces]]
+binding    = "SANCTIONS_LIST"
+id         = "SANCTIONS_LIST_KV_STAGING_ID"
+preview_id = "SANCTIONS_LIST_KV_STAGING_ID"
+
+[[env.staging.d1_databases]]
+binding       = "PLAYER_DB"
+database_name = "casino-player-db-staging"
+database_id   = "PLAYER_DB_D1_STAGING_ID"
+
+[[env.staging.routes]]
+pattern   = "staging.casino.example.com/api/*"
+zone_name = "example.com"
+
+# ─── Environment: production ──────────────────────────────────────────────────
+
+[env.production]
+name = "ip-detection-pipeline-production"
+
+[[env.production.kv_namespaces]]
+binding    = "IP_BLACKLIST"
+id         = "IP_BLACKLIST_KV_PROD_ID"
+preview_id = "IP_BLACKLIST_KV_PROD_ID"
+
+[[env.production.kv_namespaces]]
+binding    = "DEVICE_FINGERPRINTS"
+id         = "DEVICE_FINGERPRINTS_KV_PROD_ID"
+preview_id = "DEVICE_FINGERPRINTS_KV_PROD_ID"
+
+[[env.production.kv_namespaces]]
+binding    = "FRAUD_VELOCITY"
+id         = "FRAUD_VELOCITY_KV_PROD_ID"
+preview_id = "FRAUD_VELOCITY_KV_PROD_ID"
+
+[[env.production.kv_namespaces]]
+binding    = "SANCTIONS_LIST"
+id         = "SANCTIONS_LIST_KV_PROD_ID"
+preview_id = "SANCTIONS_LIST_KV_PROD_ID"
+
+[[env.production.d1_databases]]
+binding       = "PLAYER_DB"
+database_name = "casino-player-db-production"
+database_id   = "PLAYER_DB_D1_PROD_ID"
+
+[[env.production.routes]]
+pattern   = "casino.example.com/api/*"
+zone_name = "example.com"

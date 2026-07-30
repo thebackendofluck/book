@@ -1,0 +1,7 @@
+output/ny/
+output/nj/
+output/pa/
+output/mi/
+__pycache__/
+.pytest_cache/
+*.pyc

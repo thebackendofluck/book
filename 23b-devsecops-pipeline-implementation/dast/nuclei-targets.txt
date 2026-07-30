@@ -1,0 +1,6 @@
+https://staging.acmetocasino.com
+https://staging.acmetocasino.com/api/v2/health
+https://staging.acmetocasino.com/api/v2/games
+https://staging.acmetocasino.com/api/v1/
+https://staging.acmetocasino.com/health
+https://staging.acmetocasino.com/metrics

@@ -1,0 +1,216 @@
+# ==============================================================================
+# igaming-payment.rules
+# Payment Fraud Detection Rules for iGaming Platforms
+# SID Range: 9000001 - 9000099
+#
+# Coverage:
+#   - Card testing / carding attacks
+#   - AML deposit-withdrawal cycling
+#   - Multi-payment-method abuse
+#   - Declined transaction flooding
+#   - PCI DSS violations (card data in transit)
+#   - Crypto wallet extraction
+#   - Payment API enumeration
+#   - Refund API abuse
+#   - Large deposit anomaly detection
+#
+# Deployment notes:
+#   - Rules inspecting request bodies require HTTP request body inspection enabled
+#   - Rules 9000002/9000003 use flowbits and must be loaded together
+#   - Adjust thresholds to match your platform's baseline transaction volume
+#   - PCI rules (9000006, 9000007) should be set to DROP in production IPS mode
+# ==============================================================================
+
+
+# ------------------------------------------------------------------------------
+# Section 1: Card Testing / Carding Detection
+# ------------------------------------------------------------------------------
+
+# SID 9000001 - Card Testing: rapid small deposits under $50
+# Attackers test stolen cards with micro-deposits before larger fraud.
+# Five deposit attempts within 120 seconds from the same source IP is anomalous.
+alert http $EXTERNAL_NET any -> $HTTP_SERVERS $HTTP_PORTS \
+    (msg:"IGAMING PAYMENT Card Testing - Rapid Small Deposits Detected"; \
+     flow:established,to_server; \
+     http.method; content:"POST"; \
+     http.uri; content:"/api/"; content:"deposit"; \
+     http.request_body; content:"amount"; \
+     pcre:"/\"amount\"\s*:\s*[1-9]\d{0,1}(\.\d{1,2})?[^0-9]/"; \
+     threshold:type threshold, track by_src, count 5, seconds 120; \
+     classtype:policy-violation; \
+     sid:9000001; rev:1; \
+     metadata:affected_product iGaming_Platform, attack_target Payment_System, \
+               created_at 2024_01_01, deployment Perimeter, \
+               performance_impact Low, signature_severity Major, tag AML;)
+
+
+# ------------------------------------------------------------------------------
+# Section 2: AML - Deposit-Withdrawal Cycling
+# ------------------------------------------------------------------------------
+
+# SID 9000003 - Flowbit setter: deposit event tracker (noalert)
+# Sets a flowbit when a deposit API call is observed. Used by rule 9000002.
+alert http $EXTERNAL_NET any -> $HTTP_SERVERS $HTTP_PORTS \
+    (msg:"IGAMING PAYMENT AML Deposit Flowbit Setter"; \
+     flow:established,to_server; \
+     http.method; content:"POST"; \
+     http.uri; content:"/api/"; content:"deposit"; \
+     flowbits:set,igaming.payment.deposit_seen; \
+     flowbits:noalert; \
+     classtype:policy-violation; \
+     sid:9000003; rev:1; \
+     metadata:affected_product iGaming_Platform, attack_target Payment_System, \
+               created_at 2024_01_01, deployment Perimeter, \
+               performance_impact Low, signature_severity Informational, tag AML;)
+
+# SID 9000002 - Deposit-withdrawal cycling AML indicator
+# Rapid withdrawal immediately after a deposit is a classic money laundering
+# layering technique. Fires only when a prior deposit flowbit is set.
+alert http $EXTERNAL_NET any -> $HTTP_SERVERS $HTTP_PORTS \
+    (msg:"IGAMING PAYMENT AML Deposit-Withdrawal Cycling Indicator"; \
+     flow:established,to_server; \
+     http.method; content:"POST"; \
+     http.uri; content:"/api/"; content:"withdraw"; \
+     flowbits:isset,igaming.payment.deposit_seen; \
+     threshold:type threshold, track by_src, count 3, seconds 600; \
+     classtype:policy-violation; \
+     sid:9000002; rev:1; \
+     metadata:affected_product iGaming_Platform, attack_target Payment_System, \
+               created_at 2024_01_01, deployment Perimeter, \
+               performance_impact Low, signature_severity Major, tag AML;)
+
+
+# ------------------------------------------------------------------------------
+# Section 3: Multi-Payment-Method Abuse
+# ------------------------------------------------------------------------------
+
+# SID 9000004 - Multiple payment methods from same IP
+# Legitimate users rarely register 3+ distinct payment methods in 5 minutes.
+# Indicates synthetic identity fraud or card-stuffing enumeration.
+alert http $EXTERNAL_NET any -> $HTTP_SERVERS $HTTP_PORTS \
+    (msg:"IGAMING PAYMENT Multiple Payment Methods From Single IP"; \
+     flow:established,to_server; \
+     http.method; content:"POST"; \
+     http.uri; content:"/api/"; \
+     http.uri; pcre:"/\/(payment.method|card|wallet|payment.instrument)/"; \
+     threshold:type threshold, track by_src, count 3, seconds 300; \
+     classtype:policy-violation; \
+     sid:9000004; rev:1; \
+     metadata:affected_product iGaming_Platform, attack_target Payment_System, \
+               created_at 2024_01_01, deployment Perimeter, \
+               performance_impact Low, signature_severity Major, tag Fraud;)
+
+
+# ------------------------------------------------------------------------------
+# Section 4: Declined Transaction Flooding
+# ------------------------------------------------------------------------------
+
+# SID 9000005 - Declined transaction flooding (HTTP 402 Payment Required)
+# Eight payment declines from the same source within 3 minutes indicates
+# automated card testing or brute-force billing attacks.
+alert http $HTTP_SERVERS $HTTP_PORTS -> $EXTERNAL_NET any \
+    (msg:"IGAMING PAYMENT Declined Transaction Flooding - Card Testing"; \
+     flow:established,to_client; \
+     http.stat_code; content:"402"; \
+     threshold:type threshold, track by_dst, count 8, seconds 180; \
+     classtype:policy-violation; \
+     sid:9000005; rev:1; \
+     metadata:affected_product iGaming_Platform, attack_target Payment_System, \
+               created_at 2024_01_01, deployment Perimeter, \
+               performance_impact Low, signature_severity Major, tag CardTesting;)
+
+
+# ------------------------------------------------------------------------------
+# Section 5: PCI DSS - Card Data in Transit
+# ------------------------------------------------------------------------------
+
+# SID 9000006 - Credit card number in URI (PCI DSS violation)
+# PAN (Primary Account Number) must never appear in URLs per PCI DSS Req 4.2.
+# Detects Visa (4xxx), Mastercard (5xxx/2xxx), Amex (3[47]xx), Discover (6011/65xx).
+alert http $EXTERNAL_NET any -> $HTTP_SERVERS $HTTP_PORTS \
+    (msg:"IGAMING PAYMENT PCI Violation - Credit Card PAN in URI"; \
+     flow:established,to_server; \
+     http.uri; \
+     pcre:"/(4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|2[2-7][0-9]{14}|3[47][0-9]{13}|6(?:011|5[0-9]{2})[0-9]{12})/"; \
+     classtype:policy-violation; \
+     sid:9000006; rev:1; \
+     metadata:affected_product iGaming_Platform, attack_target Payment_System, \
+               created_at 2024_01_01, deployment Perimeter, \
+               performance_impact Medium, signature_severity Critical, tag PCI_DSS;)
+
+# SID 9000007 - Crypto wallet address in HTTP response body
+# Monitors outbound API responses for Bitcoin and Ethereum wallet addresses.
+# May indicate unauthorized fund redirection or wallet-draining malware.
+alert http $HTTP_SERVERS $HTTP_PORTS -> $EXTERNAL_NET any \
+    (msg:"IGAMING PAYMENT Crypto Wallet Address Extracted in Response"; \
+     flow:established,to_client; \
+     http.response_body; \
+     pcre:"/(bc1[a-zA-HJ-NP-Z0-9]{25,39}|[13][a-km-zA-HJ-NP-Z1-9]{25,34}|0x[a-fA-F0-9]{40})/"; \
+     classtype:policy-violation; \
+     sid:9000007; rev:1; \
+     metadata:affected_product iGaming_Platform, attack_target Payment_System, \
+               created_at 2024_01_01, deployment Internal, \
+               performance_impact Medium, signature_severity High, tag Crypto;)
+
+
+# ------------------------------------------------------------------------------
+# Section 6: Payment API Enumeration
+# ------------------------------------------------------------------------------
+
+# SID 9000008 - Payment API sequential account enumeration
+# Sequential numeric account IDs in payment API paths indicate automated
+# enumeration of account numbers or transaction IDs (IDOR probing).
+alert http $EXTERNAL_NET any -> $HTTP_SERVERS $HTTP_PORTS \
+    (msg:"IGAMING PAYMENT API Sequential Account Enumeration"; \
+     flow:established,to_server; \
+     http.method; content:"GET"; \
+     http.uri; content:"/api/"; \
+     http.uri; pcre:"/(payment|transaction|account|wallet)\/[0-9]{4,}/"; \
+     threshold:type threshold, track by_src, count 10, seconds 60; \
+     classtype:web-application-attack; \
+     sid:9000008; rev:1; \
+     metadata:affected_product iGaming_Platform, attack_target Payment_System, \
+               created_at 2024_01_01, deployment Perimeter, \
+               performance_impact Low, signature_severity High, tag IDOR;)
+
+
+# ------------------------------------------------------------------------------
+# Section 7: Refund API Abuse
+# ------------------------------------------------------------------------------
+
+# SID 9000009 - Refund API abuse (rapid refund requests)
+# Multiple refund requests in a short window is indicative of refund fraud
+# or exploitation of edge cases in the refund workflow logic.
+alert http $EXTERNAL_NET any -> $HTTP_SERVERS $HTTP_PORTS \
+    (msg:"IGAMING PAYMENT Refund API Abuse - Rapid Refund Requests"; \
+     flow:established,to_server; \
+     http.method; content:"POST"; \
+     http.uri; pcre:"/\/(refund|chargeback|reversal)/"; \
+     threshold:type threshold, track by_src, count 5, seconds 300; \
+     classtype:policy-violation; \
+     sid:9000009; rev:1; \
+     metadata:affected_product iGaming_Platform, attack_target Payment_System, \
+               created_at 2024_01_01, deployment Perimeter, \
+               performance_impact Low, signature_severity High, tag RefundFraud;)
+
+
+# ------------------------------------------------------------------------------
+# Section 8: Large Deposit Anomaly
+# ------------------------------------------------------------------------------
+
+# SID 9000010 - Large single deposit anomaly (>$10,000)
+# Deposits exceeding $10,000 require CTR (Currency Transaction Report) filing
+# under BSA/AML regulations. This rule flags such deposits for review.
+# The pcre matches amounts: 10000 and above in JSON body.
+alert http $EXTERNAL_NET any -> $HTTP_SERVERS $HTTP_PORTS \
+    (msg:"IGAMING PAYMENT Large Deposit Anomaly - Possible CTR Required"; \
+     flow:established,to_server; \
+     http.method; content:"POST"; \
+     http.uri; content:"/api/"; content:"deposit"; \
+     http.request_body; content:"amount"; \
+     pcre:"/\"amount\"\s*:\s*[1-9][0-9]{4,}/"; \
+     classtype:policy-violation; \
+     sid:9000010; rev:1; \
+     metadata:affected_product iGaming_Platform, attack_target Payment_System, \
+               created_at 2024_01_01, deployment Perimeter, \
+               performance_impact Low, signature_severity High, tag AML_CTR;)

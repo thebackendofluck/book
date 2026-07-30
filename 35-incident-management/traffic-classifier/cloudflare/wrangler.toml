@@ -1,0 +1,76 @@
+name = "edge-traffic-classifier"
+main = "src/edge-classifier.ts"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+# Workers Paid plan required for Durable Objects
+# workers_dev = true by default in non-prod
+
+[vars]
+ORIGIN_AUTOSCALER_URL = "https://autoscaler.internal.acmetocasino.com"
+ORIGIN_ALERT_URL = "https://api.internal.acmetocasino.com/security/alerts"
+
+# ── KV Namespaces ───────────────────────────────────────────────────────────
+[[kv_namespaces]]
+binding = "RATE_LIMITS"
+id = "RL_NAMESPACE_ID_REPLACE_ME"
+preview_id = "RL_NAMESPACE_PREVIEW_ID_REPLACE_ME"
+
+[[kv_namespaces]]
+binding = "CAMPAIGNS"
+id = "CAMPAIGNS_NAMESPACE_ID_REPLACE_ME"
+preview_id = "CAMPAIGNS_NAMESPACE_PREVIEW_ID_REPLACE_ME"
+
+[[kv_namespaces]]
+binding = "ATTACK_LOG"
+id = "ATTACK_LOG_NAMESPACE_ID_REPLACE_ME"
+preview_id = "ATTACK_LOG_NAMESPACE_PREVIEW_ID_REPLACE_ME"
+
+[[kv_namespaces]]
+binding = "JA3_BLOCKLIST"
+id = "JA3_BLOCKLIST_NAMESPACE_ID_REPLACE_ME"
+preview_id = "JA3_BLOCKLIST_NAMESPACE_PREVIEW_ID_REPLACE_ME"
+
+# ── Durable Objects ─────────────────────────────────────────────────────────
+[[durable_objects.bindings]]
+name = "ATTACK_COUNTER"
+class_name = "AttackCounter"
+script_name = "edge-traffic-classifier"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["AttackCounter"]
+
+# ── Routes ──────────────────────────────────────────────────────────────────
+# The main edge classifier runs on all routes via the default export.
+# Admin routes for campaign management and attack log export are handled
+# by routing inside the same Worker based on URL path.
+
+# ── Environment: production ─────────────────────────────────────────────────
+[env.production]
+name = "edge-traffic-classifier-prod"
+
+[env.production.vars]
+ORIGIN_AUTOSCALER_URL = "https://autoscaler.internal.acmetocasino.com"
+ORIGIN_ALERT_URL = "https://api.internal.acmetocasino.com/security/alerts"
+
+[[env.production.kv_namespaces]]
+binding = "RATE_LIMITS"
+id = "RL_NAMESPACE_ID_REPLACE_ME"
+
+[[env.production.kv_namespaces]]
+binding = "CAMPAIGNS"
+id = "CAMPAIGNS_NAMESPACE_ID_REPLACE_ME"
+
+[[env.production.kv_namespaces]]
+binding = "ATTACK_LOG"
+id = "ATTACK_LOG_NAMESPACE_ID_REPLACE_ME"
+
+[[env.production.kv_namespaces]]
+binding = "JA3_BLOCKLIST"
+id = "JA3_BLOCKLIST_NAMESPACE_ID_REPLACE_ME"
+
+[[env.production.durable_objects.bindings]]
+name = "ATTACK_COUNTER"
+class_name = "AttackCounter"
+script_name = "edge-traffic-classifier-prod"

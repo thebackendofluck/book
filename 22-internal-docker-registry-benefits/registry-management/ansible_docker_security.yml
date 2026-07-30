@@ -1,0 +1,249 @@
+# Companion code for "The Backend of Luck" - Chapter 22, Internal Docker Registry.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# docker-security-hardening.yml - Comprehensive Docker security hardening
+---
+- name: Docker Security Hardening Playbook
+  hosts: docker_hosts
+  become: true
+  vars:
+    docker_hardening_level: "enterprise"  # Options: basic, standard, enterprise
+    security_policies:
+      - name: "no_privileged_containers"
+        description: "Prevent privileged container execution"
+        severity: "critical"
+      - name: "rootless_containers"
+        description: "Enforce non-root container execution"
+        severity: "high"
+      - name: "network_isolation"
+        description: "Isolate container networks"
+        severity: "high"
+      - name: "resource_limits"
+        description: "Enforce resource constraints"
+        severity: "medium"
+
+  pre_tasks:
+    - name: Backup current Docker configuration
+      copy:
+        src: "/etc/docker/daemon.json"
+        dest: "/etc/docker/daemon.json.backup.{{ ansible_date_time.iso8601 }}"
+        remote_src: true
+      ignore_errors: true
+
+    - name: Create security audit log
+      file:
+        path: "/var/log/docker-security-audit.log"
+        state: touch
+        mode: '0644'
+
+  tasks:
+    # Host-level security hardening
+    - name: Configure kernel security parameters
+      sysctl:
+        name: "{{ item.key }}"
+        value: "{{ item.value }}"
+        state: present
+        reload: true
+      loop:
+        - { key: "kernel.unprivileged_bpf_disabled", value: "1" }
+        - { key: "net.core.bpf_jit_harden", value: "2" }
+        - { key: "kernel.kptr_restrict", value: "1" }
+        - { key: "kernel.dmesg_restrict", value: "1" }
+        - { key: "kernel.perf_event_paranoid", value: "3" }
+
+    - name: Install security tools
+      package:
+        name:
+          - apparmor
+          - apparmor-utils
+          - auditd
+          - audispd-plugins
+          - rsyslog
+        state: present
+      when: ansible_os_family == "Debian"
+
+    - name: Configure audit rules for Docker
+      template:
+        src: audit.rules.j2
+        dest: /etc/audit/rules.d/docker.rules
+      notify: restart auditd
+
+    # Docker daemon hardening
+    - name: Configure hardened Docker daemon
+      template:
+        src: "daemon.{{ docker_hardening_level }}.json.j2"
+        dest: /etc/docker/daemon.json
+        mode: '0644'
+      notify: restart docker
+
+    - name: Configure Docker service security
+      template:
+        src: docker.service.secure.j2
+        dest: /lib/systemd/system/docker.service
+      notify: reload systemd
+
+    # Network security
+    - name: Create isolated Docker networks
+      docker_network:
+        name: "{{ item.name }}"
+        driver: bridge
+        driver_options:
+          com.docker.network.bridge.name: "{{ item.bridge_name }}"
+        ipam_config:
+          - subnet: "{{ item.subnet }}"
+        internal: "{{ item.internal }}"
+        state: present
+      loop:
+        - { name: "secure-frontend", bridge_name: "br-secure-fe", subnet: "172.20.0.0/16", internal: false }
+        - { name: "secure-backend", bridge_name: "br-secure-be", subnet: "172.21.0.0/0", internal: true }
+        - { name: "secure-database", bridge_name: "br-secure-db", subnet: "172.22.0.0/16", internal: true }
+
+    - name: Configure network isolation rules
+      iptables:
+        table: filter
+        chain: DOCKER-USER
+        in_interface: "{{ item.interface }}"
+        source: "{{ item.source }}"
+        destination: "{{ item.destination }}"
+        jump: "{{ item.action }}"
+        state: present
+      loop: "{{ network_isolation_rules }}"
+
+    # Container security policies
+    - name: Deploy container security policies
+      copy:
+        src: "security-policies/{{ docker_hardening_level }}/"
+        dest: /etc/docker/security-policies/
+        mode: '0644'
+
+    - name: Configure AppArmor profiles
+      copy:
+        src: apparmor-profiles/
+        dest: /etc/apparmor.d/
+        mode: '0644'
+      when: ansible_os_family == "Debian"
+      notify: reload apparmor
+
+    - name: Configure SELinux policies
+      sefcontext:
+        target: "/var/lib/docker(/.*)?"
+        setype: container_var_lib_t
+        state: present
+      when: ansible_os_family == "RedHat"
+      notify: restorecon
+
+    # Image security
+    - name: Configure image signing requirements
+      template:
+        src: image-policy.json.j2
+        dest: /etc/docker/policy.json
+        mode: '0644'
+
+    - name: Set up trusted registries
+      template:
+        src: registries.conf.j2
+        dest: /etc/containers/registries.conf
+        mode: '0644'
+
+    # Runtime security
+    - name: Configure seccomp profiles
+      copy:
+        src: seccomp-profiles/
+        dest: /etc/docker/seccomp/
+        mode: '0644'
+
+    - name: Set up container resource limits
+      template:
+        src: resource-limits.json.j2
+        dest: /etc/docker/resource-limits.json
+        mode: '0644'
+
+    # Monitoring and logging
+    - name: Configure Docker logging
+      template:
+        src: logging.conf.j2
+        dest: /etc/docker/logging.conf
+        mode: '0644'
+
+    - name: Set up security monitoring
+      template:
+        src: monitoring.yml.j2
+        dest: /etc/docker/monitoring.yml
+        mode: '0644'
+
+    - name: Deploy security monitoring containers
+      docker_container:
+        name: "{{ item.name }}"
+        image: "{{ item.image }}"
+        state: started
+        restart_policy: always
+        volumes: "{{ item.volumes }}"
+        env: "{{ item.env }}"
+        networks:
+          - name: secure-backend
+        security_opts: "{{ item.security_opts }}"
+      loop: "{{ security_monitoring_containers }}"
+
+    # Compliance validation
+    - name: Run CIS compliance checks
+      command: >
+        ansible-playbook -i localhost, -c local cis-docker-validation.yml
+        --extra-vars "compliance_level={{ docker_hardening_level }}"
+      register: compliance_check
+      changed_when: false
+
+    - name: Generate security hardening report
+      template:
+        src: hardening-report.j2
+        dest: "/var/log/docker-hardening-report-{{ ansible_date_time.iso8601 }}.html"
+      vars:
+        compliance_results: "{{ compliance_check.stdout | default('') }}"
+
+  handlers:
+    - name: restart docker
+      service:
+        name: docker
+        state: restarted
+        daemon_reload: true
+
+    - name: reload systemd
+      systemd:
+        daemon_reload: true
+
+    - name: restart auditd
+      service:
+        name: auditd
+        state: restarted
+
+    - name: reload apparmor
+      service:
+        name: apparmor
+        state: reloaded
+
+    - name: restorecon
+      command: restorecon -Rv /var/lib/docker
+
+  post_tasks:
+    - name: Validate hardening implementation
+      command: docker info --format '{{.SecurityOptions}}'
+      register: security_validation
+
+    - name: Send hardening completion notification
+      uri:
+        url: "{{ notification_webhook }}"
+        method: POST
+        body_format: json
+        body:
+          title: "Docker Security Hardening Completed"
+          message: "Hardening level: {{ docker_hardening_level }}"
+          timestamp: "{{ ansible_date_time.iso8601 }}"
+          host: "{{ ansible_hostname }}"
+          compliance_score: "{{ compliance_check.stdout | regex_search('compliance_score: ([0-9.]+)') | default(['0'], true) | first }}"
+      when: notification_webhook is defined

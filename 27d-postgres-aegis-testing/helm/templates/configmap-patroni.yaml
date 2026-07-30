@@ -1,0 +1,87 @@
+# Companion code for "The Backend of Luck" - Chapter 27d, PostgreSQL Aegis.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "postgres-aegis.fullname" . }}-patroni
+  labels:
+    {{- include "postgres-aegis.labels" . | nindent 4 }}
+data:
+  patroni.yaml: |
+    scope: {{ .Values.patroni.scope }}
+    namespace: /service/
+    kubernetes:
+      use_endpoints: true
+      labels:
+        app.kubernetes.io/name: {{ include "postgres-aegis.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+      role_label: role
+    bootstrap:
+      dcs:
+        ttl: 30
+        loop_wait: 10
+        retry_timeout: 10
+        maximum_lag_on_failover: 1048576
+        postgresql:
+          use_pg_rewind: true
+          parameters:
+{{- range $key, $value := .Values.patroni.postgresqlConfig }}
+            {{ $key }}: {{ $value | quote }}
+{{- end }}
+      initdb:
+        - encoding: UTF8
+        - data-checksums
+      pg_hba:
+        - hostssl all all 0.0.0.0/0 scram-sha-256
+        - hostssl replication replicator 0.0.0.0/0 scram-sha-256
+      users:
+        admin:
+          password: "{{ `{{ POSTGRES_SUPERUSER_PASSWORD }}` }}"
+          options:
+            - createrole
+            - createdb
+        replicator:
+          password: "{{ `{{ POSTGRES_REPLICATION_PASSWORD }}` }}"
+          options:
+            - replication
+      post_init: |
+        #!/bin/bash
+        psql -v ON_ERROR_STOP=1 <<-'SQL'
+          CREATE EXTENSION IF NOT EXISTS pgcrypto;
+          -- pg_aegis is optional. When the image has it, enable; else stay on pgcrypto.
+          DO $$
+          BEGIN
+            BEGIN
+              CREATE EXTENSION IF NOT EXISTS pg_aegis;
+              RAISE NOTICE 'pg_aegis enabled';
+            EXCEPTION WHEN OTHERS THEN
+              RAISE NOTICE 'pg_aegis unavailable - staying on pgcrypto (honest fallback)';
+            END;
+          END$$;
+        SQL
+    postgresql:
+      connect_address: ${POD_IP}:5432
+      listen: 0.0.0.0:5432
+      data_dir: /var/lib/postgresql/data/pgdata
+      pgpass: /tmp/pgpass0
+      authentication:
+        superuser:
+          username: admin
+        replication:
+          username: replicator
+      parameters:
+        ssl: "on"
+        ssl_cert_file: "/etc/postgresql/tls/tls.crt"
+        ssl_key_file: "/etc/postgresql/tls/tls.key"
+        ssl_ca_file: "/etc/postgresql/tls/ca.crt"
+    restapi:
+      connect_address: ${POD_IP}:8008
+      listen: 0.0.0.0:8008

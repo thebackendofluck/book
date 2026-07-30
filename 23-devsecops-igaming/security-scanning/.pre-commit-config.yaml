@@ -1,0 +1,215 @@
+# Companion code for "The Backend of Luck" - Chapter 23, DevSecOps for iGaming.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# =============================================================================
+# Pre-Commit Configuration for iGaming Platform
+# =============================================================================
+# Chapter 23: DevSecOps - Security Scanning
+#
+# WHY: iGaming platforms handle real money, PII, and are subject to strict
+# regulatory audits (MGA, UKGC, Curacao). A single leaked credential or
+# unvalidated input can result in license revocation, millions in fines,
+# and loss of player trust. Pre-commit hooks enforce security at the
+# earliest possible point -- before code even enters the repository.
+#
+# USAGE:
+#   pip install pre-commit
+#   pre-commit install
+#   pre-commit run --all-files
+#
+# =============================================================================
+
+minimum_pre_commit_version: "3.5.0"
+
+default_language_version:
+  python: python3.12
+
+repos:
+  # ---------------------------------------------------------------------------
+  # General file hygiene
+  # WHY: Trailing whitespace and missing newlines cause noisy diffs that
+  # obscure real changes during security audits. Large files bloat the repo
+  # and may contain binary secrets (keystores, certificates).
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+      - id: check-json
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=500]
+        # WHY: Prevents accidental commit of database dumps, key material,
+        # or uncompressed log files that may contain player data.
+      - id: check-case-conflict
+      - id: check-symlinks
+      - id: detect-private-key
+        # WHY: RSA/EC private keys in the repo = instant audit failure.
+        # Payment signing keys, TLS certs, and HSM wrap keys must NEVER
+        # be committed.
+      - id: no-commit-to-branch
+        args: [--branch, main, --branch, production]
+        # WHY: Direct commits to main/production bypass code review,
+        # which is required by most gaming regulators.
+
+  # ---------------------------------------------------------------------------
+  # Secret Detection - Gitleaks
+  # WHY: Database credentials, payment gateway API keys, and JWT signing
+  # secrets are the #1 cause of iGaming security breaches. Gitleaks scans
+  # every diff for patterns matching known secret formats.
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.4
+    hooks:
+      - id: gitleaks
+        args: [--config, .gitleaks.toml]
+
+  # ---------------------------------------------------------------------------
+  # Secret Detection - detect-secrets (Yelp)
+  # WHY: Defense in depth. Different tools catch different patterns.
+  # detect-secrets uses entropy analysis in addition to regex, catching
+  # high-entropy strings that look like API keys even without known formats.
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args:
+          - --baseline
+          - .secrets.baseline
+          - --exclude-files
+          - "tests/fixtures/.*"
+          - --exclude-files
+          - "docs/examples/.*"
+
+  # ---------------------------------------------------------------------------
+  # Shell Linting - ShellCheck
+  # WHY: Shell scripts run database migrations, manage deployments, and
+  # handle secrets rotation. A quoting bug in a deployment script can
+  # leak credentials via process arguments visible in /proc.
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.10.0.1
+    hooks:
+      - id: shellcheck
+        args: [--severity=warning, --shell=bash]
+
+  # ---------------------------------------------------------------------------
+  # Python Linting and Formatting - Ruff
+  # WHY: Consistent formatting reduces cognitive load during security code
+  # reviews. Ruff also catches common bugs (unused imports that may mask
+  # dependency confusion attacks, f-string injection risks).
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.5.0
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+        types_or: [python, pyi]
+      - id: ruff-format
+        types_or: [python, pyi]
+
+  # ---------------------------------------------------------------------------
+  # Python Security - Bandit
+  # WHY: Bandit catches Python-specific vulnerabilities: SQL injection via
+  # string formatting (critical for player balance queries), use of eval()
+  # (RCE risk in game logic), weak cryptography (MD5 for password hashing),
+  # and hardcoded passwords.
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.7.9
+    hooks:
+      - id: bandit
+        args:
+          - --configfile=bandit.yaml
+          - --severity-level=medium
+          - --confidence-level=medium
+          - --recursive
+        exclude: "tests/"
+
+  # ---------------------------------------------------------------------------
+  # Dockerfile Linting - Hadolint
+  # WHY: Running containers as root, using latest tags, or exposing
+  # unnecessary ports are common in iGaming deployments. A compromised
+  # game container running as root can pivot to the payment service.
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/hadolint/hadolint
+    rev: v2.12.0
+    hooks:
+      - id: hadolint-docker
+        args:
+          - --ignore=DL3008   # Pin versions in apt-get (handled by base image)
+          - --ignore=DL3013   # Pin pip versions (handled by requirements.txt)
+
+  # ---------------------------------------------------------------------------
+  # Terraform - Format and Validate
+  # WHY: Misconfigured infrastructure (open security groups, public S3
+  # buckets, missing encryption) is how iGaming platforms get breached.
+  # Terraform fmt ensures reviewable IaC; validate catches syntax errors
+  # before they reach CI.
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/antonbabenko/pre-commit-terraform
+    rev: v1.92.0
+    hooks:
+      - id: terraform_fmt
+      - id: terraform_validate
+        args:
+          - --hook-config=--retry-once-with-cleanup=true
+      - id: terraform_tflint
+        args:
+          - --args=--config=__GIT_WORKING_DIR__/.tflint.hcl
+
+  # ---------------------------------------------------------------------------
+  # Infrastructure as Code Security - Checkov
+  # WHY: Checkov enforces security policies on Terraform, Kubernetes, and
+  # CloudFormation. For iGaming, this means verifying encryption at rest
+  # (player data), VPC isolation (payment networks), and logging
+  # (regulatory audit trails).
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/bridgecrewio/checkov
+    rev: 3.2.175
+    hooks:
+      - id: checkov
+        args:
+          - --quiet
+          - --compact
+          - --skip-check=CKV_DOCKER_2   # HEALTHCHECK (handled by orchestrator)
+          - --framework=terraform,kubernetes,dockerfile
+
+  # ---------------------------------------------------------------------------
+  # Conventional Commits
+  # WHY: Structured commit messages enable automated changelog generation
+  # required for regulatory change management. Auditors need to trace
+  # every change to a ticket (e.g., feat(payment): add 3DS2 verification).
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v3.3.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+        args:
+          - feat
+          - fix
+          - docs
+          - style
+          - refactor
+          - perf
+          - test
+          - build
+          - ci
+          - chore
+          - revert
+          - security    # Custom: security-specific changes
+          - compliance  # Custom: regulatory compliance changes

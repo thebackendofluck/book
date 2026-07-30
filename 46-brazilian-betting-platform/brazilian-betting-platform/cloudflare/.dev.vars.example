@@ -1,0 +1,35 @@
+# bet-brazil edge workers — secret manifest (template)
+#
+# Copy this file to `.dev.vars` for local `wrangler dev`, and provision the
+# same names in each environment with `wrangler secret put <NAME> --config <toml>`.
+# NEVER commit real values. `.dev.vars` is gitignored; only this .example is tracked.
+#
+# Provenance legend:
+#   [generate] create with a CSPRNG: `openssl rand -hex 32`
+#   [provider] obtained from the contracted PSP / regulator under the service agreement
+#   [platform] issued by the platform's own identity/JWT infrastructure
+
+# ── api-gateway (wrangler.toml) ──────────────────────────────────────────────
+JWT_SECRET="replace-me"                       # [platform] signs/verifies player JWTs
+GATEWAY_INTERNAL_HMAC_SECRET="replace-me"     # [generate] signs gateway→pix-webhook calls; SAME value on pix-webhook
+AWS_CORE_HMAC_SECRET="replace-me"             # [generate] signs gateway→AWS-core calls
+
+# ── pix-webhook (wrangler.pix-webhook.toml) ──────────────────────────────────
+PIX_HMAC_SECRET="replace-me"                  # [provider] INBOUND only: validate PSP webhook signatures
+PIX_PSP_API_KEY="replace-me"                  # [provider] OUTBOUND only: bearer credential for PSP API calls
+GATEWAY_INTERNAL_HMAC_SECRET="replace-me"     # [generate] MUST equal the api-gateway value
+
+# ── odds-feed (wrangler.odds-feed.toml) ──────────────────────────────────────
+ODDS_PUBLISHER_HMAC_SECRET="replace-me"       # [generate] validates the odds publisher on /odds/refresh and /odds/suspend
+
+# ── sigap-reporter (wrangler.sigap-reporter.toml) ────────────────────────────
+SIGAP_BEARER_TOKEN="replace-me"               # [regulator] JWT/bearer for the SIGAP submission endpoint
+SIGAP_COMPLIANCE_HMAC_SECRET="replace-me"     # [generate] authenticates the compliance origin that posts to /batches
+
+# ── wallet (wrangler.wallet.toml) ────────────────────────────────────────────
+PIX_HMAC_SECRET="replace-me"                  # [provider] INBOUND only: validate PSP webhook signatures
+PIX_PSP_API_KEY="replace-me"                  # [provider] OUTBOUND only: bearer credential for PSP withdrawal calls
+WALLET_INTERNAL_HMAC_SECRET="replace-me"      # [generate] gate on the wallet Durable Object fetch dispatcher
+
+# ── session-manager (wrangler.session-manager.toml) ──────────────────────────
+JWT_SECRET="replace-me"                       # [platform] verify session JWTs

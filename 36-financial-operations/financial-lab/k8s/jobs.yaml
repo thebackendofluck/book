@@ -1,0 +1,220 @@
+# Companion code for "The Backend of Luck" - Chapter 36, Financial Operations.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# financial-lab/k8s/jobs.yaml
+# K8s Jobs and CronJobs for the financial lab:
+#   - seed job: populates test players, KYC records, ledger entries
+#   - smoke job: validates all service health endpoints
+#   - daily reconciliation CronJob: runs 02:00 UTC to test recon pipeline
+# Chapter 36b: Financial Truth Layer
+---
+# ----------------------------------------------------------------
+# Seed Job -- run once after infra + core-apps are ready
+# Populates test data: players, wallets, KYC, ledger entries
+# Usage: kubectl apply -f k8s/jobs.yaml && kubectl wait --for=condition=complete job/seed-financial-lab -n financial-lab
+# ----------------------------------------------------------------
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: seed-financial-lab
+  namespace: financial-lab
+  labels:
+    app: seed-financial-lab
+    component: setup
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: seed-financial-lab
+    spec:
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: seed
+          image: ghcr.io/acmetocasino/financial-lab-tools:1.0.0
+          command: ["python3", "seed_financial_lab.py"]
+          env:
+            - name: LEDGER_SERVICE_URL
+              value: "http://ledger-service:8080"
+            - name: PAYMENTS_SERVICE_URL
+              value: "http://payments-service:8081"
+            - name: DB_HOST
+              value: "postgres"
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: username
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: password
+            - name: SEED_PLAYER_COUNT
+              value: "100"
+            - name: SEED_TRANSACTIONS_PER_PLAYER
+              value: "10"
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+---
+# ----------------------------------------------------------------
+# Smoke Test Job -- validates all 11 health endpoints
+# Run after deployment to confirm lab is ready for testing
+# ----------------------------------------------------------------
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: smoke-test-financial-lab
+  namespace: financial-lab
+  labels:
+    app: smoke-test-financial-lab
+    component: verification
+spec:
+  backoffLimit: 2
+  template:
+    metadata:
+      labels:
+        app: smoke-test-financial-lab
+    spec:
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: smoke
+          image: ghcr.io/acmetocasino/financial-lab-tools:1.0.0
+          command: ["python3", "smoke_test.py"]
+          env:
+            - name: LEDGER_URL
+              value: "http://ledger-service:8080"
+            - name: PAYMENTS_URL
+              value: "http://payments-service:8081"
+            - name: TREASURY_URL
+              value: "http://treasury-service:8082"
+            - name: RECONCILIATION_URL
+              value: "http://reconciliation-service:8083"
+            - name: ADYEN_SIMULATOR_URL
+              value: "http://adyen-simulator:8100"
+            - name: TRUSTLY_SIMULATOR_URL
+              value: "http://trustly-simulator:8101"
+            - name: PAYPAL_SIMULATOR_URL
+              value: "http://paypal-simulator:8102"
+            - name: PAYSAFE_SIMULATOR_URL
+              value: "http://paysafe-simulator:8103"
+            - name: SKRILL_SIMULATOR_URL
+              value: "http://skrill-simulator:8104"
+            - name: NETELLER_SIMULATOR_URL
+              value: "http://neteller-simulator:8105"
+            - name: NUVEI_SIMULATOR_URL
+              value: "http://nuvei-simulator:8106"
+            - name: BANK_WIRE_SIMULATOR_URL
+              value: "http://bank-wire-simulator:8107"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+---
+# ----------------------------------------------------------------
+# Daily Reconciliation CronJob
+# Runs at 02:00 UTC to process previous day's settlement reports
+# Tests the automated daily reconciliation pipeline
+# ----------------------------------------------------------------
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: daily-reconciliation
+  namespace: financial-lab
+  labels:
+    app: daily-reconciliation
+    component: reconciliation
+spec:
+  schedule: "0 2 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 7
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            app: daily-reconciliation
+        spec:
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            fsGroup: 10001
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: reconcile
+              image: ghcr.io/acmetocasino/financial-lab-tools:1.0.0
+              command:
+                - python3
+                - "-c"
+                - |
+                  import httpx, sys, datetime
+                  yesterday = (datetime.date.today() - datetime.timedelta(days=1)).isoformat()
+                  resp = httpx.post(
+                    'http://reconciliation-service:8083/api/v1/reconcile',
+                    json={'date': yesterday, 'scope': 'all_psps'},
+                    timeout=300
+                  )
+                  resp.raise_for_status()
+                  result = resp.json()
+                  print(f"Reconciliation {yesterday}: status={result['status']}, "
+                        f"discrepancies={result['discrepancy_count']}")
+                  sys.exit(0 if result['status'] == 'BALANCED' else 1)
+              env:
+                - name: RECONCILIATION_URL
+                  value: "http://reconciliation-service:8083"
+              resources:
+                requests:
+                  cpu: "100m"
+                  memory: "128Mi"
+                limits:
+                  cpu: "200m"
+                  memory: "256Mi"
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+                readOnlyRootFilesystem: true

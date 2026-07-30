@@ -1,0 +1,12 @@
+[Unit]
+Description=pgBackRest Daily Differential Backup Timer
+Documentation=https://pgbackrest.org/
+
+[Timer]
+# Run Monday through Saturday at 03:00 UTC (Sunday is full backup day)
+OnCalendar=Mon-Sat 03:00:00
+RandomizedDelaySec=300
+Persistent=true
+
+[Install]
+WantedBy=timers.target

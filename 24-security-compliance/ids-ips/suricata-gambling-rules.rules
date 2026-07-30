@@ -1,0 +1,330 @@
+# =============================================================================
+# Suricata IDS Rules for Online Gambling Platforms
+# =============================================================================
+# Custom rules targeting gambling-specific threats: bonus abuse, AML patterns,
+# account takeover, multi-accounting, RNG manipulation attempts, and
+# regulatory compliance monitoring.
+#
+# Rule SID ranges:
+#   9000000-9000099: Bonus abuse detection
+#   9000100-9000199: AML / money laundering patterns
+#   9000200-9000299: Account takeover / credential abuse
+#   9000300-9000399: Multi-accounting detection
+#   9000400-9000499: Game manipulation attempts
+#   9000500-9000599: Data exfiltration / PII leaks
+#   9000600-9000699: Regulatory compliance
+#   9000700-9000799: API abuse / rate limiting
+#
+# Deploy with: suricata -c /etc/suricata/suricata.yaml -r rules/gambling.rules
+# =============================================================================
+
+# =============================================================================
+# BONUS ABUSE DETECTION (SID 9000000-9000099)
+# =============================================================================
+
+# Rapid bonus code attempts (brute-forcing promotion codes)
+alert http any any -> any any (msg:"GAMBLING Bonus code brute force attempt"; \
+    flow:to_server,established; \
+    content:"POST"; http_method; \
+    content:"/api/"; http_uri; \
+    content:"bonus"; http_uri; nocase; \
+    content:"claim"; http_uri; nocase; \
+    threshold:type both, track by_src, count 10, seconds 60; \
+    classtype:attempted-recon; \
+    sid:9000001; rev:1; \
+    metadata:policy gambling, category bonus-abuse;)
+
+# Multiple bonus claims from same IP (different accounts)
+alert http any any -> any any (msg:"GAMBLING Multiple bonus claims from single IP"; \
+    flow:to_server,established; \
+    content:"POST"; http_method; \
+    content:"bonus"; http_uri; nocase; \
+    content:"code"; http_uri; nocase; \
+    threshold:type both, track by_src, count 5, seconds 3600; \
+    classtype:policy-violation; \
+    sid:9000002; rev:1; \
+    metadata:policy gambling, category bonus-abuse;)
+
+# Bonus amount manipulation attempt (unusual bonus_amount field in request)
+alert http any any -> any any (msg:"GAMBLING Bonus amount manipulation attempt"; \
+    flow:to_server,established; \
+    content:"POST"; http_method; \
+    content:"bonus"; http_uri; nocase; \
+    content:"bonus_amount"; http_client_body; \
+    classtype:attempted-admin; \
+    sid:9000003; rev:1; \
+    metadata:policy gambling, category bonus-abuse;)
+
+# Wagering requirement bypass - withdrawal during active bonus
+alert http any any -> any any (msg:"GAMBLING Withdrawal attempt during active bonus"; \
+    flow:to_server,established; \
+    content:"POST"; http_method; \
+    content:"/api/"; http_uri; \
+    content:"withdraw"; http_uri; nocase; \
+    content:"bonus_active"; http_client_body; \
+    content:"true"; http_client_body; distance:0; \
+    classtype:policy-violation; \
+    sid:9000004; rev:1; \
+    metadata:policy gambling, category bonus-abuse;)
+
+# =============================================================================
+# AML / MONEY LAUNDERING PATTERNS (SID 9000100-9000199)
+# =============================================================================
+
+# Structured deposits just below reporting threshold (smurfing)
+alert http any any -> any any (msg:"GAMBLING Structured deposit pattern detected"; \
+    flow:to_server,established; \
+    content:"POST"; http_method; \
+    content:"/api/"; http_uri; \
+    content:"deposit"; http_uri; nocase; \
+    threshold:type both, track by_src, count 5, seconds 1800; \
+    classtype:policy-violation; \
+    sid:9000100; rev:1; \
+    metadata:policy aml, category structuring, compliance AMLD6;)
+
+# Large single transaction above AML reporting threshold
+alert http any any -> any any (msg:"GAMBLING Large transaction above AML threshold"; \
+    flow:to_server,established; \
+    content:"POST"; http_method; \
+    content:"/api/"; http_uri; \
+    content:"deposit"; http_uri; nocase; \
+    pcre:"/\"amount\"\s*:\s*([1-9]\d{4,})/"; \
+    classtype:policy-violation; \
+    sid:9000101; rev:1; \
+    metadata:policy aml, category large-transaction, compliance AMLD6;)
+
+# Rapid deposit-withdrawal cycle (chip dumping / laundering)
+alert http any any -> any any (msg:"GAMBLING Rapid deposit-withdrawal cycle"; \
+    flow:to_server,established; \
+    content:"POST"; http_method; \
+    content:"/api/"; http_uri; \
+    content:"withdraw"; http_uri; nocase; \
+    threshold:type both, track by_src, count 3, seconds 600; \
+    classtype:policy-violation; \
+    sid:9000102; rev:1; \
+    metadata:policy aml, category chip-dumping;)
+
+# Multiple payment methods in short period
+alert http any any -> any any (msg:"GAMBLING Multiple payment methods from single account"; \
+    flow:to_server,established; \
+    content:"POST"; http_method; \
+    content:"/api/"; http_uri; \
+    content:"deposit"; http_uri; nocase; \
+    threshold:type both, track by_src, count 4, seconds 3600; \
+    classtype:policy-violation; \
+    sid:9000103; rev:1; \
+    metadata:policy aml, category payment-mixing;)
+
+# Deposit from high-risk jurisdiction
+alert http any any -> any any (msg:"GAMBLING Deposit from sanctioned/high-risk country"; \
+    flow:to_server,established; \
+    content:"POST"; http_method; \
+    content:"deposit"; http_uri; nocase; \
+    pcre:"/\"country\"\s*:\s*\"(IR|KP|SY|CU|AF|MM|SD)\"/"; \
+    classtype:policy-violation; \
+    sid:9000104; rev:1; \
+    metadata:policy aml, category sanctioned-country, compliance OFAC;)
+
+# Crypto deposit pattern (potential layering)
+alert http any any -> any any (msg:"GAMBLING Cryptocurrency deposit detected"; \
+    flow:to_server,established; \
+    content:"POST"; http_method; \
+    content:"deposit"; http_uri; nocase; \
+    content:"crypto"; http_client_body; nocase; \
+    classtype:policy-violation; \
+    sid:9000105; rev:1; \
+    metadata:policy aml, category crypto-monitoring;)
+
+# =============================================================================
+# ACCOUNT TAKEOVER / CREDENTIAL ABUSE (SID 9000200-9000299)
+# =============================================================================
+
+# Credential stuffing (rapid login attempts)
+alert http any any -> any any (msg:"GAMBLING Credential stuffing attack"; \
+    flow:to_server,established; \
+    content:"POST"; http_method; \
+    content:"/api/"; http_uri; \
+    content:"login"; http_uri; nocase; \
+    threshold:type both, track by_src, count 20, seconds 60; \
+    classtype:attempted-user; \
+    sid:9000200; rev:1; \
+    metadata:policy security, category credential-stuffing;)
+
+# Password spray (same password, multiple accounts)
+alert http any any -> any any (msg:"GAMBLING Password spray attack detected"; \
+    flow:to_server,established; \
+    content:"POST"; http_method; \
+    content:"login"; http_uri; nocase; \
+    threshold:type both, track by_src, count 50, seconds 300; \
+    classtype:attempted-user; \
+    sid:9000201; rev:1; \
+    metadata:policy security, category password-spray;)
+
+# Session hijacking - token reuse from different IP
+alert http any any -> any any (msg:"GAMBLING Possible session hijacking"; \
+    flow:to_server,established; \
+    content:"Authorization"; http_header; \
+    content:"Bearer"; http_header; \
+    threshold:type both, track by_src, count 100, seconds 60; \
+    classtype:trojan-activity; \
+    sid:9000202; rev:1; \
+    metadata:policy security, category session-hijacking;)
+
+# Admin panel brute force
+alert http any any -> any any (msg:"GAMBLING Backoffice brute force attempt"; \
+    flow:to_server,established; \
+    content:"POST"; http_method; \
+    content:"/backoffice"; http_uri; nocase; \
+    content:"login"; http_uri; nocase; \
+    threshold:type both, track by_src, count 5, seconds 60; \
+    classtype:attempted-admin; \
+    sid:9000203; rev:1; \
+    metadata:policy security, category admin-bruteforce;)
+
+# KYC document upload from suspicious source
+alert http any any -> any any (msg:"GAMBLING Suspicious KYC document upload rate"; \
+    flow:to_server,established; \
+    content:"POST"; http_method; \
+    content:"kyc"; http_uri; nocase; \
+    content:"document"; http_uri; nocase; \
+    threshold:type both, track by_src, count 10, seconds 300; \
+    classtype:policy-violation; \
+    sid:9000204; rev:1; \
+    metadata:policy security, category kyc-fraud;)
+
+# =============================================================================
+# MULTI-ACCOUNTING DETECTION (SID 9000300-9000399)
+# =============================================================================
+
+# Multiple account registrations from same IP
+alert http any any -> any any (msg:"GAMBLING Multiple registrations from single IP"; \
+    flow:to_server,established; \
+    content:"POST"; http_method; \
+    content:"/api/"; http_uri; \
+    content:"register"; http_uri; nocase; \
+    threshold:type both, track by_src, count 3, seconds 86400; \
+    classtype:policy-violation; \
+    sid:9000300; rev:1; \
+    metadata:policy gambling, category multi-accounting;)
+
+# Registration from known VPN/proxy IP range
+# Note: Maintain IP lists via threat intelligence feeds
+alert http any any -> any any (msg:"GAMBLING Registration from VPN/proxy IP"; \
+    flow:to_server,established; \
+    content:"POST"; http_method; \
+    content:"register"; http_uri; nocase; \
+    threshold:type limit, track by_src, count 1, seconds 86400; \
+    classtype:policy-violation; \
+    sid:9000301; rev:1; \
+    metadata:policy gambling, category vpn-registration;)
+
+# =============================================================================
+# GAME MANIPULATION ATTEMPTS (SID 9000400-9000499)
+# =============================================================================
+
+# Game outcome manipulation attempt (injecting result fields)
+alert http any any -> any any (msg:"GAMBLING Game outcome manipulation attempt"; \
+    flow:to_server,established; \
+    content:"POST"; http_method; \
+    content:"/api/"; http_uri; \
+    content:"game"; http_uri; nocase; \
+    content:"outcome"; http_client_body; nocase; \
+    classtype:attempted-admin; \
+    sid:9000400; rev:1; \
+    metadata:policy gambling, category game-manipulation;)
+
+# RNG seed injection attempt
+alert http any any -> any any (msg:"GAMBLING RNG seed injection attempt"; \
+    flow:to_server,established; \
+    content:"POST"; http_method; \
+    content:"/api/"; http_uri; \
+    pcre:"/\"(seed|rng_state|random_seed|server_seed)\"/i"; \
+    classtype:attempted-admin; \
+    sid:9000401; rev:1; \
+    metadata:policy gambling, category rng-manipulation, compliance GLI-19;)
+
+# Bet amount manipulation (negative or zero values)
+alert http any any -> any any (msg:"GAMBLING Negative/zero bet amount"; \
+    flow:to_server,established; \
+    content:"POST"; http_method; \
+    content:"bet"; http_uri; nocase; \
+    pcre:"/\"amount\"\s*:\s*(-\d|0\.0*$|0$)/"; \
+    classtype:attempted-admin; \
+    sid:9000402; rev:1; \
+    metadata:policy gambling, category financial-manipulation;)
+
+# Automated bot play detection (inhuman speed)
+alert http any any -> any any (msg:"GAMBLING Bot play detected (inhuman speed)"; \
+    flow:to_server,established; \
+    content:"POST"; http_method; \
+    content:"/api/"; http_uri; \
+    content:"play"; http_uri; nocase; \
+    threshold:type both, track by_src, count 60, seconds 60; \
+    classtype:policy-violation; \
+    sid:9000403; rev:1; \
+    metadata:policy gambling, category bot-detection;)
+
+# =============================================================================
+# DATA EXFILTRATION / PII LEAKS (SID 9000500-9000599)
+# =============================================================================
+
+# Large data export from backoffice
+alert http any any -> any any (msg:"GAMBLING Large data export from backoffice"; \
+    flow:from_server,established; \
+    content:"200"; http_stat_code; \
+    content:"/backoffice"; http_uri; nocase; \
+    content:"export"; http_uri; nocase; \
+    filesize:>1000000; \
+    classtype:policy-violation; \
+    sid:9000500; rev:1; \
+    metadata:policy security, category data-exfiltration;)
+
+# PII in HTTP response (SSN, passport patterns)
+alert http any any -> any any (msg:"GAMBLING PII leak in API response"; \
+    flow:from_server,established; \
+    content:"200"; http_stat_code; \
+    pcre:"/\d{3}-\d{2}-\d{4}/"; \
+    classtype:policy-violation; \
+    sid:9000501; rev:1; \
+    metadata:policy privacy, category pii-leak, compliance GDPR;)
+
+# Credit card number in response body
+alert http any any -> any any (msg:"GAMBLING Credit card number in response"; \
+    flow:from_server,established; \
+    content:"200"; http_stat_code; \
+    pcre:"/\b(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|3[47][0-9]{13})\b/"; \
+    classtype:policy-violation; \
+    sid:9000502; rev:1; \
+    metadata:policy security, category card-leak, compliance PCI-DSS;)
+
+# =============================================================================
+# API ABUSE / RATE LIMITING (SID 9000700-9000799)
+# =============================================================================
+
+# API scraping (excessive GET requests)
+alert http any any -> any any (msg:"GAMBLING API scraping detected"; \
+    flow:to_server,established; \
+    content:"GET"; http_method; \
+    content:"/api/"; http_uri; \
+    threshold:type both, track by_src, count 500, seconds 60; \
+    classtype:attempted-recon; \
+    sid:9000700; rev:1; \
+    metadata:policy security, category api-scraping;)
+
+# SQL injection in API parameters
+alert http any any -> any any (msg:"GAMBLING SQL injection in API request"; \
+    flow:to_server,established; \
+    content:"/api/"; http_uri; \
+    pcre:"/(\%27)|(\')|(\-\-)|(\%23)|(#)/i"; \
+    classtype:web-application-attack; \
+    sid:9000701; rev:1; \
+    metadata:policy security, category sqli;)
+
+# Path traversal in API
+alert http any any -> any any (msg:"GAMBLING Path traversal attempt"; \
+    flow:to_server,established; \
+    content:"/api/"; http_uri; \
+    content:"../"; http_uri; \
+    classtype:web-application-attack; \
+    sid:9000702; rev:1; \
+    metadata:policy security, category path-traversal;)

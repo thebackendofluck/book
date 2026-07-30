@@ -1,0 +1,326 @@
+# Companion code for "The Backend of Luck" - Chapter 24, Security and Compliance.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+##############################################################################
+# Filebeat Configuration - Suricata EVE JSON to Elasticsearch
+# iGaming Platform SIEM Integration
+#
+# File: /etc/filebeat/filebeat.yml
+# Filebeat version: 8.x (tested on 8.10+)
+#
+# Purpose:
+#   Ship Suricata's EVE JSON logs to Elasticsearch for:
+#     - Real-time SOC alerting (Kibana SIEM / Security view)
+#     - PCI-DSS 10.x compliance log retention (90 days online, 12 months total)
+#     - UKGC/MGA compliance audit trail
+#     - AML transaction monitoring correlation
+#     - Threat hunting and post-incident forensics
+#
+# Architecture:
+#   Suricata -> EVE JSON -> Filebeat -> Elasticsearch -> Kibana
+#
+#   For docker-compose deployments: environment variables (${VAR:default})
+#   resolve from the .env file or shell environment. For bare-metal
+#   production deployments, replace these with explicit values or use
+#   the Filebeat keystore:
+#     filebeat keystore create
+#     echo "mypassword" | filebeat keystore add ELASTIC_PASSWORD --stdin
+#
+# Installation (bare-metal):
+#   curl -L -O https://artifacts.elastic.co/downloads/beats/filebeat/filebeat-8.x.x-amd64.deb
+#   sudo dpkg -i filebeat-8.x.x-amd64.deb
+#   sudo filebeat modules enable suricata
+#   sudo filebeat setup -e   # One-time: installs dashboards, ILM policy, index template
+#   sudo systemctl enable --now filebeat
+#
+# Installation (docker-compose):
+#   Used directly via the IDS docker-compose stack. Environment variables
+#   are resolved from the .env file at compose runtime.
+#
+# Testing the pipeline:
+#   filebeat test config -c /etc/filebeat/filebeat.yml
+#   filebeat test output -c /etc/filebeat/filebeat.yml
+##############################################################################
+
+##############################################################################
+# Section 1 - Filebeat Inputs
+#
+# Read Suricata EVE JSON directly from the log file.
+# The Suricata module (Section 2) handles ECS field mapping, GeoIP ingest
+# pipeline registration, and Kibana dashboard setup. The input below feeds
+# that module. Both are required.
+##############################################################################
+
+filebeat.inputs:
+  # -------------------------------------------------------------------------
+  # Primary EVE JSON input
+  # Using 'log' type for broad compatibility; use 'filestream' on Filebeat 8.x
+  # bare-metal deployments for better file-rotation handling.
+  # -------------------------------------------------------------------------
+  - type: log
+    enabled: true
+    paths:
+      - /var/log/suricata/eve.json
+
+    # Parse each line as JSON and merge fields to root level.
+    # This is required for the Suricata module ECS mapping to work correctly.
+    json.keys_under_root: true
+    json.add_error_key: true    # Flag malformed lines rather than dropping them
+    json.overwrite_keys: true   # Allow JSON fields to overwrite standard fields
+
+    # Tags for SIEM filtering
+    tags: ["suricata", "ids", "igaming"]
+
+    # Custom fields added to every event (searchable in Elasticsearch)
+    fields_under_root: true
+    fields:
+      platform: "igaming"
+      sensor_type: "suricata"
+      environment: "${ENVIRONMENT:production}"
+
+##############################################################################
+# Section 2 - Suricata Module
+#
+# The official Filebeat Suricata module handles EVE JSON with:
+#   - Pre-built Elasticsearch index template with proper ECS field mappings
+#   - Kibana dashboards for alert overview, DNS, HTTP, and TLS events
+#   - GeoIP enrichment ingest pipeline registration
+#   - ECS (Elastic Common Schema) field normalization
+#
+# Enable the module (bare-metal):
+#   filebeat modules enable suricata
+#
+# For docker-compose, the module is activated here directly.
+##############################################################################
+
+filebeat.modules:
+  - module: suricata
+    eve:
+      enabled: true
+      var.paths:
+        - /var/log/suricata/eve.json
+
+##############################################################################
+# Section 3 - Processors
+#
+# Processors transform events in-process before shipping to Elasticsearch.
+# Applied in order: each processor sees the output of the previous one.
+#
+# iGaming-specific processor notes:
+#   - drop_event for 'stats' type: Suricata emits periodic performance
+#     counters as EVE events. These are valuable for Grafana/Prometheus
+#     dashboards but add volume to Elasticsearch. Drop here if you have
+#     a dedicated stats pipeline; keep if Elasticsearch is your only store.
+#   - add_host_metadata: identifies which sensor generated the alert —
+#     critical in multi-site deployments (primary DC, DR site, offices).
+#   - add_cloud_metadata: enriches events with cloud instance context
+#     (AWS instance ID, region, VPC) for cloud-hosted sensors.
+##############################################################################
+
+processors:
+  # -------------------------------------------------------------------------
+  # 3.1 Add event dataset field for Kibana lens and data views
+  # -------------------------------------------------------------------------
+  - add_fields:
+      target: event
+      fields:
+        dataset: suricata.eve
+
+  # -------------------------------------------------------------------------
+  # 3.2 Drop stats events to reduce Elasticsearch storage costs.
+  # Stats are still written to /var/log/suricata/stats.log locally.
+  # Remove this processor if you need Suricata performance metrics in Kibana.
+  # -------------------------------------------------------------------------
+  - drop_event:
+      when:
+        equals:
+          event_type: "stats"
+
+  # -------------------------------------------------------------------------
+  # 3.3 Add host metadata (hostname, OS, IP)
+  # Enables multi-sensor correlation in Kibana SIEM dashboards.
+  # -------------------------------------------------------------------------
+  - add_host_metadata:
+      when.not.contains.tags: forwarded
+
+  # -------------------------------------------------------------------------
+  # 3.4 Add cloud metadata (AWS/GCP/Azure instance context)
+  # Uncomment and configure if Filebeat runs on a cloud compute instance.
+  # For docker-compose deployments on bare metal, leave as null (~).
+  # -------------------------------------------------------------------------
+  - add_cloud_metadata: ~
+
+##############################################################################
+# Section 4 - Elasticsearch Output
+#
+# For docker-compose: hosts, credentials, and index are configured via
+# environment variables sourced from the .env file.
+#
+# For bare-metal production:
+#   - Replace ${ELASTIC_HOST} with your Elasticsearch cluster URL
+#   - Replace ${ELASTIC_PASSWORD} with a keystore reference:
+#       output.elasticsearch.password: "${ELASTIC_PASSWORD}"
+#   - Add SSL/TLS configuration:
+#       ssl.enabled: true
+#       ssl.certificate_authorities: ["/etc/filebeat/certs/ca.crt"]
+#   - Prefer API keys over username/password for service accounts:
+#       api_key: "${ELASTICSEARCH_API_KEY}"
+#
+# Multi-node HA example:
+#   hosts:
+#     - "https://es-node1.igaming.internal:9200"
+#     - "https://es-node2.igaming.internal:9200"
+#     - "https://es-node3.igaming.internal:9200"
+##############################################################################
+
+output.elasticsearch:
+  hosts: ["${ELASTIC_HOST:http://elasticsearch:9200}"]
+  username: "elastic"
+  password: "${ELASTIC_PASSWORD}"
+
+  # Index name: daily rotation for predictable ILM rollover behaviour.
+  # The ILM policy (below) controls actual rollover based on size and age.
+  index: "suricata-eve-%{+yyyy.MM.dd}"
+
+  # Bulk request tuning:
+  #   bulk_max_size: events per bulk request. Larger = better throughput,
+  #                  higher latency for first event in a batch.
+  #   worker: parallel bulk workers. One per Elasticsearch data node is ideal.
+  #   compression_level: 3 = good compression with acceptable CPU cost.
+  bulk_max_size: 2048
+  worker: 2
+  compression_level: 3
+
+  # Ingest pipeline — registered by 'filebeat setup --pipelines'
+  # Handles GeoIP enrichment and user-agent parsing server-side in Elasticsearch.
+  # Comment out if not using the Suricata module setup.
+  # pipeline: "filebeat-%{[agent.version]}-suricata-eve-pipeline"
+
+##############################################################################
+# Section 5 - Index Lifecycle Management (ILM)
+#
+# ILM automatically manages index rollover and deletion.
+#
+# Recommended retention for iGaming compliance:
+#   - 90 days hot/warm tier  (satisfies PCI-DSS 10.7 immediate availability)
+#   - 12 months cold/frozen  (satisfies PCI-DSS 10.7 full retention period)
+#   - Delete after 366 days  (or archive to S3/GCS for long-term regulatory hold)
+#
+# The ILM policy named here must be created in Elasticsearch before Filebeat
+# setup. See suricata.yaml comments for the policy JSON, or create via:
+#   Kibana -> Stack Management -> Index Lifecycle Management -> Create policy
+##############################################################################
+
+setup.ilm.enabled: true
+setup.ilm.policy_name: "suricata-igaming-retention"
+setup.ilm.rollover_alias: "suricata-eve"
+setup.ilm.pattern: "{now/d}-000001"
+
+##############################################################################
+# Section 6 - Index Template
+#
+# The Suricata module provides an ECS-aligned index template.
+# 'filebeat setup' installs it automatically when first run.
+#
+# Shard count guidance for iGaming event volumes:
+#   - Low volume  (<10 GB/day):  1 shard,  1 replica
+#   - Medium      (10-50 GB/day): 2 shards, 1 replica (values below)
+#   - High        (>50 GB/day):  3+ shards, 1 replica
+#
+# At 10 Gbps sustained with all EVE event types enabled, expect 50-200 GB/day
+# depending on traffic mix. Size shards accordingly.
+##############################################################################
+
+setup.template.enabled: true
+setup.template.name: "suricata-eve"
+setup.template.pattern: "suricata-eve-*"
+setup.template.settings:
+  index.number_of_shards: 2
+  index.number_of_replicas: 1
+  index.codec: "best_compression"    # Saves 30-50% storage vs default LZ4
+  index.sort.field: ["@timestamp"]   # Pre-sort for time-range query performance
+  index.sort.order: ["desc"]
+
+##############################################################################
+# Section 7 - Kibana Setup
+#
+# Used by 'filebeat setup' to install Suricata dashboards and index patterns.
+# Only required for the initial setup run; can be disabled afterward.
+#
+# For docker-compose: KIBANA_HOST defaults to the kibana service container.
+# For bare-metal: replace with your Kibana cluster URL.
+##############################################################################
+
+setup.kibana:
+  host: "${KIBANA_HOST:http://kibana:5601}"
+  username: "elastic"
+  password: "${ELASTIC_PASSWORD}"
+
+##############################################################################
+# Section 8 - Filebeat Internal Logging
+#
+# Filebeat's own operational log. Separate from the Suricata data being shipped.
+# Monitor this for backpressure indicators (output timeouts, bulk failures)
+# during major sporting events when ingestion volume spikes.
+##############################################################################
+
+logging.level: warning     # Use 'info' for initial deployment / troubleshooting
+logging.to_files: true
+logging.files:
+  path: /var/log/filebeat
+  name: filebeat
+  keepfiles: 7
+  permissions: 0640
+
+##############################################################################
+# Section 9 - Stack Monitoring
+#
+# Reports Filebeat health metrics (events per second, harvest lag, output
+# errors) to Elasticsearch Monitoring. Visible in Kibana -> Stack Monitoring.
+#
+# Critical for iGaming operations: monitor for harvest lag (Filebeat falling
+# behind Suricata's write rate) during peak traffic events.
+##############################################################################
+
+monitoring.enabled: true
+monitoring.elasticsearch:
+  hosts: ["${ELASTIC_HOST:http://elasticsearch:9200}"]
+  username: "elastic"
+  password: "${ELASTIC_PASSWORD}"
+
+##############################################################################
+# Security best practices for bare-metal deployments (not docker-compose):
+#
+# 1. Run Filebeat as a dedicated non-root user:
+#      useradd -r -s /sbin/nologin filebeat
+#      usermod -a -G suricata filebeat   # Grant access to Suricata logs
+#      chown -R filebeat:filebeat /var/log/filebeat /var/lib/filebeat
+#
+# 2. Store credentials in the Filebeat keystore, not plaintext:
+#      filebeat keystore create
+#      echo "mypassword" | filebeat keystore add ELASTIC_PASSWORD --stdin
+#      # Then reference as: password: "${ELASTIC_PASSWORD}"
+#
+# 3. Enable TLS for the Elasticsearch output:
+#      output.elasticsearch.ssl.enabled: true
+#      output.elasticsearch.ssl.certificate_authorities: ["/etc/filebeat/certs/ca.crt"]
+#
+# 4. Restrict config file permissions:
+#      chmod 640 /etc/filebeat/filebeat.yml
+#      chown root:filebeat /etc/filebeat/filebeat.yml
+#
+# 5. Validate config before restarting:
+#      filebeat test config -c /etc/filebeat/filebeat.yml
+#      filebeat test output -c /etc/filebeat/filebeat.yml
+##############################################################################
+
+##############################################################################
+# End of filebeat.yml
+##############################################################################

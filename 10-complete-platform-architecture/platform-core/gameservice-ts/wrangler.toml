@@ -1,0 +1,87 @@
+# wrangler.toml — Cloudflare Workers configuration for the edge GAL
+#
+# Deploy: wrangler deploy
+# Dev:    wrangler dev
+# Tail:   wrangler tail
+
+name = "acmeto-gal"
+main = "index.ts"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+# ---------------------------------------------------------------------------
+# Routes
+# ---------------------------------------------------------------------------
+# In production, bind to your operator domain:
+# routes = [{ pattern = "api.acmetocasino.com/*", zone_name = "acmetocasino.com" }]
+
+# ---------------------------------------------------------------------------
+# Durable Objects (per-player wallet state)
+# ---------------------------------------------------------------------------
+[[durable_objects.bindings]]
+name = "WALLET"
+class_name = "WalletDurableObject"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["WalletDurableObject"]
+
+# ---------------------------------------------------------------------------
+# KV Namespaces (session cache, idempotency)
+# ---------------------------------------------------------------------------
+[[kv_namespaces]]
+binding = "SESSION_CACHE"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+preview_id = "REPLACE_WITH_PREVIEW_KV_NAMESPACE_ID"
+
+# ---------------------------------------------------------------------------
+# D1 Database (transaction audit log)
+# ---------------------------------------------------------------------------
+[[d1_databases]]
+binding = "TRANSACTION_LOG"
+database_name = "acmeto-gal-txlog"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+
+# ---------------------------------------------------------------------------
+# Environment variables (non-secret)
+# ---------------------------------------------------------------------------
+[vars]
+ENVIRONMENT = "production"
+LOG_LEVEL = "info"
+ALLOWED_ORIGINS = "https://acmetocasino.com"
+
+# ---------------------------------------------------------------------------
+# Secrets (set via: wrangler secret put SECRET_NAME)
+# Never commit secret values to source control.
+# ---------------------------------------------------------------------------
+# wrangler secret put EVOLUTION_API_SECRET
+# wrangler secret put PRAGMATIC_SECRET_KEY
+# wrangler secret put KAMBI_OPERATOR_ID
+# wrangler secret put NETENT_SECRET
+# wrangler secret put PLAYNGO_SECRET_KEY
+# wrangler secret put RELAX_API_KEY
+# wrangler secret put IGT_API_KEY
+# wrangler secret put HACKSAW_SECRET_KEY
+# wrangler secret put PUSH_GAMING_SECRET
+# wrangler secret put NYX_AUTH_TOKEN
+# wrangler secret put BETGENIUS_API_KEY
+#
+# Authenticates inbound requests to this Worker's own /api/v1/* routes
+# (auth + wallet). Deliberately separate from the secrets above, which
+# sign our outbound/launch-token traffic to each supplier's API.
+# Format: comma-separated "supplierId:secret" pairs, e.g.
+#   evolution:REPLACE_ME,pragmatic:REPLACE_ME,kambi:REPLACE_ME
+# wrangler secret put SUPPLIER_CALLBACK_SECRETS
+
+# ---------------------------------------------------------------------------
+# Build configuration
+# ---------------------------------------------------------------------------
+[build]
+command = "npm run build"
+
+# ---------------------------------------------------------------------------
+# Observability
+# ---------------------------------------------------------------------------
+[observability]
+enabled = true
+head_sampling_rate = 1  # 100% sampling in production (adjust as needed)

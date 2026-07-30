@@ -1,0 +1,85 @@
+# Patroni config for {{ inventory_hostname }} in scope {{ patroni_scope }}.
+scope: {{ patroni_scope }}
+name: {{ inventory_hostname }}
+namespace: /service/
+
+restapi:
+  listen: 0.0.0.0:{{ patroni_rest_api_port }}
+  connect_address: {{ ansible_host }}:{{ patroni_rest_api_port }}
+
+etcd3:
+  hosts:
+{% for h in patroni_etcd_hosts %}
+    - {{ h }}:2379
+{% endfor %}
+  # Debian etcd-server 3.4.30 has the gRPC gateway disabled;
+  # the systemd unit must be started with --enable-v2=true AND
+  # --listen-client-urls including an http scheme for Patroni etcd3 backend.
+  protocol: http
+
+bootstrap:
+  dcs:
+    ttl: 30
+    loop_wait: 10
+    retry_timeout: 10
+    maximum_lag_on_failover: 1048576
+    synchronous_mode: false            # iGaming: prefer availability; flip to true in regulated modes
+    master_start_timeout: 300
+    postgresql:
+      use_pg_rewind: true
+      use_slots: true
+      parameters:
+        max_connections: 500
+        shared_buffers: "{{ (vm_ram_mb | default(8192)) // 4 }}MB"
+        effective_cache_size: "{{ ((vm_ram_mb | default(8192)) * 3) // 4 }}MB"
+        wal_level: replica
+        max_wal_senders: 20
+        max_replication_slots: 20
+        hot_standby: "on"
+        ssl: "on"
+        shared_preload_libraries: "pg_stat_statements,pgaudit"
+  initdb:
+    - encoding: UTF8
+    - data-checksums
+  pg_hba:
+    - hostssl replication {{ pg_repl_user }} 0.0.0.0/0 scram-sha-256
+    - hostssl {{ pg_database }} {{ pg_superuser }} 0.0.0.0/0 scram-sha-256
+  users:
+    {{ pg_superuser }}:
+      password: "{{ pg_superuser_password }}"
+      options:
+        - createrole
+        - createdb
+    {{ pg_repl_user }}:
+      password: "{{ pg_repl_password }}"
+      options:
+        - replication
+
+postgresql:
+  listen: {{ pg_listen }}:{{ pg_port }}
+  connect_address: {{ ansible_host }}:{{ pg_port }}
+  data_dir: {{ pgdata_mount }}
+  bin_dir: /usr/lib/postgresql/{{ pg_version }}/bin
+  pgpass: /tmp/pgpass
+  authentication:
+    superuser:
+      username: {{ pg_superuser }}
+      password: "{{ pg_superuser_password }}"
+    replication:
+      username: {{ pg_repl_user }}
+      password: "{{ pg_repl_password }}"
+  parameters:
+    unix_socket_directories: '/var/run/postgresql'
+    ssl_cert_file: '/etc/postgresql/{{ pg_version }}/main/server.crt'
+    ssl_key_file:  '/etc/postgresql/{{ pg_version }}/main/server.key'
+    ssl_ca_file:   '/etc/postgresql/{{ pg_version }}/main/root.crt'
+  create_replica_methods:
+    - basebackup
+  basebackup:
+    max-rate: '100M'
+    checkpoint: 'fast'
+
+tags:
+  nofailover: {{ 'false' if 'writer' in patroni_scope else 'false' }}
+  noloadbalance: false
+  clonefrom: false

@@ -1,0 +1,75 @@
+{
+  "_comment": "AcmetoCasino Meraki firewall rule structure - sanitized from production",
+  "vpn_firewall_rules": {
+    "rules": [
+      {
+        "comment": "Default rule",
+        "policy": "allow",
+        "protocol": "Any",
+        "srcPort": "Any",
+        "srcCidr": "Any",
+        "destPort": "Any",
+        "destCidr": "Any",
+        "syslogEnabled": true
+      }
+    ]
+  },
+  "l3_firewall_rules_example": {
+    "network": "Indiana Hub",
+    "rules": [
+      {
+        "comment": "Allow Management Access",
+        "source": "192.168.128.0/24",
+        "destination": "Any",
+        "protocol": "TCP/UDP",
+        "ports": "22, 80, 443, 3389",
+        "action": "Allow"
+      },
+      {
+        "comment": "Allow VPN Traffic",
+        "source": "10.0.0.0/16",
+        "destination": "Any VPN Network (10.x.0.0/16)",
+        "protocol": "Any",
+        "action": "Allow"
+      },
+      {
+        "comment": "Allow Gaming Traffic",
+        "source": "Any",
+        "destination": "Gaming Servers",
+        "protocol": "UDP",
+        "ports": "30000-30030",
+        "action": "Allow"
+      },
+      {
+        "comment": "Block External to Internal",
+        "source": "Any External",
+        "destination": "192.168.0.0/16",
+        "protocol": "Any",
+        "action": "Deny"
+      },
+      {
+        "comment": "Default Deny",
+        "source": "Any",
+        "destination": "Any",
+        "protocol": "Any",
+        "action": "Deny"
+      }
+    ]
+  },
+  "vpn_encryption": {
+    "site_to_site": {
+      "encryption": "AES-256-GCM",
+      "authentication": "SHA-256",
+      "key_exchange": "ECDH P-256",
+      "pfs": true,
+      "certificate": "RSA 2048-bit"
+    },
+    "third_party_aws": {
+      "encryption": "AES-256-CBC",
+      "authentication": "SHA-1",
+      "key_exchange": "DH Group 2",
+      "ike_version": "IKEv1",
+      "auth_type": "pre-shared-key"
+    }
+  }
+}

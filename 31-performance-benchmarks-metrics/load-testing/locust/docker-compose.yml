@@ -1,0 +1,76 @@
+# Companion code for "The Backend of Luck" - Chapter 31, Performance Benchmarks and Metrics.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+version: "3.8"
+
+services:
+  master:
+    image: acmetocasino/load-testing:1.0.0
+    build: .
+    volumes:
+      - ./locusts:/locusts:ro
+    ports:
+      - "127.0.0.1:8089:8089"
+      - "127.0.0.1:5557:5557"
+      - "127.0.0.1:5558:5558"
+    environment:
+      - TARGET_URL
+      - LOCUSTFILE_PATH=./locusts/locustfile.py
+      - LOCUST_MODE=master
+      - BETTING_PROVIDER_OFFERING_URL=${BETTING_PROVIDER_OFFERING_URL}
+      - BETTING_PROVIDER_PLAYER_URL=${BETTING_PROVIDER_PLAYER_URL}
+      - BETTING_PROVIDER_OFFERING_ID=${BETTING_PROVIDER_OFFERING_ID}
+      - ACME_BASE_URL=${ACME_BASE_URL}
+      - LOG_DIR=./
+      - BET_OFFER_ID=${BET_OFFER_ID}
+      - USE_PREREG=${USE_PREREG}
+    ulimits:
+      nproc: 65535
+      nofile:
+        soft: 20000
+        hard: 40000
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "2.0"
+    command: locust --master --csv=locust --headless -u $USERS -r $HATCH_RATE --run-time $RUN_TIME --host=$TARGET_URL --loglevel $LOG_LEVEL $LOCUST_USER
+
+  worker:
+    build: .
+    volumes:
+      - ./locusts:/locusts:ro
+    environment:
+      - TARGET_URL
+      - LOCUSTFILE_PATH=./locusts/locustfile.py
+      - LOCUST_MODE=worker
+      - LOCUST_MASTER_HOST=${LOCUST_MASTER_HOST}
+      - BETTING_PROVIDER_OFFERING_URL=${BETTING_PROVIDER_OFFERING_URL}
+      - BETTING_PROVIDER_PLAYER_URL=${BETTING_PROVIDER_PLAYER_URL}
+      - BETTING_PROVIDER_OFFERING_ID=${BETTING_PROVIDER_OFFERING_ID}
+      - ACME_BASE_URL=${ACME_BASE_URL}
+      - LOG_DIR=./
+      - BET_OFFER_ID=${BET_OFFER_ID}
+      - USE_PREREG=${USE_PREREG}
+    ulimits:
+      nproc: 65535
+      nofile:
+        soft: 20000
+        hard: 40000
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "2.0"
+    command: locust --headless --worker --master-host master --host=$TARGET_URL $LOCUST_USER

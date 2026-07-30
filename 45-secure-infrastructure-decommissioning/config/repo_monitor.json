@@ -1,0 +1,22 @@
+{
+  "_comment": "GitHub repository monitor configuration for SDDS trigger-word detection. The repo_monitor.py script polls the file at repository_url every check_interval seconds. Chapter 45: Secure Infrastructure Decommissioning.",
+  "repository_url": "https://github.com/REPLACE_ORG/REPLACE_REPO/blob/main/REPLACE_TRIGGER_FILE.txt",
+  "trigger_word": "cleaner",
+  "check_interval": 60,
+  "signature_verification": true,
+  "authorized_keys": [
+    "REPLACE_WITH_GPG_KEY_FINGERPRINT_1",
+    "REPLACE_WITH_GPG_KEY_FINGERPRINT_2"
+  ],
+  "github_token_env": "GITHUB_TOKEN",
+  "hmac_secret_env": "REPO_MONITOR_HMAC_SECRET",
+  "alert_on_trigger": {
+    "sms": true,
+    "slack": true,
+    "log_file": "/var/log/repo_monitor.log"
+  },
+  "retry": {
+    "max_attempts": 3,
+    "backoff_seconds": 30
+  }
+}

@@ -1,0 +1,99 @@
+[Unit]
+Description=Suricata IDS/IPS — {{ organization_name }} ({{ sensor_zone | default('unset') }} zone)
+Documentation=https://suricata.io/documentation/
+After=network.target network-online.target
+Wants=network-online.target
+# Ensure journald is available for log output
+After=systemd-journald.service
+
+[Service]
+# ── Identity ─────────────────────────────────────────────────────────────────
+User={{ suricata_user }}
+Group={{ suricata_group }}
+
+# ── Start / Stop ─────────────────────────────────────────────────────────────
+Type=exec
+PIDFile={{ suricata_run_dir }}/suricata.pid
+
+ExecStartPre=/usr/bin/suricata -T \
+    -c {{ suricata_config_dir }}/suricata.yaml \
+    -l {{ suricata_log_dir }} \
+    --pidfile {{ suricata_run_dir }}/suricata.pid
+
+{% if suricata_mode == "ids" %}
+ExecStart=/usr/bin/suricata \
+    -c {{ suricata_config_dir }}/suricata.yaml \
+    -l {{ suricata_log_dir }} \
+    --pidfile {{ suricata_run_dir }}/suricata.pid \
+{% for iface in suricata_interfaces %}
+    -i {{ iface }}{% if not loop.last %} \{% endif %}
+
+{% endfor %}
+{% elif suricata_mode == "ips" %}
+ExecStart=/usr/bin/suricata \
+    -c {{ suricata_config_dir }}/suricata.yaml \
+    -l {{ suricata_log_dir }} \
+    --pidfile {{ suricata_run_dir }}/suricata.pid \
+    --af-packet
+{% endif %}
+
+# Graceful reload: sends SIGUSR2 to hot-reload rules without restarting
+ExecReload=/bin/kill -USR2 $MAINPID
+
+# On stop: allow up to 30 s for the engine to flush EVE JSON buffers
+ExecStop=/bin/kill -TERM $MAINPID
+TimeoutStopSec=30
+
+# ── Restart policy ───────────────────────────────────────────────────────────
+# Always restart on failure; wait 5 s between attempts.
+# In IPS mode this limits the window during which traffic is uninspected.
+Restart=on-failure
+RestartSec=5
+StartLimitInterval=60
+StartLimitBurst=3
+
+# ── Resource limits ───────────────────────────────────────────────────────────
+# File descriptors: large flow tables need many open sockets
+LimitNOFILE=1048576
+# Locked memory: required for AF_PACKET mmap rings
+LimitMEMLOCK=infinity
+# Processes: many worker threads
+LimitNPROC=infinity
+# Core dump: enable for crash analysis (rotate and protect the file)
+LimitCORE=infinity
+
+# ── Scheduling / Priority ─────────────────────────────────────────────────────
+# Nice -19 = second-highest non-real-time priority
+Nice=-19
+# FIFO real-time scheduling with maximum priority.
+# WARNING: this will preempt all non-RT processes.  Only appropriate on
+# dedicated sensor hosts.  Remove these lines on shared servers.
+CPUSchedulingPolicy=fifo
+CPUSchedulingPriority=99
+# Reserve dedicated CPU quota if running in a container/VM with cgroups
+# CPUQuota=80%         # uncomment if co-located with other workloads
+
+# ── Environment ──────────────────────────────────────────────────────────────
+Environment="SURICATA_CONF={{ suricata_config_dir }}/suricata.yaml"
+{% if http_proxy != "" %}
+Environment="HTTP_PROXY={{ http_proxy }}"
+Environment="HTTPS_PROXY={{ https_proxy }}"
+Environment="NO_PROXY={{ no_proxy }}"
+{% endif %}
+
+# ── Sandboxing ───────────────────────────────────────────────────────────────
+# Restrict write access to only required paths
+ReadWritePaths={{ suricata_log_dir }} {{ suricata_run_dir }} {{ suricata_lib_dir }}
+ReadOnlyPaths={{ suricata_config_dir }}
+# Prevent privilege escalation
+NoNewPrivileges=yes
+# Prevent access to kernel syscall namespaces
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+# Allow raw socket access (needed for packet capture)
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_NICE
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_NICE
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,69 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 27d, PostgreSQL Aegis.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# postgres-aegis-vms main playbook.
+# Runs against inventory/{lab-server,proxmox-secondary-host}.yml via `make bootstrap TARGET=...`.
+#
+# Order matters:
+#   1. luks-data-disk  — encrypt /dev/vdb on every DB node first (pre-PG install).
+#   2. postgres-16     — install binaries, tune kernel.
+#   3. patroni         — join each node to its scope (shard-a or shard-b) via etcd DCS.
+#   4. pg-aegis        — install extension (or fall back to pgcrypto).
+#   5. pgcat           — on pgcat nodes, configure hash-sharding on player_id.
+#   6. haproxy         — optional frontend for connection multiplexing.
+#   7. pgbackrest      — stanza + Wasabi creds, first full backup.
+#   8. monitoring      — node + postgres exporter, Grafana scrape target.
+
+- name: DCS — etcd cluster for Patroni
+  hosts: etcd
+  become: true
+  roles:
+    - role: etcd
+      tags: [etcd, dcs]
+
+- name: Network tuning — MTU + sysctl on all nodes
+  hosts: postgres:etcd:pgcat
+  become: true
+  roles:
+    - role: network-tuning
+      tags: [network, mtu, sysctl]
+
+- name: Database nodes — LUKS first, then PG
+  hosts: postgres
+  become: true
+  serial: 4                    # never touch more than 4 data nodes at once
+  roles:
+    - role: luks-data-disk
+      tags: [luks, encryption, storage]
+    - role: postgres-16
+      tags: [pg, packages]
+    - role: patroni        # patroni first so it owns the cluster before pg-aegis ALTER SYSTEM
+      tags: [patroni, ha]
+    - role: pg-aegis
+      tags: [aegis, encryption, columns]
+    - role: pgbackrest
+      tags: [backup]
+    - role: monitoring
+      tags: [monitoring, observability]
+
+- name: Connection-pooler + sharder (PgCat)
+  hosts: pgcat
+  become: true
+  roles:
+    - role: pgbouncer-pgcat
+      tags: [pgcat, shard-router]
+
+- name: Frontend load balancer (HAProxy)
+  hosts: pgcat                 # colocate HAProxy with PgCat for simplicity
+  become: true
+  roles:
+    - role: haproxy
+      tags: [haproxy, loadbalance]

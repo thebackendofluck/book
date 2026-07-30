@@ -1,0 +1,155 @@
+# Companion code for "The Backend of Luck" - Chapter 27b, The Jurisdiction Transfer Gateway and Cookie Consent.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# Jurisdiction Transfer Gateway — seed rules.
+# Each rule answers: "Can data of class X flow from A to B, and under what mechanism?"
+# Mechanism vocabulary:
+#   adequacy           — EU Commission adequacy decision / UK adequacy regs
+#   SCCs-2021-914-M1   — Controller-to-Controller
+#   SCCs-2021-914-M2   — Controller-to-Processor (most iGaming vendor deals)
+#   SCCs-2021-914-M4   — Processor-to-Controller
+#   DPF                — EU-US Data Privacy Framework (2023); UK Extension also in force
+#   derogation-49      — Art. 49 one-off derogations (explicit consent, contract necessity)
+#   BCR                — Binding Corporate Rules (intra-group only)
+#   intra-EEA          — no restriction (Chapter V does not apply)
+#   forbidden          — no lawful basis found; transfer must not occur
+#
+# citation field should be a traceable legal reference (regulation article, case law, national statute).
+
+rules:
+  # ==================== Intra-EEA (no Chapter V) ====================
+  - from_jurisdiction: EU-DE
+    to_destination: EU-IE
+    data_class: PII
+    mechanism: intra-EEA
+    allowed: true
+    citation: "GDPR Chapter V does not apply to intra-EEA transfers."
+    notes: "Free flow; local supplementary law (BDSG) still applies at origin."
+
+  - from_jurisdiction: EU-FR
+    to_destination: EU-DE
+    data_class: financial
+    mechanism: intra-EEA
+    allowed: true
+    citation: "GDPR Chapter V not triggered."
+
+  # ==================== Adequacy decisions ====================
+  - from_jurisdiction: EU-IE
+    to_destination: UK
+    data_class: PII
+    mechanism: adequacy
+    allowed: true
+    effective_from: "2021-06-28"
+    expires_at: "2028-06-27T00:00:00Z"   # Extension adopted 2025-06, extends to 2028-06-27
+    review_by: "2027-12-01T00:00:00Z"
+    citation: "Commission Implementing Decision (EU) 2021/1772; extension 2025."
+    notes: "UK adequacy extended; monitor any UK surveillance law developments."
+
+  - from_jurisdiction: UK
+    to_destination: EU-IE
+    data_class: PII
+    mechanism: adequacy
+    allowed: true
+    citation: "UK GDPR Art. 45 adequacy regs (SI 2021/1181 for EU/EEA)."
+
+  # ==================== DPF (EU-US and UK extension) ====================
+  - from_jurisdiction: EU-DE
+    to_destination: Cloudflare-US
+    data_class: PII
+    mechanism: DPF
+    allowed: true
+    tia_required: true
+    effective_from: "2023-07-10"
+    review_by: "2026-07-10T00:00:00Z"
+    citation: "Commission Implementing Decision (EU) 2023/1795 (EU-US DPF)."
+    notes: "Schrems III risk: NoYB challenge pending; supplementary measures (E2E encryption) still advisable. Verify recipient is DPF-self-certified on the list."
+
+  - from_jurisdiction: UK
+    to_destination: Cloudflare-US
+    data_class: PII
+    mechanism: DPF
+    allowed: true
+    tia_required: true
+    effective_from: "2023-10-12"
+    citation: "UK-US Data Bridge (UK Extension to the DPF), SI 2023/1028."
+
+  # ==================== SCCs 2021/914 ====================
+  - from_jurisdiction: EU-DE
+    to_destination: Wasabi-Amsterdam
+    data_class: PII
+    mechanism: intra-EEA
+    allowed: true
+    citation: "Wasabi eu-central-1 is Amsterdam; intra-EEA."
+
+  - from_jurisdiction: EU-IE
+    to_destination: Wasabi-Singapore
+    data_class: archive
+    mechanism: SCCs-2021-914-M2
+    allowed: true
+    tia_required: true
+    citation: "SCCs Module 2 (Controller-to-Processor); client-side AES-256 + SSE-S3 as supplementary measures; see Wasabi DPA."
+    notes: "TIA must document Singapore PDPA assessment; data is pre-encrypted so risk to data subject minimal."
+
+  - from_jurisdiction: UK
+    to_destination: Wasabi-Singapore
+    data_class: archive
+    mechanism: SCCs-2021-914-M2
+    allowed: true
+    tia_required: true
+    citation: "UK IDTA 2022 / Addendum to EU SCCs."
+
+  - from_jurisdiction: EU-ES
+    to_destination: BR
+    data_class: PII
+    mechanism: SCCs-2021-914-M1
+    allowed: true
+    tia_required: true
+    citation: "SCCs Module 1 (Controller-to-Controller); Brazil has no adequacy decision yet (application pending)."
+    notes: "Brazil LGPD roughly aligned with GDPR but EU has not granted adequacy. Monitor EDPB opinion."
+
+  - from_jurisdiction: BR
+    to_destination: EU-IE
+    data_class: PII
+    mechanism: SCCs-2021-914-M1
+    allowed: true
+    citation: "LGPD Art. 33 — transfer abroad to country with equivalent protection; EU qualifies."
+
+  # ==================== Forbidden transfers ====================
+  - from_jurisdiction: EU-FR
+    to_destination: Meta-US
+    data_class: marketing
+    mechanism: forbidden
+    allowed: false
+    citation: "CNIL formal notice 2022-010 and Irish DPC €1.2B fine (2023) re Meta transfers without adequate mechanism for ad targeting."
+    notes: "Meta is DPF-self-certified since 2024 but CNIL doctrine on marketing profiling requires explicit consent path PLUS DPF — do not allow without gateway upgrade + DPIA."
+
+  - from_jurisdiction: EU-DE
+    to_destination: CN-AliCloud
+    data_class: PII
+    mechanism: forbidden
+    allowed: false
+    citation: "EDPB Recommendations 01/2020 §45–46; China PIPL does not satisfy equivalent-protection test; no SCCs lodged."
+
+  # ==================== NJ DGE / US state gambling ====================
+  - from_jurisdiction: NJ
+    to_destination: Wasabi-Virginia
+    data_class: archive
+    mechanism: adequacy
+    allowed: true
+    citation: "N.J.A.C. 13:69O — encrypted long-term archive off-site permitted with DGE written authorisation."
+    notes: "DGE approval letter must be on file; live data remains in Atlantic City."
+
+  # ==================== MGA (Malta) ====================
+  - from_jurisdiction: MGA
+    to_destination: EU-IE
+    data_class: PII
+    mechanism: intra-EEA
+    allowed: true
+    citation: "Malta is EU member state; Chapter V not triggered."

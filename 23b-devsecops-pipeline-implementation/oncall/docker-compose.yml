@@ -1,0 +1,134 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 23b, DevSecOps Pipeline Implementation.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# docker-compose.yml — Casino Platform On-Call Alert Bot
+# Run: docker compose up -d
+# Requires: .env file in the same directory (see .env.example)
+
+services:
+
+  alert-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: acme/alert-bot:1.0.0
+    container_name: alert-bot
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      # --- Bot config ---
+      ALERT_CONFIG_PATH: /app/alert-config.yaml
+
+      # --- Prometheus / Alertmanager ---
+      PROMETHEUS_URL: "${PROMETHEUS_URL}"
+      ALERTMANAGER_URL: "${ALERTMANAGER_URL}"
+
+      # --- GitLab CI ---
+      GITLAB_URL: "${GITLAB_URL}"
+      GITLAB_TOKEN: "${GITLAB_TOKEN}"
+      GITLAB_PROJECT_ID: "${GITLAB_PROJECT_ID}"
+
+      # --- DefectDojo ---
+      DEFECTDOJO_URL: "${DEFECTDOJO_URL}"
+      DEFECTDOJO_TOKEN: "${DEFECTDOJO_TOKEN}"
+
+      # --- Wazuh ---
+      WAZUH_URL: "${WAZUH_URL}"
+      WAZUH_USER: "${WAZUH_USER}"
+      WAZUH_PASSWORD: "${WAZUH_PASSWORD}"
+
+      # --- Notifications: Dashboard ---
+      DASHBOARD_WEBHOOK_URL: "${DASHBOARD_WEBHOOK_URL}"
+      DASHBOARD_TOKEN: "${DASHBOARD_TOKEN}"
+
+      # --- Notifications: Slack ---
+      SLACK_WEBHOOK_URL: "${SLACK_WEBHOOK_URL}"
+
+      # --- Notifications: Email (SMTP) ---
+      SMTP_HOST: "${SMTP_HOST}"
+      SMTP_PORT: "${SMTP_PORT:-587}"
+      SMTP_USER: "${SMTP_USER}"
+      SMTP_PASSWORD: "${SMTP_PASSWORD}"
+      ONCALL_PRIMARY_EMAIL: "${ONCALL_PRIMARY_EMAIL}"
+      ONCALL_SECONDARY_EMAIL: "${ONCALL_SECONDARY_EMAIL}"
+      ENG_MANAGER_EMAIL: "${ENG_MANAGER_EMAIL}"
+      PLATFORM_TEAM_EMAIL: "${PLATFORM_TEAM_EMAIL}"
+
+      # --- Notifications: Twilio (Phone / SMS) ---
+      TWILIO_ACCOUNT_SID: "${TWILIO_ACCOUNT_SID}"
+      TWILIO_AUTH_TOKEN: "${TWILIO_AUTH_TOKEN}"
+      TWILIO_FROM_NUMBER: "${TWILIO_FROM_NUMBER}"
+      ONCALL_PRIMARY_PHONE: "${ONCALL_PRIMARY_PHONE}"
+      ONCALL_SECONDARY_PHONE: "${ONCALL_SECONDARY_PHONE}"
+      ENG_MANAGER_PHONE: "${ENG_MANAGER_PHONE}"
+
+      # --- On-call rotation contacts ---
+      ENGINEER_A_PHONE: "${ENGINEER_A_PHONE}"
+      ENGINEER_A_EMAIL: "${ENGINEER_A_EMAIL}"
+      ENGINEER_B_PHONE: "${ENGINEER_B_PHONE}"
+      ENGINEER_B_EMAIL: "${ENGINEER_B_EMAIL}"
+      ENGINEER_C_PHONE: "${ENGINEER_C_PHONE}"
+      ENGINEER_C_EMAIL: "${ENGINEER_C_EMAIL}"
+
+      # --- Redis ---
+      REDIS_HOST: redis
+      REDIS_PASSWORD: "${REDIS_PASSWORD}"
+
+    volumes:
+      - ./alert-config.yaml:/app/alert-config.yaml:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - alerting
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: alert-bot-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --requirepass "${REDIS_PASSWORD}"
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --save 900 1
+      --save 300 10
+      --save 60 10000
+      --appendonly yes
+      --appendfsync everysec
+    volumes:
+      - redis_data:/data
+    networks:
+      - alerting
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # Do not expose Redis externally; only accessible within the alerting network
+    expose:
+      - "6379"
+
+networks:
+  alerting:
+    driver: bridge
+    name: alerting
+
+volumes:
+  redis_data:
+    driver: local

@@ -1,0 +1,48 @@
+# Companion code for "The Backend of Luck" - Chapter 38, Case Study.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# Ansible playbook for IIS Web Server role installation
+# AcmetoCasino on-premises Windows server configuration
+# Installs IIS with all features required for gaming platform (.NET, CGI, auth)
+
+---
+- hosts: webservers
+  tasks:
+    - name: Install IIS Web Server with gaming platform features
+      win_feature:
+        name:
+          - Web-Server
+          - Web-Mgmt-Console
+          - Web-Mgmt-Service
+          - Web-Lgcy-Mgmt-Console
+          - Web-Asp-Net45
+          - Web-Dyn-Compression
+          - Web-Health
+          - Web-Default-Doc
+          - Web-Dir-Browsing
+          - Web-Http-Errors
+          - Web-Static-Content
+          - Web-Http-Logging
+          - Web-Log-Libraries
+          - Web-Http-Tracing
+          - Web-Performance
+          - Web-Stat-Compression
+          - Web-Filtering
+          - Web-Basic-Auth
+          - Web-IP-Security
+          - Web-Windows-Auth
+          - Web-Net-Ext45
+          - Web-ASP
+          - Web-CGI
+          - Web-ISAPI-Ext
+          - Web-ISAPI-Filter
+        state: present
+        include_management_tools: true
+      register: iis_install

@@ -1,0 +1,319 @@
+# Companion code for "The Backend of Luck" - Chapter 24, Security and Compliance.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# =============================================================================
+# docker-compose.yml — PQC Testing Environment
+# Chapter 24g: Post-Quantum Cryptography for iGaming
+#
+# Services:
+#   nginx-pqc    — OQS-enabled Nginx with PQC hybrid cipher suites
+#   curl-oqs     — OQS-patched curl for testing PQC handshakes
+#   step-ca      — Private CA for issuing PQC/hybrid test certificates
+#   test-app     — Minimal HTTPS backend exposing /healthz and /api/v1/echo
+#
+# Usage:
+#   # Start the environment
+#   docker compose up -d
+#
+#   # Run a PQC handshake test (X25519Kyber768)
+#   docker compose run --rm curl-oqs \
+#     curl -v --curves X25519Kyber768Draft00 \
+#     https://nginx-pqc/healthz
+#
+#   # Check which cipher was negotiated
+#   docker compose run --rm curl-oqs \
+#     curl -v --tls13-ciphers TLS_AES_256_GCM_SHA384 \
+#     --curves X25519Kyber768Draft00:X25519 \
+#     https://nginx-pqc/api/v1/echo -d '{"test":"pqc"}'
+#
+#   # Issue a test certificate from step-ca
+#   docker compose exec step-ca \
+#     step ca certificate test.igaming.internal /tmp/cert.pem /tmp/key.pem \
+#     --ca-url https://step-ca:9000 --root /home/step/.step/certs/root_ca.crt
+#
+#   # View logs
+#   docker compose logs -f nginx-pqc
+#
+# Prerequisites:
+#   - Docker 24+ with BuildKit
+#   - docker compose v2
+#
+# OQS image tags: https://hub.docker.com/r/openquantumsafe/nginx/tags
+# =============================================================================
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # nginx-pqc: Nginx with OQS provider (supports PQC hybrid key exchange)
+  #
+  # Image: openquantumsafe/nginx — pre-built with liboqs + oqs-provider
+  # The nginx-pqc.conf from this directory is mounted as the server config.
+  #
+  # PQC behaviour:
+  #   Nginx will prefer X25519Kyber768Draft00 for TLS 1.3 key exchange when
+  #   the client includes it in the key_share extension. Falls back to X25519
+  #   for clients that do not support PQC.
+  # ---------------------------------------------------------------------------
+  nginx-pqc:
+    image: openquantumsafe/nginx:latest
+    container_name: igaming-nginx-pqc
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      # PQC-optimised Nginx config (from this chapter directory)
+      - ./nginx-pqc.conf:/etc/nginx/nginx.conf:ro
+      # Mount certificates issued by step-ca (populated after step-ca starts)
+      - pqc-certs:/etc/nginx/certs:ro
+      # Custom nginx config snippets
+      - ./docker/nginx-snippets:/etc/nginx/snippets:ro
+    environment:
+      - NGINX_HOST=igaming.internal
+      - NGINX_PORT=443
+    depends_on:
+      step-ca:
+        condition: service_healthy
+      test-app:
+        condition: service_started
+    networks:
+      - pqc-net
+    healthcheck:
+      test: ["CMD", "curl", "-k", "-f", "https://localhost/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+    labels:
+      com.igaming.pqc.component: "tls-termination"
+      com.igaming.pqc.note: "X25519Kyber768Draft00 hybrid KEM enabled"
+
+
+  # ---------------------------------------------------------------------------
+  # curl-oqs: OQS-patched curl for testing PQC handshakes
+  #
+  # This image contains curl built against BoringSSL with OQS patches, enabling
+  # PQC key share extensions in ClientHello. Use it to verify that the Nginx
+  # container is correctly negotiating PQC ciphers.
+  #
+  # This service is intentionally not started by default (profile: tools).
+  # Run it with: docker compose run --rm curl-oqs <curl args>
+  # ---------------------------------------------------------------------------
+  curl-oqs:
+    image: openquantumsafe/curl:latest
+    container_name: igaming-curl-oqs
+    profiles:
+      - tools
+    networks:
+      - pqc-net
+    # Trust the step-ca root certificate
+    volumes:
+      - pqc-certs:/certs:ro
+    environment:
+      - CURL_CA_BUNDLE=/certs/root_ca.crt
+    # Default command: test PQC handshake against nginx-pqc
+    command: >
+      curl -v
+      --curves X25519Kyber768Draft00:x25519mlkem768:X25519
+      --tls13-ciphers TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256
+      https://nginx-pqc/healthz
+    depends_on:
+      - nginx-pqc
+    labels:
+      com.igaming.pqc.component: "test-client"
+
+
+  # ---------------------------------------------------------------------------
+  # step-ca: Private CA for issuing PQC / hybrid test certificates
+  #
+  # Provides an ACME endpoint and a one-step certificate issuance API.
+  # On first start, initialises a new PKI under /home/step/.step.
+  # Subsequent starts reuse the existing PKI.
+  #
+  # Note on PQC: The mainline smallstep/step-ca image uses ECDSA P-256 for
+  # the root CA. For ML-DSA root CAs, use a custom build or the OQS fork.
+  # See step-ca-pqc-setup.sh in this directory.
+  # ---------------------------------------------------------------------------
+  step-ca:
+    image: smallstep/step-ca:latest
+    container_name: igaming-step-ca
+    ports:
+      - "9000:9000"
+    volumes:
+      - step-ca-data:/home/step/.step
+      - pqc-certs:/certs
+    environment:
+      # Initial password for the CA key (change before any real deployment)
+      - DOCKER_STEPCA_INIT_NAME=iGaming Internal CA
+      - DOCKER_STEPCA_INIT_DNS_NAMES=step-ca,localhost,igaming.internal
+      - DOCKER_STEPCA_INIT_REMOTE_MANAGEMENT=true
+      - DOCKER_STEPCA_INIT_ACME=true
+      # Provisioner settings
+      - DOCKER_STEPCA_INIT_PROVISIONER_NAME=admin@igaming.internal
+    networks:
+      - pqc-net
+    healthcheck:
+      test: ["CMD", "step", "ca", "health", "--ca-url", "https://localhost:9000",
+             "--root", "/home/step/.step/certs/root_ca.crt"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+    labels:
+      com.igaming.pqc.component: "certificate-authority"
+      com.igaming.pqc.note: "ECDSA P-256 root; see step-ca-pqc-setup.sh for ML-DSA root"
+
+  # ---------------------------------------------------------------------------
+  # cert-init: One-shot container that issues a certificate from step-ca and
+  # copies it into the shared pqc-certs volume for Nginx to use.
+  # Runs after step-ca is healthy.
+  # ---------------------------------------------------------------------------
+  cert-init:
+    image: smallstep/step-cli:latest
+    container_name: igaming-cert-init
+    networks:
+      - pqc-net
+    volumes:
+      - step-ca-data:/home/step/.step:ro
+      - pqc-certs:/certs
+    depends_on:
+      step-ca:
+        condition: service_healthy
+    entrypoint: /bin/sh
+    command: |
+      -c '
+      set -e
+      echo "[cert-init] Issuing certificate for igaming.internal..."
+
+      step ca certificate igaming.internal \
+        /certs/igaming.internal.crt \
+        /certs/igaming.internal.key \
+        --ca-url https://step-ca:9000 \
+        --root /home/step/.step/certs/root_ca.crt \
+        --not-after 8760h \
+        --san igaming.internal \
+        --san nginx-pqc \
+        --san localhost \
+        --force 2>/dev/null || echo "[cert-init] Warning: certificate issuance failed (may already exist)"
+
+      # Copy root CA for curl-oqs trust store
+      cp /home/step/.step/certs/root_ca.crt /certs/root_ca.crt 2>/dev/null || true
+
+      echo "[cert-init] Done. Certificates available in /certs."
+      '
+    restart: "no"
+    labels:
+      com.igaming.pqc.component: "cert-bootstrap"
+
+
+  # ---------------------------------------------------------------------------
+  # test-app: Minimal Go/Python HTTPS backend for end-to-end testing
+  #
+  # Exposes:
+  #   GET  /healthz         — 200 OK
+  #   POST /api/v1/echo     — echoes the request body as JSON
+  #   GET  /api/v1/tls-info — returns TLS negotiation details (for PQC verification)
+  #
+  # This service uses HTTP (TLS is terminated at Nginx), which is normal
+  # in a real iGaming deployment where Nginx/HAProxy is the TLS edge.
+  # ---------------------------------------------------------------------------
+  test-app:
+    image: python:3.12-slim
+    container_name: igaming-test-app
+    networks:
+      - pqc-net
+    entrypoint: python3
+    command:
+      - -c
+      - |
+        import json, sys
+        from http.server import HTTPServer, BaseHTTPRequestHandler
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, fmt, *args):
+                print(fmt % args, file=sys.stderr)
+
+            def do_GET(self):
+                if self.path == '/healthz':
+                    body = b'OK\n'
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'text/plain')
+                    self.send_header('Content-Length', str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                elif self.path == '/api/v1/tls-info':
+                    info = {'service': 'igaming-test-app',
+                            'note': 'TLS terminated at nginx-pqc upstream',
+                            'pqc_capable_upstream': True}
+                    body = json.dumps(info, indent=2).encode()
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'application/json')
+                    self.send_header('Content-Length', str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                else:
+                    self.send_error(404)
+
+            def do_POST(self):
+                if self.path == '/api/v1/echo':
+                    length = int(self.headers.get('Content-Length', 0))
+                    body_in = self.rfile.read(length)
+                    try:
+                        data = json.loads(body_in)
+                    except Exception:
+                        data = {'raw': body_in.decode(errors='replace')}
+                    body = json.dumps({'echo': data, 'status': 'ok'}).encode()
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'application/json')
+                    self.send_header('Content-Length', str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                else:
+                    self.send_error(404)
+
+        print('test-app listening on :8080', file=sys.stderr)
+        HTTPServer(('0.0.0.0', 8080), Handler).serve_forever()
+    healthcheck:
+      test: ["CMD", "python3", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8080/healthz')"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+    labels:
+      com.igaming.pqc.component: "backend-app"
+
+
+# ---------------------------------------------------------------------------
+# Volumes
+# ---------------------------------------------------------------------------
+volumes:
+  step-ca-data:
+    name: igaming-step-ca-data
+    labels:
+      com.igaming.pqc.purpose: "CA key material and configuration"
+
+  pqc-certs:
+    name: igaming-pqc-certs
+    labels:
+      com.igaming.pqc.purpose: "Issued certificates shared between nginx and test clients"
+
+
+# ---------------------------------------------------------------------------
+# Networks
+# ---------------------------------------------------------------------------
+networks:
+  pqc-net:
+    name: igaming-pqc-net
+    driver: bridge
+    labels:
+      com.igaming.pqc.purpose: "Isolated network for PQC testing environment"

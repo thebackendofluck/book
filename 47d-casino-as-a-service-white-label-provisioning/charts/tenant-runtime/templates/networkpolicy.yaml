@@ -1,0 +1,99 @@
+# Companion code for "The Backend of Luck" - Chapter 47d, Casino as a Service.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: BUSL-1.1
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+{{- if .Values.networkPolicy.enabled -}}
+# Policy 1: default-deny all ingress and egress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "tenant-runtime.fullname" . }}-default-deny
+  namespace: {{ include "tenant-runtime.namespace" . }}
+  labels:
+    {{- include "tenant-runtime.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+# Policy 2: allow ingress from the nginx ingress controller namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "tenant-runtime.fullname" . }}-allow-ingress-controller
+  namespace: {{ include "tenant-runtime.namespace" . }}
+  labels:
+    {{- include "tenant-runtime.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "tenant-runtime.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: {{ .Values.service.targetPort }}
+---
+# Policy 3: allow DNS egress (UDP+TCP 53 to kube-dns)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "tenant-runtime.fullname" . }}-allow-dns
+  namespace: {{ include "tenant-runtime.namespace" . }}
+  labels:
+    {{- include "tenant-runtime.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "tenant-runtime.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# Policy 4: allow egress to the tenant's own database (within namespace)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "tenant-runtime.fullname" . }}-allow-db
+  namespace: {{ include "tenant-runtime.namespace" . }}
+  labels:
+    {{- include "tenant-runtime.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "tenant-runtime.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: postgresql
+      ports:
+        - protocol: TCP
+          port: 5432
+{{- end }}

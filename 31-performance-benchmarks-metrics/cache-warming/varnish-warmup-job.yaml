@@ -1,0 +1,106 @@
+# Companion code for "The Backend of Luck" - Chapter 31, Performance Benchmarks and Metrics.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: varnish-cache-warmup
+  namespace: casino-prod
+  labels:
+    app: varnish-cache-warmup
+    tier: operations
+spec:
+  ttlSecondsAfterFinished: 300
+  backoffLimit: 1
+  template:
+    metadata:
+      labels:
+        app: varnish-cache-warmup
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: warmer
+        image: curlimages/curl:8.11.1
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          set -e
+
+          VARNISH_SVC="http://varnish:6081"
+          ROUNDS=3
+
+          # Priority-ordered URL list
+          P0_URLS="/health"
+          P1_URLS="/api/games /lobby /api/odds /api/odds/live /api/odds/pre-match /api/odds/popular /api/games/slots /api/games/live-casino /api/games/table-games /api/games/crash"
+          P2_URLS="/static/css/main.css /static/js/app.bundle.js /static/images/logo.png"
+          P3_URLS="/static/games/sweet-bonanza.webp /static/games/gates-of-olympus.webp /static/games/big-bass-bonanza.webp"
+
+          ALL_URLS="$P0_URLS $P1_URLS $P2_URLS $P3_URLS"
+
+          echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) level=INFO msg=\"Starting cache warmup\" endpoint=$VARNISH_SVC rounds=$ROUNDS"
+
+          TOTAL=0
+          ERRORS=0
+
+          for round in $(seq 1 $ROUNDS); do
+            echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) level=INFO msg=\"Round $round/$ROUNDS\""
+            for url in $ALL_URLS; do
+              TOTAL=$((TOTAL + 1))
+              STATUS=$(curl -sf -o /dev/null -w "%{http_code}" --connect-timeout 5 --max-time 10 "${VARNISH_SVC}${url}" 2>/dev/null) || STATUS="000"
+              TIME=$(curl -sf -o /dev/null -w "%{time_total}" --connect-timeout 5 --max-time 10 "${VARNISH_SVC}${url}" 2>/dev/null) || TIME="N/A"
+              echo "round=$round url=$url status=$STATUS time=${TIME}s"
+              if [ "$STATUS" = "000" ]; then
+                ERRORS=$((ERRORS + 1))
+              fi
+            done
+          done
+
+          # Verify cache hits
+          echo ""
+          echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) level=INFO msg=\"Verifying cache hits\""
+          HITS=0
+          CHECKED=0
+
+          for url in $ALL_URLS; do
+            CHECKED=$((CHECKED + 1))
+            CACHE_HEADER=$(curl -sI --connect-timeout 5 --max-time 10 "${VARNISH_SVC}${url}" 2>/dev/null | grep -i "^X-Cache:" || echo "")
+            if echo "$CACHE_HEADER" | grep -qi "HIT"; then
+              HITS=$((HITS + 1))
+            fi
+          done
+
+          if [ "$CHECKED" -gt 0 ]; then
+            HIT_RATE=$((HITS * 100 / CHECKED))
+          else
+            HIT_RATE=0
+          fi
+
+          echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) level=INFO msg=\"Cache warming complete\" total_requests=$TOTAL errors=$ERRORS cache_hits=$HITS cache_checked=$CHECKED hit_rate=${HIT_RATE}%"
+
+          if [ "$HIT_RATE" -lt 50 ]; then
+            echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) level=WARN msg=\"Low cache hit rate -- verify Varnish configuration\""
+            exit 1
+          fi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+          readOnlyRootFilesystem: true
+        resources:
+          requests:
+            cpu: 50m
+            memory: 32Mi
+          limits:
+            cpu: 200m
+            memory: 64Mi
+      restartPolicy: Never

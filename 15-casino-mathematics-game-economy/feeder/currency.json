@@ -1,0 +1,43 @@
+{
+  "_comment": "Exchange rates relative to GBP for progressive jackpot feed normalisation. Updated daily from ECB rates. All values are multipliers: 1 GBP = X <currency>.",
+  "_updated": "2025-10-14",
+  "base": "GBP",
+  "rates": {
+    "GBP": 1.0,
+    "EUR": 1.17,
+    "USD": 1.27,
+    "AUD": 1.96,
+    "CAD": 1.72,
+    "SEK": 13.45,
+    "NOK": 13.82,
+    "DKK": 8.71,
+    "CHF": 1.12,
+    "PLN": 5.21,
+    "CZK": 29.87,
+    "HUF": 459.20,
+    "RON": 5.82,
+    "BGN": 2.29,
+    "HRK": 8.81,
+    "NZD": 2.10,
+    "SGD": 1.70,
+    "HKD": 9.93,
+    "JPY": 190.55,
+    "KRW": 1705.40,
+    "BRL": 6.38,
+    "MXN": 21.80,
+    "ZAR": 23.64,
+    "INR": 105.80,
+    "MYR": 5.99,
+    "THB": 45.20,
+    "ISK": 173.40,
+    "TRY": 40.90,
+    "RUB": 114.20,
+    "CNY": 9.21
+  },
+  "supported": [
+    "GBP", "EUR", "USD", "AUD", "CAD", "SEK", "NOK", "DKK",
+    "CHF", "PLN", "CZK", "HUF", "RON", "BGN", "HRK", "NZD",
+    "SGD", "HKD", "JPY", "BRL", "MXN", "ZAR", "INR", "MYR",
+    "THB", "ISK", "TRY", "RUB", "CNY"
+  ]
+}

@@ -1,0 +1,196 @@
+# =============================================================================
+# Dockerfile.nginx-coraza — WAF-enabled nginx image
+# =============================================================================
+#
+# A drop-in replacement for nginx:latest that has Coraza WAF (via ModSecurity
+# v3) built in. Production-hardened:
+#   - Non-root runtime (nginx user, UID 101)
+#   - Read-only root filesystem (tmpfs for runtime dirs)
+#   - No unnecessary packages in final layer
+#   - Pinned base image versions
+#   - CIS Docker Benchmark 4.1, 4.6, 5.12, 5.25 compliant
+#
+# Build:
+#   docker build -f Dockerfile.nginx-coraza -t nginx-coraza:1.27.4 .
+#   docker build -f Dockerfile.nginx-coraza -t nginx-coraza:1.27.4 \
+#       --build-arg NGINX_VERSION=1.27.4 \
+#       --build-arg CRS_VERSION=4.7.0 .
+#
+# Use as a drop-in nginx:
+#   services:
+#     web:
+#       image: nginx-coraza:1.27.4
+#       volumes:
+#         - ./my-site.conf:/etc/nginx/conf.d/default.conf:ro
+#
+# Environments where this image is used in the book:
+#   - docker-compose (single host: production 203.0.113.1 / ops-host)
+#   - K3s ingress (scripts/chapter-k8s/)
+#   - Any new environment that needs WAF-protected nginx
+#
+# =============================================================================
+
+ARG NGINX_VERSION=1.27.4
+ARG DEBIAN_VERSION=bookworm
+ARG MODSEC_BRANCH=v3/master
+ARG CRS_VERSION=4.7.0
+
+# ---------------------------------------------------------------------------
+# Stage 1: Build ModSecurity v3 (libmodsecurity)
+# ---------------------------------------------------------------------------
+FROM debian:${DEBIAN_VERSION}-slim AS modsec-builder
+
+ARG MODSEC_BRANCH
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        build-essential \
+        git \
+        automake \
+        libtool \
+        autoconf \
+        pkg-config \
+        libssl-dev \
+        libpcre3-dev \
+        libpcre2-dev \
+        libxml2-dev \
+        libcurl4-openssl-dev \
+        libyajl-dev \
+        libgeoip-dev \
+        libfuzzy-dev \
+        ssdeep \
+        ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+RUN git clone --depth=1 --branch "${MODSEC_BRANCH}" \
+        https://github.com/SpiderLabs/ModSecurity.git modsecurity \
+    && cd modsecurity \
+    && git submodule update --init --recursive \
+    && ./build.sh \
+    && ./configure --with-pcre2 \
+    && make -j"$(nproc)" \
+    && make install \
+    && strip /usr/local/lib/libmodsecurity.so*
+
+# ---------------------------------------------------------------------------
+# Stage 2: Build the nginx dynamic module (.so)
+# ---------------------------------------------------------------------------
+FROM debian:${DEBIAN_VERSION}-slim AS nginx-builder
+
+ARG NGINX_VERSION
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        build-essential \
+        git \
+        wget \
+        libssl-dev \
+        libpcre3-dev \
+        libpcre2-dev \
+        zlib1g-dev \
+        libxml2-dev \
+        libcurl4-openssl-dev \
+        libyajl-dev \
+        libgeoip-dev \
+        ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy libmodsecurity artifacts from stage 1
+COPY --from=modsec-builder /usr/local/lib/libmodsecurity* /usr/local/lib/
+COPY --from=modsec-builder /usr/local/include/modsecurity/ /usr/local/include/modsecurity/
+COPY --from=modsec-builder /usr/local/lib/pkgconfig/ /usr/local/lib/pkgconfig/
+RUN ldconfig
+
+WORKDIR /build
+
+# Download nginx source pinned to NGINX_VERSION
+RUN wget -q "http://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz" \
+    && tar xzf "nginx-${NGINX_VERSION}.tar.gz"
+
+# Clone ModSecurity-nginx connector
+RUN git clone --depth=1 https://github.com/SpiderLabs/ModSecurity-nginx.git
+
+# Compile the dynamic module only (--with-compat).
+# Compiler flags match the official nginx:bookworm image to ensure ABI compatibility.
+RUN cd "nginx-${NGINX_VERSION}" \
+    && ./configure \
+        --with-compat \
+        --with-cc-opt="-g -O2 -fstack-protector-strong -Wformat -Werror=format-security -fPIC -D_FORTIFY_SOURCE=2" \
+        --with-ld-opt="-Wl,-Bsymbolic-functions -Wl,-z,relro -fPIC" \
+        --add-dynamic-module=../ModSecurity-nginx \
+    && make modules \
+    && strip objs/ngx_http_modsecurity_module.so \
+    && cp objs/ngx_http_modsecurity_module.so /build/ngx_http_modsecurity_module.so
+
+# ---------------------------------------------------------------------------
+# Stage 3: Final runtime image
+# ---------------------------------------------------------------------------
+FROM nginx:${NGINX_VERSION}-${DEBIAN_VERSION}
+
+ARG CRS_VERSION
+ARG NGINX_VERSION
+
+LABEL org.opencontainers.image.title="nginx-coraza"
+LABEL org.opencontainers.image.description="WAF-enabled nginx: ModSecurity v3 with OWASP CRS 4.x and iGaming exclusions"
+LABEL org.opencontainers.image.version="${NGINX_VERSION}"
+
+# Install only runtime shared libraries needed by libmodsecurity
+# libfuzzy2, ssdeep, libgeoip, libyajl are optional but improve detection accuracy
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        libxml2 \
+        libcurl4 \
+        libyajl2 \
+        libgeoip1 \
+        libfuzzy2 \
+        ca-certificates \
+        curl \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# Copy the compiled dynamic module into the standard nginx modules path
+COPY --from=nginx-builder /build/ngx_http_modsecurity_module.so \
+    /usr/lib/nginx/modules/ngx_http_modsecurity_module.so
+
+# Copy libmodsecurity runtime libraries
+COPY --from=modsec-builder /usr/local/lib/libmodsecurity* /usr/local/lib/
+RUN ldconfig \
+    && chmod 644 /usr/lib/nginx/modules/ngx_http_modsecurity_module.so
+
+# Fetch and install OWASP CRS at build time (baked in; can be bind-mounted to override)
+RUN mkdir -p /etc/nginx/coraza/crs/rules /var/log/coraza \
+    && curl -fsSL "https://github.com/coreruleset/coreruleset/archive/refs/tags/v${CRS_VERSION}.tar.gz" \
+       | tar xz --strip-components=1 -C /etc/nginx/coraza/crs \
+           "coreruleset-${CRS_VERSION}/rules" \
+           "coreruleset-${CRS_VERSION}/crs-setup.conf.example" \
+    && mv /etc/nginx/coraza/crs/crs-setup.conf.example \
+          /etc/nginx/coraza/crs/crs-setup.conf.default
+
+# Copy WAF configuration files (can be bind-mounted at runtime to override)
+COPY coraza.conf        /etc/nginx/coraza/coraza.conf
+COPY crs-setup.conf     /etc/nginx/coraza/crs/crs-setup.conf
+
+# Copy base nginx config that loads the module
+COPY nginx-coraza.conf  /etc/nginx/nginx.conf
+
+# Fix up permissions so the nginx user (UID 101) can write logs and tmpfs dirs
+# /var/log/coraza must be writable — will be a volume or tmpfs at runtime
+RUN chown -R nginx:nginx /etc/nginx/coraza \
+    && chown -R nginx:nginx /var/log/coraza \
+    && chmod 755 /var/log/coraza \
+    # Create runtime directories nginx needs (will be mounted as tmpfs)
+    && mkdir -p /var/cache/nginx /var/run/nginx \
+    && chown -R nginx:nginx /var/cache/nginx /var/run/nginx
+
+# CIS 4.1: Run as non-root user
+# nginx:bookworm already has user nginx (UID 101). The master process needs to
+# bind port 80 — use CAP_NET_BIND_SERVICE in docker-compose instead of root.
+USER nginx
+
+# CIS 4.6: Healthcheck instruction
+HEALTHCHECK --interval=10s --timeout=5s --retries=3 --start-period=15s \
+    CMD curl -sf http://localhost/health || exit 1
+
+EXPOSE 80 443

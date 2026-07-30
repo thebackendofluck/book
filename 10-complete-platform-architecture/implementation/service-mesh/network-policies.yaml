@@ -1,0 +1,539 @@
+# Companion code for "The Backend of Luck" - Chapter 10, Complete Platform Architecture.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# Chapter 42 - Complete Platform Architecture
+# Kubernetes Network Policies for iGambling Platform
+# Implements: namespace-level isolation, security groups per bounded context
+#
+# Apply: kubectl apply -f network-policies.yaml
+#
+# Architecture:
+#   casino-platform  -> payment-processing, player-management, game-engine, compliance
+#   payment-processing -> compliance (event reporting only)
+#   game-engine -> player-management (session validation), compliance
+#   player-management -> compliance (KYC/AML events)
+#   analytics -> read-only access to all namespaces
+#   compliance -> isolated, receives events only
+
+---
+# 1. Default deny all ingress in payment-processing namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: payment-processing
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+
+---
+# 2. Default deny all ingress in compliance namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: compliance
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+
+---
+# 3. Default deny all ingress in game-engine namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: game-engine
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+
+---
+# 4. Default deny all ingress in player-management namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: player-management
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+
+---
+# 5. Allow casino-platform to reach payment-gateway
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-casino-to-payment
+  namespace: payment-processing
+spec:
+  podSelector:
+    matchLabels:
+      app: payment-gateway
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: casino-platform
+          podSelector:
+            matchLabels:
+              app: casino-api
+      ports:
+        - protocol: TCP
+          port: 8443
+
+---
+# 6. Allow wallet-service to reach payment-gateway
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-wallet-to-payment
+  namespace: payment-processing
+spec:
+  podSelector:
+    matchLabels:
+      app: payment-gateway
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: player-management
+          podSelector:
+            matchLabels:
+              app: wallet-service
+      ports:
+        - protocol: TCP
+          port: 8443
+
+---
+# 7. Allow game-settlement to reach payment-gateway
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-settlement-to-payment
+  namespace: payment-processing
+spec:
+  podSelector:
+    matchLabels:
+      app: payment-gateway
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: game-engine
+          podSelector:
+            matchLabels:
+              app: game-settlement
+      ports:
+        - protocol: TCP
+          port: 8443
+
+---
+# 8. Allow casino-platform to reach game-engine
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-casino-to-games
+  namespace: game-engine
+spec:
+  podSelector:
+    matchLabels:
+      app: game-engine
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: casino-platform
+          podSelector:
+            matchLabels:
+              app: casino-api
+      ports:
+        - protocol: TCP
+          port: 8080
+
+---
+# 9. Allow casino-platform to reach player-management
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-casino-to-players
+  namespace: player-management
+spec:
+  podSelector:
+    matchLabels:
+      app: player-service
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: casino-platform
+      ports:
+        - protocol: TCP
+          port: 8080
+
+---
+# 10. Allow all namespaces to send events to compliance
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-event-ingestion
+  namespace: compliance
+spec:
+  podSelector:
+    matchLabels:
+      app: compliance-engine
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              casino-mesh: "true"
+      ports:
+        - protocol: TCP
+          port: 8080
+
+---
+# 11. Allow game-engine to validate sessions via player-management
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-game-to-session
+  namespace: player-management
+spec:
+  podSelector:
+    matchLabels:
+      app: session-manager
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: game-engine
+      ports:
+        - protocol: TCP
+          port: 8080
+
+---
+# 12. Allow analytics read-only access to all services
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-analytics-read
+  namespace: casino-platform
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: analytics
+      ports:
+        - protocol: TCP
+          port: 9090  # Prometheus metrics port only
+
+---
+# 13. Payment processing - allow egress to external PSPs
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-psp-egress
+  namespace: payment-processing
+spec:
+  podSelector:
+    matchLabels:
+      app: payment-gateway
+  policyTypes:
+    - Egress
+  egress:
+    # External PSPs (Stripe, Adyen, Nuvei)
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+    # Internal DNS
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Compliance event reporting
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: compliance
+      ports:
+        - protocol: TCP
+          port: 8080
+    # Internal Kafka for event streaming
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: kafka-cluster
+      ports:
+        - protocol: TCP
+          port: 9092
+        - protocol: TCP
+          port: 9093
+
+---
+# 14. Game engine - allow egress to game providers and internal services
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-game-egress
+  namespace: game-engine
+spec:
+  podSelector:
+    matchLabels:
+      app: game-engine
+  policyTypes:
+    - Egress
+  egress:
+    # External game provider APIs
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+    # DNS
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+    # Player session validation
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: player-management
+      ports:
+        - protocol: TCP
+          port: 8080
+    # Compliance events
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: compliance
+      ports:
+        - protocol: TCP
+          port: 8080
+    # Kafka
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: kafka-cluster
+      ports:
+        - protocol: TCP
+          port: 9092
+
+---
+# 15. Player management - allow egress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-player-egress
+  namespace: player-management
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    # DNS
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+    # Compliance events
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: compliance
+      ports:
+        - protocol: TCP
+          port: 8080
+    # Kafka
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: kafka-cluster
+      ports:
+        - protocol: TCP
+          port: 9092
+    # External KYC/AML providers
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+
+---
+# 16. Compliance - minimal egress (reporting only)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-compliance-egress
+  namespace: compliance
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    # DNS
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+    # Database access (compliance DB only)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: database-cluster
+      ports:
+        - protocol: TCP
+          port: 5432
+    # Kafka (consume events)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: kafka-cluster
+      ports:
+        - protocol: TCP
+          port: 9092
+    # Regulator reporting endpoints
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+
+---
+# 17. Allow Istio control plane communication
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-istio-control-plane
+  namespace: payment-processing
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: istio-system
+      ports:
+        - protocol: TCP
+          port: 15012
+        - protocol: TCP
+          port: 15017
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: istio-system
+      ports:
+        - protocol: TCP
+          port: 15012
+        - protocol: TCP
+          port: 15017
+
+---
+# 18. Allow Prometheus scraping from monitoring namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-prometheus-scrape
+  namespace: payment-processing
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: monitoring
+          podSelector:
+            matchLabels:
+              app: prometheus
+      ports:
+        - protocol: TCP
+          port: 9090
+        - protocol: TCP
+          port: 15020  # Istio sidecar metrics

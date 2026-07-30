@@ -1,0 +1,29 @@
+[package]
+name = "hsm-keymgr"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "hsm_keymgr"
+path = "src/lib.rs"
+
+[[bin]]
+name = "hsm-keymgr"
+path = "src/main.rs"
+
+[dependencies]
+yubihsm = { version = "0.42", features = ["usb"], optional = true }
+aegis = { version = "0.9", default-features = false, features = ["pure-rust", "std"] }
+aes-gcm = "0.11"
+clap = { version = "4", features = ["derive"] }
+zeroize = { version = "1.7", features = ["derive"] }
+rand = "0.10"
+anyhow = "1.0"
+hex = "0.4"
+
+[dev-dependencies]
+tempfile = "3"
+
+[features]
+default = ["hsm"]
+hsm = ["dep:yubihsm"]

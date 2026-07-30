@@ -1,0 +1,78 @@
+# Companion code for "The Backend of Luck" - Chapter 23b, DevSecOps Pipeline Implementation.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# ---------------------------------------------------------------------------
+# Kong Rate Limiting Plugin — global + per-service overrides
+#
+# Apply to a Route or Service by adding:
+#   konghq.com/plugins: rate-limit-global
+# to its annotations. For namespace-scoped use, set namespace: acmetocasino-prod.
+# ---------------------------------------------------------------------------
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: rate-limit-global
+  namespace: acmetocasino-prod
+  labels:
+    app.kubernetes.io/part-of: casino-security
+spec:
+  plugin: rate-limiting
+  config:
+    second: 50
+    minute: 1000
+    hour: 10000
+    policy: local           # "redis" for distributed rate-limiting across replicas
+    fault_tolerant: true    # allow requests if rate-limit store is unavailable
+    hide_client_headers: false
+
+---
+# Tighter limits for authentication endpoints (brute-force protection)
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: rate-limit-auth
+  namespace: acmetocasino-prod
+  labels:
+    app.kubernetes.io/part-of: casino-security
+spec:
+  plugin: rate-limiting
+  config:
+    second: 5
+    minute: 30
+    hour: 200
+    policy: local
+    fault_tolerant: true
+    hide_client_headers: false
+
+---
+# Relaxed limits for static/public endpoints (game catalog, lobby)
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: rate-limit-public
+  namespace: acmetocasino-prod
+  labels:
+    app.kubernetes.io/part-of: casino-security
+spec:
+  plugin: rate-limiting
+  config:
+    second: 100
+    minute: 3000
+    hour: 50000
+    policy: local
+    fault_tolerant: true
+    hide_client_headers: false
+
+---
+# If Redis is available in-cluster, upgrade to distributed rate limiting:
+# Replace policy: local → redis and add:
+#   redis_host: redis.acmetocasino-prod.svc.cluster.local
+#   redis_port: 6379
+#   redis_database: 1       # separate DB from app data

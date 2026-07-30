@@ -1,0 +1,35 @@
+# Vault Agent config for LUKS key rendering on {{ inventory_hostname }}.
+# Pattern lifted from /opt/vault-agent/casino/agent-pg-tde.hcl (lab-server).
+
+pid_file = "/run/vault-agent-luks-{{ inventory_hostname }}.pid"
+exit_after_auth = true
+
+vault {
+  address = "{{ bao_addr }}"
+}
+
+auto_auth {
+  method "approle" {
+    config = {
+      role_id_file_path   = "/opt/vault-agent/postgres-aegis/role-id"
+      secret_id_file_path = "/opt/vault-agent/postgres-aegis/secret-id"
+      remove_secret_id_file_after_reading = false
+    }
+  }
+  sink "file" {
+    config = {
+      path = "/run/.vault-agent-luks-{{ inventory_hostname }}-token"
+      mode = 0400
+    }
+  }
+}
+
+template {
+  destination = "/dev/shm/luks-{{ inventory_hostname }}.key"
+  perms       = 0400
+  contents    = <<-EOT
+  {{ `{{` }} with secret "secret/data/casino/postgres-aegis/luks/{{ inventory_hostname }}" {{ `}}` }}
+  {{ `{{` }} base64Decode .Data.data.value {{ `}}` }}
+  {{ `{{` }} end {{ `}}` }}
+  EOT
+}

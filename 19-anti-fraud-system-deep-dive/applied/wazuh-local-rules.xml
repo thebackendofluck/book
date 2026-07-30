@@ -1,0 +1,263 @@
+<!-- Wazuh iGaming Custom Rules — Acme Casino Platform -->
+<!-- Range: 100501-100590 -->
+<!-- Ref: docs/security-architecture.md §4.1 -->
+<!-- Deploy: /var/ossec/etc/rules/local_rules.xml on wazuh manager -->
+<!-- Backup before deploy: cp local_rules.xml local_rules.xml.bak.$(date +%Y%m%d%H%M%S) -->
+
+<group name="igaming,acme,">
+
+  <!-- ================================================================== -->
+  <!-- VELOCITY FRAUD (100501-100509)                                      -->
+  <!-- ================================================================== -->
+
+  <!-- Velocity fraud: multiple deposits same user -->
+  <rule id="100501" level="12">
+    <decoded_as>json</decoded_as>
+    <field name="event_type">^deposit$</field>
+    <field name="user_id_count_5m">^[1-9][0-9]+$</field>
+    <description>Velocity fraud: multiple deposits in 5min for user $(user_id)</description>
+    <group>fraud,velocity,igaming,pci,</group>
+  </rule>
+
+  <!-- Velocity fraud: rapid withdrawal attempts -->
+  <rule id="100502" level="12">
+    <decoded_as>json</decoded_as>
+    <field name="event_type">^withdrawal$</field>
+    <field name="withdrawal_count_1h">^[6-9]$|^[1-9][0-9]+$</field>
+    <description>Velocity fraud: >5 withdrawals in 1h for user $(user_id)</description>
+    <group>fraud,velocity,aml,igaming,</group>
+  </rule>
+
+  <!-- Rapid account creation from same IP -->
+  <rule id="100503" level="11">
+    <decoded_as>json</decoded_as>
+    <field name="event_type">^player_register$</field>
+    <field name="ip_register_count_1h">^[5-9]$|^[1-9][0-9]+$</field>
+    <description>Multiple account registrations from same IP $(src_ip) in 1h</description>
+    <group>fraud,account_farm,igaming,</group>
+  </rule>
+
+  <!-- ================================================================== -->
+  <!-- DATABASE EXFILTRATION (100510-100519)                               -->
+  <!-- ================================================================== -->
+
+  <!-- Postgres bulk read of players table -->
+  <rule id="100510" level="14">
+    <decoded_as>json</decoded_as>
+    <field name="db">postgres</field>
+    <match>players</match>
+    <field name="rows_returned">^[1-9][0-9]{4,}$</field>
+    <description>Bulk read of players table (>10k rows) by user $(db_user)</description>
+    <group>data_leak,exfil,lgpd,pci,igaming,T1005,</group>
+  </rule>
+
+  <!-- pg_dump or pg_basebackup by unauthorized user -->
+  <rule id="100511" level="15">
+    <if_sid>80700</if_sid>
+    <match>pg_dump|pg_basebackup|pg_dumpall</match>
+    <description>Unauthorized database dump executed by user $(user)</description>
+    <group>data_leak,exfil,pci,lgpd,igaming,T1005,T1048,</group>
+  </rule>
+
+  <!-- pg_dump detected via auditd (syscall execve) -->
+  <rule id="100513" level="15">
+    <if_sid>80792</if_sid>
+    <field name="audit.execve.a0">pg_dump|pg_dumpall|pg_basebackup</field>
+    <description>pg_dump/backup tool execve detected via auditd on host $(agent.name)</description>
+    <group>data_leak,exfil,pci,igaming,T1005,</group>
+  </rule>
+
+  <!-- wallet_transactions bulk export -->
+  <rule id="100514" level="14">
+    <decoded_as>json</decoded_as>
+    <field name="db">postgres</field>
+    <match>wallet_transactions|wallet_events</match>
+    <field name="rows_returned">^[1-9][0-9]{3,}$</field>
+    <description>Bulk read of wallet table (>1k rows) by $(db_user)</description>
+    <group>data_leak,exfil,pci,financial,igaming,</group>
+  </rule>
+
+  <!-- ================================================================== -->
+  <!-- REDIS DESTRUCTIVE COMMANDS (100512)                                  -->
+  <!-- ================================================================== -->
+
+  <!-- Redis FLUSHALL / FLUSHDB / DEBUG SLEEP -->
+  <rule id="100512" level="15">
+    <decoded_as>json</decoded_as>
+    <match>FLUSHALL|FLUSHDB|DEBUG SLEEP|CONFIG RESETSTAT|OBJECT HELP</match>
+    <description>Destructive/privileged Redis command detected: $(data)</description>
+    <group>impact,integrity,redis,igaming,T1485,</group>
+  </rule>
+
+  <!-- Redis CONFIG SET to disable auth or bind -->
+  <rule id="100515" level="14">
+    <decoded_as>json</decoded_as>
+    <match>CONFIG SET requirepass|CONFIG SET bind|CONFIG SET save ""</match>
+    <description>Redis security configuration tampered by $(data)</description>
+    <group>impact,defense_evasion,redis,igaming,T1562,</group>
+  </rule>
+
+  <!-- ================================================================== -->
+  <!-- ADMIN OFF-HOURS (100520-100529)                                     -->
+  <!-- ================================================================== -->
+
+  <!-- Admin login outside business hours (22:00-06:00) -->
+  <rule id="100520" level="10">
+    <decoded_as>json</decoded_as>
+    <field name="event_type">^ops_login$|^admin_login$</field>
+    <field name="hour">^2[2-3]$|^0[0-5]$</field>
+    <description>Admin/ops login outside business hours (22:00-06:00) by $(user)</description>
+    <group>anomaly,insider,off_hours,igaming,T1078,</group>
+  </rule>
+
+  <!-- Admin action (game control, user ban) outside hours -->
+  <rule id="100521" level="9">
+    <decoded_as>json</decoded_as>
+    <field name="event_type">^game_control|^player_ban|^withdrawal_manual</field>
+    <field name="hour">^2[2-3]$|^0[0-5]$</field>
+    <description>Privileged admin action $(event_type) outside business hours by $(user)</description>
+    <group>anomaly,insider,off_hours,igaming,</group>
+  </rule>
+
+  <!-- New admin user creation -->
+  <rule id="100522" level="13">
+    <decoded_as>json</decoded_as>
+    <field name="event_type">^ops_user_create$</field>
+    <field name="role">admin|finance|security</field>
+    <description>Privileged user ($(role)) created by $(created_by) — verify authorization</description>
+    <group>anomaly,insider,igaming,T1136,</group>
+  </rule>
+
+  <!-- ================================================================== -->
+  <!-- BONUS ABUSE (100530-100539)                                         -->
+  <!-- ================================================================== -->
+
+  <!-- Multiple accounts from same device -->
+  <rule id="100530" level="11">
+    <decoded_as>json</decoded_as>
+    <field name="event_type">^bonus_claim$</field>
+    <field name="same_device_fingerprint_24h">^[4-9]$|^[1-9][0-9]+$</field>
+    <description>Bonus abuse: >3 accounts claiming from same device fingerprint $(device_id) in 24h</description>
+    <group>fraud,bonus_abuse,igaming,</group>
+  </rule>
+
+  <!-- Bonus claim with same CPF hash variations -->
+  <rule id="100531" level="12">
+    <decoded_as>json</decoded_as>
+    <field name="event_type">^bonus_claim$</field>
+    <field name="cpf_hash_collision">true</field>
+    <description>Bonus claim with suspected CPF collision (multi-account) by user $(user_id)</description>
+    <group>fraud,bonus_abuse,kyc,igaming,</group>
+  </rule>
+
+  <!-- ================================================================== -->
+  <!-- SANCTIONS / AML (100540-100549)                                     -->
+  <!-- ================================================================== -->
+
+  <!-- Withdrawal to sanctioned jurisdiction -->
+  <rule id="100540" level="13">
+    <decoded_as>json</decoded_as>
+    <field name="event_type">^withdrawal$</field>
+    <field name="dest_country">^KP$|^IR$|^SY$|^CU$|^SD$|^BY$</field>
+    <description>Withdrawal to sanctioned jurisdiction $(dest_country) by player $(user_id)</description>
+    <group>aml,sanctions,mga,compliance,igaming,</group>
+  </rule>
+
+  <!-- Large withdrawal without KYC complete -->
+  <rule id="100541" level="12">
+    <decoded_as>json</decoded_as>
+    <field name="event_type">^withdrawal$</field>
+    <field name="amount_brl">^[5-9][0-9]{3,}$|^[1-9][0-9]{4,}$</field>
+    <field name="kyc_status">pending|none|failed</field>
+    <description>Large withdrawal (R$ $(amount_brl)) without completed KYC by $(user_id)</description>
+    <group>aml,kyc,mga,compliance,igaming,</group>
+  </rule>
+
+  <!-- ================================================================== -->
+  <!-- KYC BYPASS (100550-100559)                                          -->
+  <!-- ================================================================== -->
+
+  <!-- Low-confidence KYC auto-approval -->
+  <rule id="100550" level="12">
+    <decoded_as>json</decoded_as>
+    <field name="endpoint">/api/v2/kyc/approve</field>
+    <field name="auto_approved">true</field>
+    <description>Low-confidence KYC auto-approval for player $(player_id) — manual review required</description>
+    <group>kyc,compliance,mga,igaming,</group>
+  </rule>
+
+  <!-- KYC document modification attempt -->
+  <rule id="100551" level="13">
+    <decoded_as>json</decoded_as>
+    <field name="event_type">^kyc_document_update$</field>
+    <field name="kyc_state">approved</field>
+    <description>KYC document modified AFTER approval for player $(player_id) by $(operator)</description>
+    <group>kyc,compliance,fraud,mga,igaming,T1565,</group>
+  </rule>
+
+  <!-- ================================================================== -->
+  <!-- RTP / GAME INTEGRITY (100560-100569)                                -->
+  <!-- ================================================================== -->
+
+  <!-- RTP deviation > 3 sigma -->
+  <rule id="100560" level="14">
+    <decoded_as>json</decoded_as>
+    <field name="event_type">^game_outcome_stats$</field>
+    <field name="rtp_deviation_sigma">^[3-9]$|^[1-9][0-9]+$</field>
+    <description>RTP deviation >$(rtp_deviation_sigma) sigma in 24h for game $(game_id) — integrity check</description>
+    <group>rng,integrity,mga,igaming,</group>
+  </rule>
+
+  <!-- Consecutive jackpots from same account -->
+  <rule id="100561" level="13">
+    <decoded_as>json</decoded_as>
+    <field name="event_type">^jackpot$</field>
+    <field name="jackpot_count_24h">^[3-9]$|^[1-9][0-9]+$</field>
+    <description>Suspicious consecutive jackpots ($(jackpot_count_24h) in 24h) for player $(user_id)</description>
+    <group>rng,integrity,fraud,igaming,</group>
+  </rule>
+
+  <!-- ================================================================== -->
+  <!-- DEFENSE EVASION (100580-100590)                                     -->
+  <!-- ================================================================== -->
+
+  <!-- Wazuh agent stopped/disconnected -->
+  <rule id="100590" level="15">
+    <if_sid>503,504</if_sid>
+    <description>Wazuh agent stopped or disconnected on $(agent.name) — possible defense evasion</description>
+    <group>defense_evasion,igaming,T1562,critical,</group>
+  </rule>
+
+  <!-- Audit log cleared on casino host -->
+  <rule id="100581" level="15">
+    <if_sid>80190,80191</if_sid>
+    <match>deleted|removed|truncated|cleared</match>
+    <description>Audit or security log cleared on $(agent.name) — possible cover tracks</description>
+    <group>defense_evasion,igaming,T1070,critical,</group>
+  </rule>
+
+  <!-- SSH key added to authorized_keys -->
+  <rule id="100582" level="13">
+    <if_sid>550,554</if_sid>
+    <match>authorized_keys</match>
+    <description>SSH authorized_keys modified on $(agent.name) — verify authorization</description>
+    <group>persistence,igaming,T1098,</group>
+  </rule>
+
+  <!-- Cron modification (persistence) -->
+  <rule id="100583" level="12">
+    <if_sid>550,554</if_sid>
+    <match>/etc/cron|/var/spool/cron|/etc/crontab</match>
+    <description>Cron modified on $(agent.name) by $(user) — verify authorization</description>
+    <group>persistence,igaming,T1053,</group>
+  </rule>
+
+  <!-- Exfil tool execution (curl/wget large upload) -->
+  <rule id="100584" level="13">
+    <if_sid>80792</if_sid>
+    <field name="audit.execve.a0">curl|wget|nc|netcat|socat|dnscat|iodine</field>
+    <description>Data exfiltration tool $(audit.execve.a0) executed on $(agent.name) by $(user)</description>
+    <group>exfil,igaming,T1048,T1041,</group>
+  </rule>
+
+</group>

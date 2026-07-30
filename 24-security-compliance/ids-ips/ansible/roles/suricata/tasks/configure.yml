@@ -1,0 +1,133 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 24, Security and Compliance.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# roles/suricata/tasks/configure.yml
+# Deploy all configuration files and validate the resulting configuration.
+
+# =============================================================================
+# MAIN CONFIGURATION
+# =============================================================================
+
+- name: "Deploy suricata.yaml from template"
+  ansible.builtin.template:
+    src: suricata.yaml.j2
+    dest: "{{ suricata_config_dir }}/suricata.yaml"
+    owner: "{{ suricata_user }}"
+    group: "{{ suricata_group }}"
+    mode: "0640"
+    backup: true
+    validate: "suricata -T -c %s -l /tmp"
+  notify:
+    - reload suricata rules
+  tags: [configure, config]
+
+# =============================================================================
+# THRESHOLD / SUPPRESS
+# =============================================================================
+
+- name: "Deploy threshold.conf from template"
+  ansible.builtin.template:
+    src: threshold.conf.j2
+    dest: "{{ suricata_config_dir }}/threshold.conf"
+    owner: "{{ suricata_user }}"
+    group: "{{ suricata_group }}"
+    mode: "0640"
+  notify:
+    - reload suricata rules
+  tags: [configure, threshold]
+
+# =============================================================================
+# SURICATA-UPDATE CONFIGURATION
+# =============================================================================
+
+- name: "Deploy suricata-update.yaml configuration"
+  ansible.builtin.template:
+    src: suricata-update.yaml.j2
+    dest: "{{ suricata_config_dir }}/update.yaml"
+    owner: "{{ suricata_user }}"
+    group: "{{ suricata_group }}"
+    mode: "0640"
+  tags: [configure, update]
+
+# =============================================================================
+# CUSTOM IGAMING RULES
+# =============================================================================
+
+- name: "Copy custom iGaming rules to rules directory"
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ suricata_rules_dir }}/{{ item }}"
+    owner: "{{ suricata_user }}"
+    group: "{{ suricata_group }}"
+    mode: "0640"
+  loop: "{{ suricata_custom_rule_files }}"
+  notify:
+    - reload suricata rules
+  tags: [configure, rules]
+
+# =============================================================================
+# SYSTEMD SERVICE UNIT
+# =============================================================================
+
+- name: "Deploy Suricata systemd service unit"
+  ansible.builtin.template:
+    src: suricata.service.j2
+    dest: /etc/systemd/system/suricata.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - restart suricata
+  register: suricata_service_unit
+  tags: [configure, service]
+
+- name: "Reload systemd daemon if service unit changed"
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when: suricata_service_unit.changed
+  tags: [configure, service]
+
+- name: "Enable and start Suricata service"
+  ansible.builtin.systemd:
+    name: suricata
+    enabled: true
+    state: started
+  tags: [configure, service]
+
+# =============================================================================
+# LOGROTATE
+# =============================================================================
+
+- name: "Deploy logrotate configuration for EVE JSON"
+  ansible.builtin.template:
+    src: suricata-logrotate.j2
+    dest: /etc/logrotate.d/suricata
+    owner: root
+    group: root
+    mode: "0644"
+  tags: [configure, logrotate]
+
+# =============================================================================
+# VALIDATE FINAL CONFIGURATION
+# =============================================================================
+
+- name: "Validate Suricata configuration (suricata -T)"
+  ansible.builtin.command: >
+    suricata -T -c {{ suricata_config_dir }}/suricata.yaml -l /tmp
+  register: suricata_config_test
+  changed_when: false
+  failed_when: suricata_config_test.rc != 0
+  tags: [configure, validate]
+
+- name: "Display configuration test result"
+  ansible.builtin.debug:
+    msg: "Configuration test passed: {{ suricata_config_test.stderr_lines | last }}"
+  tags: [configure, validate]

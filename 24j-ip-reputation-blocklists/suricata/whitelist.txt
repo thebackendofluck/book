@@ -1,0 +1,59 @@
+# /etc/suricata/iprep/whitelist.txt
+#
+# Explicitly trusted IP ranges that must never be blocked by any iprep rule.
+# Format: one CIDR or host IP per line. Lines starting with # are comments.
+#
+# REVIEW PROCESS:
+# - Each entry must have an associated comment with the provider name and date added.
+# - Quarterly review: remove entries for PSPs no longer integrated.
+# - Source of truth for PSP IP ranges: payments team Confluence page.
+#
+# Last reviewed: 2026-01-15 by security team
+
+# Stripe webhook and API egress IPs (source: https://stripe.com/docs/ips)
+3.18.12.63/32            # Stripe webhooks (US)
+3.130.192.231/32         # Stripe webhooks (US)
+13.235.14.237/32         # Stripe webhooks (AP)
+13.235.122.149/32        # Stripe webhooks (AP)
+18.211.135.69/32         # Stripe webhooks (US)
+35.154.171.200/32        # Stripe webhooks (AP)
+52.15.183.38/32          # Stripe webhooks (US)
+54.88.130.119/32         # Stripe webhooks (US)
+54.88.130.122/32         # Stripe webhooks (US)
+54.187.174.169/32        # Stripe webhooks (US West)
+54.187.205.235/32        # Stripe webhooks (US West)
+54.187.216.72/32         # Stripe webhooks (US West)
+
+# PayPal
+64.4.240.0/21            # PayPal production
+66.211.168.0/22          # PayPal production
+173.0.80.0/20            # PayPal production
+185.177.196.0/22         # PayPal production
+
+# Cloudflare (player-facing CDN — appears in some DDoS source lists)
+# Source: https://www.cloudflare.com/ips-v4/
+103.21.244.0/22
+103.22.200.0/22
+103.31.4.0/22
+104.16.0.0/13
+104.24.0.0/14
+108.162.192.0/18
+131.0.72.0/22
+141.101.64.0/18
+162.158.0.0/15
+172.64.0.0/13
+173.245.48.0/20
+188.114.96.0/20
+190.93.240.0/20
+197.234.240.0/22
+198.41.128.0/17
+
+# Akamai CDN (if using Akamai for media delivery)
+# 2.16.0.0/13 — add your Akamai CIDRs from your contract
+
+# Internal monitoring and scanning (Nagios, Prometheus node exporter)
+10.20.30.0/24            # Internal monitoring VLAN
+192.168.10.0/24          # Management VLAN
+
+# Office and VPN egress
+203.0.113.10/32          # Example: office static IP (replace with real)

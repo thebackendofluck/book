@@ -1,0 +1,509 @@
+# Companion code for "The Backend of Luck" - Chapter 10, Complete Platform Architecture.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# ===========================================================================
+# HPA Auto-Scaling Policies per Service Tier
+# ===========================================================================
+#
+# Chapter 42 - Complete Platform Architecture
+# Tiered auto-scaling for gambling platform microservices
+#
+# Tier 1 (Game Servers): Aggressive scaling - low latency critical
+#   - Scale up fast on CPU/memory/custom metrics
+#   - Scale down slowly to avoid disrupting active game sessions
+#
+# Tier 2 (Payment/Wallet): Balanced scaling
+#   - Scale on transaction queue depth
+#   - Conservative scale-down to prevent in-flight payment issues
+#
+# Tier 3 (Backoffice/Analytics): Conservative scaling
+#   - Scale primarily on CPU
+#   - Aggressive scale-down during off-peak
+#
+# GLI-11 Compliance:
+# - Game servers must maintain <200ms response time under load
+# - RNG service must never become unavailable
+# - Payment services must handle 2x peak without degradation
+#
+# Usage:
+#   kubectl apply -f hpa-policies.yaml
+#   kubectl get hpa -n acme-casino
+#   kubectl describe hpa game-engine-hpa -n acme-casino
+#
+# ===========================================================================
+
+---
+# ─────────────────────────────────────────────────────────────
+# Tier 1: Game Engine (Aggressive Scaling)
+# ─────────────────────────────────────────────────────────────
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: game-engine-hpa
+  namespace: acme-casino
+  labels:
+    app: game-engine
+    tier: critical
+    scaling-profile: aggressive
+spec:
+  scaleTargetRef:
+    apiVersion: argoproj.io/v1alpha1
+    kind: Rollout
+    name: game-engine
+  minReplicas: 4          # Minimum for HA (2 per AZ)
+  maxReplicas: 40         # Handle 10x normal load
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30   # Fast scale-up (30s observation)
+      policies:
+        - type: Percent
+          value: 100                    # Double capacity per interval
+          periodSeconds: 60
+        - type: Pods
+          value: 4                      # Add at least 4 pods
+          periodSeconds: 60
+      selectPolicy: Max                # Use whichever adds more pods
+    scaleDown:
+      stabilizationWindowSeconds: 300  # Slow scale-down (5 min observation)
+      policies:
+        - type: Percent
+          value: 10                    # Remove max 10% per interval
+          periodSeconds: 120           # Every 2 minutes
+      selectPolicy: Min               # Use conservative policy
+  metrics:
+    # CPU: Target 60% to leave headroom for burst
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60
+    # Memory: Target 70%
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 70
+    # Custom: Active game sessions per pod
+    - type: Pods
+      pods:
+        metric:
+          name: active_game_sessions
+        target:
+          type: AverageValue
+          averageValue: "500"          # Max 500 sessions per pod
+    # Custom: Request latency P95
+    - type: Pods
+      pods:
+        metric:
+          name: http_request_duration_p95_ms
+        target:
+          type: AverageValue
+          averageValue: "150"          # Scale up if P95 > 150ms
+
+---
+# ─────────────────────────────────────────────────────────────
+# Tier 1: RNG Service (High Availability - Never Scale to Zero)
+# ─────────────────────────────────────────────────────────────
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: rng-service-hpa
+  namespace: acme-casino
+  labels:
+    app: rng-service
+    tier: critical
+    scaling-profile: high-availability
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: rng-service
+  minReplicas: 3           # GLI-11: RNG must always be available
+  maxReplicas: 12
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 600  # 10 min cooldown (very conservative)
+      policies:
+        - type: Pods
+          value: 1                     # Remove 1 pod at a time
+          periodSeconds: 300           # Every 5 minutes
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50       # Very conservative target
+    # Custom: RNG requests per second per pod
+    - type: Pods
+      pods:
+        metric:
+          name: rng_requests_per_second
+        target:
+          type: AverageValue
+          averageValue: "200"          # Max 200 req/s per pod
+
+---
+# ─────────────────────────────────────────────────────────────
+# Tier 2: Payment Service (Balanced Scaling)
+# ─────────────────────────────────────────────────────────────
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: payment-service-hpa
+  namespace: acme-casino
+  labels:
+    app: payment-service
+    tier: financial-critical
+    scaling-profile: balanced
+spec:
+  scaleTargetRef:
+    apiVersion: argoproj.io/v1alpha1
+    kind: Rollout
+    name: payment-service
+  minReplicas: 3
+  maxReplicas: 20
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Percent
+          value: 50                    # Add 50% capacity per interval
+          periodSeconds: 60
+        - type: Pods
+          value: 2
+          periodSeconds: 60
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 600  # 10 min - wait for in-flight txns
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 300
+      selectPolicy: Min
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 65
+    # Custom: Pending transaction queue depth
+    - type: Object
+      object:
+        metric:
+          name: payment_queue_depth
+        describedObject:
+          apiVersion: v1
+          kind: Service
+          name: payment-service
+        target:
+          type: Value
+          value: "100"                 # Scale up if queue > 100
+    # Custom: Active PSP connections
+    - type: Pods
+      pods:
+        metric:
+          name: active_psp_connections
+        target:
+          type: AverageValue
+          averageValue: "50"
+
+---
+# ─────────────────────────────────────────────────────────────
+# Tier 2: Wallet Service (Balance-Sensitive)
+# ─────────────────────────────────────────────────────────────
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: wallet-service-hpa
+  namespace: acme-casino
+  labels:
+    app: wallet-service
+    tier: financial-critical
+    scaling-profile: balanced
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: wallet-service
+  minReplicas: 3
+  maxReplicas: 16
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Percent
+          value: 50
+          periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 600
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 300
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60
+    # Custom: Balance operations per second
+    - type: Pods
+      pods:
+        metric:
+          name: wallet_operations_per_second
+        target:
+          type: AverageValue
+          averageValue: "300"
+
+---
+# ─────────────────────────────────────────────────────────────
+# Tier 2: Player Service
+# ─────────────────────────────────────────────────────────────
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: player-service-hpa
+  namespace: acme-casino
+  labels:
+    app: player-service
+    tier: player-facing
+    scaling-profile: balanced
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: player-service
+  minReplicas: 2
+  maxReplicas: 16
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 25
+          periodSeconds: 120
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 65
+    - type: Pods
+      pods:
+        metric:
+          name: concurrent_player_sessions
+        target:
+          type: AverageValue
+          averageValue: "1000"
+
+---
+# ─────────────────────────────────────────────────────────────
+# Tier 3: Backoffice (Conservative Scaling)
+# ─────────────────────────────────────────────────────────────
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: backoffice-hpa
+  namespace: acme-casino
+  labels:
+    app: backoffice
+    tier: non-critical
+    scaling-profile: conservative
+spec:
+  scaleTargetRef:
+    apiVersion: argoproj.io/v1alpha1
+    kind: Rollout
+    name: backoffice
+  minReplicas: 2
+  maxReplicas: 8
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 120  # 2 min observation
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 120
+    scaleDown:
+      stabilizationWindowSeconds: 120
+      policies:
+        - type: Percent
+          value: 50                    # Aggressive scale-down OK
+          periodSeconds: 120
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 75       # Higher target (less critical)
+
+---
+# ─────────────────────────────────────────────────────────────
+# Tier 3: Compliance Reporting Service
+# ─────────────────────────────────────────────────────────────
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: compliance-service-hpa
+  namespace: acme-casino
+  labels:
+    app: compliance-service
+    tier: compliance
+    scaling-profile: conservative
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: compliance-service
+  minReplicas: 2
+  maxReplicas: 6
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 120
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 120
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 300
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    # Custom: Pending compliance reports
+    - type: Object
+      object:
+        metric:
+          name: pending_compliance_reports
+        describedObject:
+          apiVersion: v1
+          kind: Service
+          name: compliance-service
+        target:
+          type: Value
+          value: "50"
+
+---
+# ─────────────────────────────────────────────────────────────
+# Tier 3: Analytics / Data Pipeline
+# ─────────────────────────────────────────────────────────────
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: analytics-worker-hpa
+  namespace: acme-casino
+  labels:
+    app: analytics-worker
+    tier: analytics
+    scaling-profile: burst
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: analytics-worker
+  minReplicas: 1           # Can scale to 1 during off-peak
+  maxReplicas: 20          # High max for batch processing
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30  # Fast scale-up for batch jobs
+      policies:
+        - type: Percent
+          value: 200
+          periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 600
+      policies:
+        - type: Percent
+          value: 50
+          periodSeconds: 300
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 80
+    # Custom: Kafka consumer lag
+    - type: Object
+      object:
+        metric:
+          name: kafka_consumer_group_lag
+        describedObject:
+          apiVersion: v1
+          kind: Service
+          name: analytics-worker
+        target:
+          type: Value
+          value: "10000"              # Scale up if lag > 10K messages
+
+---
+# ─────────────────────────────────────────────────────────────
+# PodDisruptionBudgets (protect during scaling/upgrades)
+# ─────────────────────────────────────────────────────────────
+
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: game-engine-pdb
+  namespace: acme-casino
+spec:
+  minAvailable: "75%"      # Always keep 75% of game engine pods
+  selector:
+    matchLabels:
+      app: game-engine
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: payment-service-pdb
+  namespace: acme-casino
+spec:
+  minAvailable: 2           # Always keep at least 2 payment pods
+  selector:
+    matchLabels:
+      app: payment-service
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: rng-service-pdb
+  namespace: acme-casino
+spec:
+  minAvailable: 2           # GLI-11: RNG must always be available
+  selector:
+    matchLabels:
+      app: rng-service

@@ -1,0 +1,25 @@
+{
+  "server": {
+    "url": "wss://localhost:8443/ws",
+    "timeoutMs": 15000,
+    "heartbeatMs": 30000
+  },
+  "tls": {
+    "minVersion": "TLSv1.3",
+    "pinnedSha256": "3f82d6880ce88d66bc3c974dbb5dbd878c2cba4a339bba927c38675e6155e2ff",
+    "pinSource": "tests/fixtures/dev-cert.pem (DEV ONLY — replace before production)"
+  },
+  "updater": {
+    "feedUrl": "https://updates.acmetocasino.com/poker-client",
+    "checkIntervalMs": 3600000,
+    "publicKeyPath": "data/config/update-pubkey.pem"
+  },
+  "crashReporter": {
+    "submitUrl": "https://crash.acmetocasino.com/submit",
+    "uploadByDefault": false
+  },
+  "ui": {
+    "seats": 2,
+    "theme": "felt-green"
+  }
+}

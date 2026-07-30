@@ -1,0 +1,75 @@
+# /etc/systemd/system/openbao.service
+# OpenBao KMS server with YubiHSM 2 PKCS#11 auto-unseal
+#
+# Installation:
+#   cp openbao.service /etc/systemd/system/openbao.service
+#   cp openbao.service.d/hsm.conf /etc/systemd/system/openbao.service.d/hsm.conf
+#   chmod 600 /etc/systemd/system/openbao.service.d/hsm.conf
+#   systemctl daemon-reload && systemctl enable --now openbao
+#
+# Security notes:
+#   - HSM PIN is in the drop-in override (hsm.conf) not in this file
+#   - Drop-in override chmod 600 — readable only by root
+#   - disable_mlock=false in openbao.hcl prevents secrets from swapping to disk
+#   - PCI DSS Req. 3.5: crypto keys must not be accessible in plaintext
+
+[Unit]
+Description=OpenBao KMS — Secret Management with YubiHSM 2 Auto-Unseal
+Documentation=https://openbao.org/docs/
+After=network-online.target yubihsm-connector.service
+Requires=network-online.target
+Wants=yubihsm-connector.service
+
+[Service]
+Type=notify
+NotifyAccess=all
+User=openbao
+Group=openbao
+
+# ── OpenBao binary ────────────────────────────────────────────────────────────
+# openbao-hsm package installs the CGO build required for PKCS#11
+ExecStart=/usr/bin/bao server -config=/opt/openbao/config/openbao.hcl
+ExecReload=/bin/kill --signal HUP $MAINPID
+
+# ── Environment ───────────────────────────────────────────────────────────────
+# HSM PIN and PKCS#11 config path are in the drop-in override file:
+#   /etc/systemd/system/openbao.service.d/hsm.conf
+# Do NOT add BAO_HSM_PIN here — this file may be world-readable.
+#
+# Additional environment (non-sensitive):
+Environment="HOME=/opt/openbao"
+Environment="BAO_ADDR=https://127.0.0.1:8200"
+Environment="BAO_CACERT=/opt/openbao/tls/ca.crt"
+
+# ── Limits ────────────────────────────────────────────────────────────────────
+LimitNOFILE=65536
+LimitNPROC=65536
+LimitMEMLOCK=infinity    # Required for mlock (disable_mlock=false in config)
+
+# ── Lifecycle ─────────────────────────────────────────────────────────────────
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=30s
+KillMode=process
+KillSignal=SIGTERM
+
+# ── Hardening ─────────────────────────────────────────────────────────────────
+# Balance security hardening with operational requirements
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+NoNewPrivileges=yes
+LockPersonality=yes
+
+# Allow write to openbao data/log directories
+ReadWritePaths=/opt/openbao/data
+ReadWritePaths=/var/log/openbao
+
+# USB access for YubiHSM 2 (via yubihsm-connector — actually not needed here
+# since connector runs as separate service, but kept for clarity)
+# DeviceAllow=/dev/bus/usb rw
+
+[Install]
+WantedBy=multi-user.target

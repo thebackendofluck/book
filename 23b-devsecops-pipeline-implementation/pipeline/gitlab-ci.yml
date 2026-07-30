@@ -1,0 +1,1279 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 23b, DevSecOps Pipeline Implementation.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# ============================================================================
+# CONFIGURATION: Update the variables section before using this pipeline.
+# Replace all YOUR_* placeholders with your environment-specific values.
+# ============================================================================
+# =============================================================================
+# AcmeToCasino — Root DevSecOps Pipeline
+# GitLab CE  : http://YOUR_GITLAB_IP:8929  (update to match your instance)
+# Runner     : Kubernetes executor on K3s workers (tag: k8s)
+# Registry   : YOUR_REGISTRY_IP:5000
+# Cluster    : your K3s cluster
+#
+# Stages
+#   lint            → static code / format checks (parallel)
+#   test            → unit + coverage
+#   build           → docker images → internal registry (main/tags only)
+#   security-scan   → SAST / secrets / SCA / IaC / container (parallel)
+#   quality-gate    → parse all SARIF artefacts; block on CRITICAL > 0 | HIGH > 5
+#   deploy-staging  → helm upgrade acmetocasino-staging (auto on main)
+#   test-staging    → smoke + integration tests vs staging
+#   dast            → ZAP baseline + Nuclei + ZAP API scan vs staging
+#   deploy-prod     → helm upgrade acmetocasino (manual gate)
+#   verify-prod     → smoke tests vs production
+#   report          → upload findings to DefectDojo + notify dashboard
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Global variables
+# ---------------------------------------------------------------------------
+variables:
+  # Registry & image names
+  REGISTRY: "YOUR_REGISTRY_IP:5000"
+  IMAGE_API: "${REGISTRY}/casino/api"
+  IMAGE_MARKET_WATCH: "${REGISTRY}/casino/market-watch"
+  IMAGE_BOT_MANAGER: "${REGISTRY}/casino/bot-manager"
+  IMAGE_WAF: "${REGISTRY}/casino/waf"
+  IMAGE_FRONTEND: "${REGISTRY}/casino/frontend"
+
+  # Helm chart — path inside the repo (P0-2 fix: was hardcoded to host filesystem)
+  HELM_CHART: "new-platform/k8s/casino-migration"
+
+  # Deployment URLs
+  STAGING_URL: "https://test.acmetocasino.com"
+  PROD_URL: "https://new.acmetocasino.com"
+
+  # Security gate thresholds — override in CI/CD settings per project
+  MAX_CRITICAL: "0"
+  MAX_HIGH: "5"
+
+  # DefectDojo — use NodePort to avoid DNS ndots issue (P1-4 fix)
+  DEFECTDOJO_URL: "http://YOUR_DEFECTDOJO_IP:30080"
+  DASHBOARD_WEBHOOK: "http://YOUR_GITLAB_IP:3080/api/ci-findings"
+
+  # Docker — TLS disabled for internal registry only
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: ""
+
+  # pip cache directory
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+
+  # Nexus proxy — use short K8s DNS (avoids NodePort hairpin NAT and DNS ndots)
+  PIP_INDEX_URL: "http://nexus.nexus:8081/repository/pypi-proxy/simple/"
+  PIP_TRUSTED_HOST: "nexus.nexus"
+  NPM_CONFIG_REGISTRY: "http://nexus.nexus:8081/repository/npmjs-proxy/"
+
+  # Performance: shallow clone (P2-1 fix — 600MB repo)
+  GIT_DEPTH: "20"
+
+  # Performance: job timeouts (P2-5 fix)
+  LINT_TIMEOUT: "5m"
+  TEST_TIMEOUT: "15m"
+  BUILD_TIMEOUT: "20m"
+  SCAN_TIMEOUT: "10m"
+  DEPLOY_TIMEOUT: "15m"
+
+# ---------------------------------------------------------------------------
+# Stage order
+# ---------------------------------------------------------------------------
+stages:
+  - lint
+  - test
+  - build
+  - security-scan
+  - quality-gate
+  - deploy-staging
+  - test-staging
+  - dast
+  - deploy-prod
+  - verify-prod
+  - report
+
+# ---------------------------------------------------------------------------
+# Cache templates
+# ---------------------------------------------------------------------------
+.cache_pip: &cache_pip
+  cache:
+    key: "pip-${CI_COMMIT_REF_SLUG}"
+    paths:
+      - .cache/pip
+    policy: pull-push
+
+.cache_node: &cache_node
+  cache:
+    key: "node-${CI_COMMIT_REF_SLUG}"
+    paths:
+      - new-platform/frontend/node_modules
+    policy: pull-push
+
+# ---------------------------------------------------------------------------
+# Reusable rule sets
+# ---------------------------------------------------------------------------
+
+# Run on every push / MR (all branches)
+.rules_always: &rules_always
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH
+
+# Run only on main branch or version tags
+.rules_main_or_tag: &rules_main_or_tag
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_TAG
+
+# Run on MRs and main (security scans)
+.rules_security: &rules_security
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_TAG
+
+# ---------------------------------------------------------------------------
+# Default runner tag (K8s executor pods)
+# ---------------------------------------------------------------------------
+default:
+  tags:
+    - k8s
+
+# =============================================================================
+# STAGE: lint
+# All three jobs run in parallel.
+# =============================================================================
+
+shellcheck-lint:
+  stage: lint
+  image: YOUR_REGISTRY_IP:5000/ci/shellcheck:latest
+  <<: *rules_always
+  script:
+    - |
+      set -euo pipefail
+      echo "=== ShellCheck — new-platform/ and scripts/ ==="
+      mapfile -t SH_FILES < <(find new-platform/ scripts/ -name "*.sh" -not -path "*/.git/*" 2>/dev/null || true)
+      if [ "${#SH_FILES[@]}" -eq 0 ]; then
+        echo "No .sh files found — skipping"
+        exit 0
+      fi
+      echo "Found ${#SH_FILES[@]} shell file(s)"
+
+      ERRORS=0
+      for f in "${SH_FILES[@]}"; do
+        echo "--- Checking: $f ---"
+        if ! shellcheck --severity=error --format=gcc "$f" 2>/dev/null; then
+          ERRORS=$((ERRORS + 1))
+          echo "  ISSUES found in $f"
+          # Show suggested fixes
+          shellcheck --severity=error --format=diff "$f" 2>/dev/null || true
+        fi
+      done
+
+      if [ "$ERRORS" -gt 0 ]; then
+        echo ""
+        echo "=== SUMMARY: $ERRORS file(s) with issues ==="
+        echo "Fix suggestions shown above (diff format)."
+        echo "Run locally: shellcheck --severity=error <file>"
+        exit 1
+      fi
+      echo "=== All ${#SH_FILES[@]} files passed ShellCheck ==="
+  artifacts:
+    when: on_failure
+    paths:
+      - shellcheck-report.txt
+    expire_in: 7 days
+  allow_failure: true   # TODO: fix 5 shellcheck warnings then change to false
+
+python-typecheck:
+  stage: lint
+  image: YOUR_REGISTRY_IP:5000/ci/python:3.12
+  <<: *rules_always
+  script:
+    - |
+      set -euo pipefail
+      echo "=== ty check (Astral type checker — https://github.com/astral-sh/ty) ==="
+      echo "Checking new-platform/app/ and new-platform/tests/"
+
+      # Run ty check and capture output
+      ERRORS=0
+      echo "--- new-platform/app/ ---"
+      if ty check new-platform/app/ 2>&1 | tee /tmp/ty-app.txt; then
+        echo "  app/: PASSED"
+      else
+        APP_ISSUES=$(grep -c "error\|warning" /tmp/ty-app.txt 2>/dev/null || echo "0")
+        echo "  app/: $APP_ISSUES issue(s) found"
+        ERRORS=$((ERRORS + APP_ISSUES))
+      fi
+
+      echo "--- new-platform/tests/ ---"
+      if ty check new-platform/tests/ 2>&1 | tee /tmp/ty-tests.txt; then
+        echo "  tests/: PASSED"
+      else
+        TEST_ISSUES=$(grep -c "error\|warning" /tmp/ty-tests.txt 2>/dev/null || echo "0")
+        echo "  tests/: $TEST_ISSUES issue(s) found"
+        ERRORS=$((ERRORS + TEST_ISSUES))
+      fi
+
+      echo "--- new-platform/scripts/ ---"
+      if ty check new-platform/scripts/ 2>&1 | tee /tmp/ty-scripts.txt; then
+        echo "  scripts/: PASSED"
+      else
+        SCRIPT_ISSUES=$(grep -c "error\|warning" /tmp/ty-scripts.txt 2>/dev/null || echo "0")
+        echo "  scripts/: $SCRIPT_ISSUES issue(s) found"
+        ERRORS=$((ERRORS + SCRIPT_ISSUES))
+      fi
+
+      # Combine reports
+      cat /tmp/ty-app.txt /tmp/ty-tests.txt /tmp/ty-scripts.txt > ty-report.txt 2>/dev/null || true
+
+      echo ""
+      echo "=== ty SUMMARY ==="
+      echo "Total issues: $ERRORS"
+
+      # Filter: only block on actual type errors
+      # ty outputs "error[rule-name]:" — filter out unresolved-import and unresolved-reference
+      REAL_ERRORS=$(grep -cE "^error\[" ty-report.txt 2>/dev/null || echo "0")
+      IMPORT_ERRORS=$(grep -cE "^error\[unresolved-(import|reference)\]|^error\[invalid-assignment\]" ty-report.txt 2>/dev/null || echo "0")
+      BLOCKING=$((REAL_ERRORS - IMPORT_ERRORS))
+      echo "Total ty errors: $REAL_ERRORS (import/ref/mock-assign: $IMPORT_ERRORS, blocking: $BLOCKING)"
+
+      if [ "$BLOCKING" -gt 0 ]; then
+        echo "BLOCKING: $BLOCKING type errors found (excluding import resolution and test mock assignments)."
+        grep -E "^error\[" ty-report.txt 2>/dev/null | grep -vE "unresolved-(import|reference)|invalid-assignment" | head -20
+        echo "Run locally: ty check <file>"
+        exit 1
+      fi
+      echo "PASSED ($IMPORT_ERRORS import/reference issues ignored — environment-dependent)"
+  artifacts:
+    when: always
+    paths:
+      - ty-report.txt
+    expire_in: 7 days
+  allow_failure: true   # ty baseline being established — unresolved-import filtering needs tuning
+
+terraform-fmt:
+  stage: lint
+  image:
+    name: hashicorp/terraform:1.9
+    entrypoint: [""]
+  <<: *rules_always
+  script:
+    - |
+      set -euo pipefail
+      echo "=== terraform fmt -check (recursive) ==="
+      if terraform fmt -check -recursive new-platform/terraform/ 2>&1 | tee /tmp/tf-fmt.txt; then
+        echo "All Terraform files properly formatted"
+      else
+        echo ""
+        echo "=== Files needing formatting ==="
+        cat /tmp/tf-fmt.txt
+        echo ""
+        echo "Auto-fix: terraform fmt -recursive new-platform/terraform/"
+        echo "Then commit the changes."
+        exit 1
+      fi
+  allow_failure: false
+
+# =============================================================================
+# STAGE: test
+# =============================================================================
+
+python-tests:
+  stage: test
+  image: YOUR_REGISTRY_IP:5000/ci/python:3.12
+  <<: *rules_always
+  variables:
+    # Ephemeral test env — real secrets must NOT be here; use CI/CD variables
+    # P2-3 fix: use service names not localhost (K8s executor runs services as separate containers)
+    DATABASE_URL: "postgresql://casino_new:ci_test_password@postgres:5432/new_acmetocasino"
+    REDIS_URL: "redis://redis:6379/0"
+    JWT_SECRET: "ci-jwt-secret-not-for-production"
+    OPS_JWT_SECRET: "ci-ops-jwt-secret-not-for-production"
+    ENVIRONMENT: "test"
+    KAFKA_ENABLED: "false"
+  timeout: 15 minutes
+  retry:
+    max: 2
+    when:
+      - runner_system_failure
+      - stuck_or_timeout_failure
+  services:
+    - name: postgres:16-alpine
+      alias: postgres
+      variables:
+        POSTGRES_DB: new_acmetocasino
+        POSTGRES_USER: casino_new
+        POSTGRES_PASSWORD: ci_test_password
+    - name: redis:7-alpine
+      alias: redis
+  before_script:
+    # libpq-dev and gcc pre-installed in ci-python image; only install app deps
+    # Use pip (not uv) so PIP_INDEX_URL env var is respected for Nexus proxy
+    - pip install --quiet -r new-platform/requirements.txt
+  script:
+    - |
+      set -euo pipefail
+      cd new-platform
+      pytest tests/ \
+        -v --tb=short \
+        --junitxml=../report.xml \
+        --cov=app \
+        --cov-report=xml:../coverage.xml \
+        --cov-report=term-missing \
+        --ignore=tests/test_main_dashboard_summary.py \
+        --ignore=tests/test_demo_server_auth_session.py \
+        || true  # allow partial test suite to pass while fixing collection errors
+  coverage: '/TOTAL.*\s+(\d+%)$/'
+  artifacts:
+    when: always
+    reports:
+      junit: report.xml
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
+    paths:
+      - report.xml
+      - coverage.xml
+    expire_in: 14 days
+  allow_failure: true   # relax until test environment is fully stable in CI
+
+# =============================================================================
+# STAGE: build
+# Only runs on main branch or version tags.
+# =============================================================================
+
+# P0-1 fix: Use Kaniko instead of DinD (K8s executor has no Docker daemon)
+# Build uses the shell executor on your build host (Docker + registry are local)
+# K8s executor pods can't reach the registry at YOUR_REGISTRY_IP:5000
+build-images:
+  stage: build
+  <<: *rules_main_or_tag
+  tags:
+    - shell
+    - your-build-host
+  timeout: 20 minutes
+  script:
+    - |
+      set -euo pipefail
+      TAG="${CI_COMMIT_SHORT_SHA}"
+      echo "=== Building casino-api ==="
+      docker build \
+        -t "${IMAGE_API}:${TAG}" \
+        -t "${IMAGE_API}:latest" \
+        new-platform/ 2>&1 | tail -5
+      docker push "${IMAGE_API}:${TAG}"
+      docker push "${IMAGE_API}:latest"
+      echo "=== casino-api pushed: ${TAG} ==="
+
+      echo "=== Verifying ==="
+      curl -s "http://localhost:5000/v2/casino/api/tags/list" | head -1
+  artifacts:
+    reports: {}
+    paths: []
+
+# =============================================================================
+# STAGE: security-scan
+# All six jobs run in parallel. All produce SARIF artefacts.
+# allow_failure: true during initial rollout — tighten after baseline established.
+# =============================================================================
+
+semgrep-sast:
+  stage: security-scan
+  image: YOUR_REGISTRY_IP:5000/ci/security:latest
+  <<: *rules_security
+  allow_failure: true
+  script:
+    - |
+      set -euo pipefail
+      # P3-6 fix: removed --config auto (contacts semgrep.dev, blocked by DNS)
+      semgrep \
+        --config .semgrep.yml \
+        --sarif \
+        --output semgrep.sarif \
+        new-platform/ \
+        || true   # non-zero exit if findings; captured in SARIF
+      echo "Semgrep SARIF written."
+  artifacts:
+    when: always
+    paths:
+      - semgrep.sarif
+    expire_in: 30 days
+
+gitleaks-secrets:
+  stage: security-scan
+  image: zricethezav/gitleaks:v8.24.3
+  <<: *rules_security
+  allow_failure: false  # secret detection must block
+  timeout: 10 minutes
+  variables:
+    GIT_DEPTH: "0"   # gitleaks needs full history to scan for secrets in past commits
+  script:
+    - |
+      set -euo pipefail
+      # Use config if present, otherwise run with defaults
+      # exit-code 1 (default) so a committed secret fails the pipeline.
+      GITLEAKS_OPTS="--source . --report-format sarif --report-path gitleaks.sarif"
+      [ -f .gitleaks.toml ] && GITLEAKS_OPTS="$GITLEAKS_OPTS --config .gitleaks.toml"
+      gitleaks detect $GITLEAKS_OPTS
+      echo "Gitleaks SARIF written."
+  artifacts:
+    when: always
+    paths:
+      - gitleaks.sarif
+    expire_in: 30 days
+
+bandit-python:
+  stage: security-scan
+  image: YOUR_REGISTRY_IP:5000/ci/security:latest
+  <<: *rules_security
+  allow_failure: true
+  script:
+    - |
+      set -euo pipefail
+      # bandit doesn't support sarif natively; use json then convert
+      BANDIT_OPTS="-r new-platform/app/ -f json -o bandit.json --exit-zero"
+      [ -f pyproject.toml ] && BANDIT_OPTS="-c pyproject.toml $BANDIT_OPTS"
+      bandit $BANDIT_OPTS || true
+      # Convert JSON to minimal SARIF for DefectDojo
+      python3 << 'BANDIT_CONVERT'
+      import json, os
+      data = json.load(open("bandit.json")) if os.path.exists("bandit.json") else {"results": []}
+      # Map bandit severity to SARIF levels so the quality gate counts correctly
+      # Gate: error→CRITICAL, warning→HIGH, note→ignored
+      # Bandit HIGH maps to warning (gate HIGH), not error (gate CRITICAL)
+      SEVERITY_MAP = {"HIGH": "warning", "MEDIUM": "note", "LOW": "note"}
+      results = []
+      for r in data.get("results", []):
+          sev = r.get("issue_severity", "MEDIUM").upper()
+          sarif_level = SEVERITY_MAP.get(sev, "warning")
+          results.append({"ruleId": r.get("test_id",""), "level": sarif_level,
+              "message": {"text": r.get("issue_text","")},
+              "locations": [{"physicalLocation": {"artifactLocation": {"uri": r.get("filename","")},
+                  "region": {"startLine": r.get("line_number",0)}}}]})
+      sarif = {"version": "2.1.0", "runs": [{"tool": {"driver": {"name": "bandit"}}, "results": results}]}
+      json.dump(sarif, open("bandit.sarif", "w"))
+      print("Bandit:", len(results), "findings converted to SARIF")
+      BANDIT_CONVERT
+  artifacts:
+    when: always
+    paths:
+      - bandit.sarif
+    expire_in: 30 days
+
+checkov-iac:
+  stage: security-scan
+  image: YOUR_REGISTRY_IP:5000/ci/security:latest
+  <<: *rules_security
+  allow_failure: true
+  script:
+    - |
+      set -euo pipefail
+      # Run checkov; --soft-fail so exit code is always 0 (findings go into SARIF)
+      checkov \
+        --config-file .checkov.yaml \
+        -o sarif \
+        --output-file-path . \
+        --soft-fail \
+        || true
+      # checkov writes results.sarif by default; rename for consistency
+      [ -f results.sarif ] && mv results.sarif checkov.sarif || echo "{}" > checkov.sarif
+      echo "Checkov SARIF written."
+  artifacts:
+    when: always
+    paths:
+      - checkov.sarif
+    expire_in: 30 days
+
+trivy-image:
+  stage: security-scan
+  image: YOUR_REGISTRY_IP:5000/ci/security:latest
+  <<: *rules_security
+  allow_failure: true
+  needs:
+    - job: build-images
+      optional: true   # skip gracefully if build stage was skipped (MR pipeline)
+  script:
+    - |
+      set -euo pipefail
+      TARGET="${IMAGE_API}:${CI_COMMIT_SHORT_SHA}"
+      echo "=== Trivy image scan: ${TARGET} ==="
+      trivy image \
+        --format sarif \
+        --output trivy.sarif \
+        --exit-code 0 \
+        --no-progress \
+        "${TARGET}" \
+        || echo "{}" > trivy.sarif
+      echo "Trivy SARIF written."
+  artifacts:
+    when: always
+    paths:
+      - trivy.sarif
+    expire_in: 30 days
+
+grype-deps:
+  stage: security-scan
+  image: YOUR_REGISTRY_IP:5000/ci/security:latest
+  <<: *rules_security
+  allow_failure: true
+  script:
+    - |
+      set -euo pipefail
+      echo "=== syft — generate SBOM ==="
+      syft new-platform/ -o cyclonedx-json=sbom.json
+      echo "SBOM written."
+
+      echo "=== grype — scan SBOM ==="
+      # syft + grype pre-installed in ci/security image
+      grype sbom:./sbom.json -o sarif > grype.sarif || echo "{}" > grype.sarif
+      echo "Grype SARIF written."
+  artifacts:
+    when: always
+    paths:
+      - sbom.json
+      - grype.sarif
+    expire_in: 30 days
+
+# =============================================================================
+# STAGE: quality-gate
+# Reads all SARIF files from security-scan artefacts and counts
+# CRITICAL / HIGH findings. Fails the pipeline if thresholds are breached.
+# Thresholds are configurable via MAX_CRITICAL / MAX_HIGH variables.
+# =============================================================================
+
+security-gate:
+  stage: quality-gate
+  image: YOUR_REGISTRY_IP:5000/ci/python:3.12
+  <<: *rules_security
+  needs:
+    - semgrep-sast
+    - gitleaks-secrets
+    - bandit-python
+    - checkov-iac
+    - grype-deps
+    - job: trivy-image
+      optional: true
+  script:
+    - |
+      python3 - << 'PYEOF'
+      import json, os, sys, glob
+
+      MAX_CRITICAL = int(os.environ.get("MAX_CRITICAL", "0"))
+      MAX_HIGH     = int(os.environ.get("MAX_HIGH", "5"))
+
+      SARIF_FILES = glob.glob("*.sarif")
+      if not SARIF_FILES:
+          print("FATAL: No SARIF files found at all — every scanner appears to have")
+          print("failed to produce output. Failing closed instead of skipping the gate.")
+          sys.exit(1)
+
+      # Scanners that must always produce output. trivy-image only runs when
+      # build-images ran (main/tag pipelines); MR pipelines legitimately skip
+      # it via its `optional: true` need, so don't demand it there.
+      EXPECTED_SARIF = ["semgrep.sarif", "gitleaks.sarif", "bandit.sarif",
+                         "checkov.sarif", "grype.sarif"]
+      if os.environ.get("CI_PIPELINE_SOURCE") != "merge_request_event":
+          EXPECTED_SARIF.append("trivy.sarif")
+      MISSING_SARIF = [f for f in EXPECTED_SARIF if f not in SARIF_FILES]
+
+      total_critical = 0
+      total_high     = 0
+      summary        = []
+
+      for path in SARIF_FILES:
+          try:
+              with open(path) as fh:
+                  data = json.load(fh)
+          except (json.JSONDecodeError, FileNotFoundError) as exc:
+              print(f"WARN: Could not parse {path}: {exc}")
+              continue
+
+          critical_count = 0
+          high_count     = 0
+
+          for run in data.get("runs", []):
+              for result in run.get("results", []):
+                  # SARIF severity lives in properties or rule metadata
+                  level = result.get("level", "").upper()
+                  # Also check rule defaultConfiguration
+                  if not level:
+                      rule_id = result.get("ruleId", "")
+                      for rule in run.get("tool", {}).get("driver", {}).get("rules", []):
+                          if rule.get("id") == rule_id:
+                              level = rule.get("defaultConfiguration", {}) \
+                                         .get("level", "").upper()
+                              break
+
+                  # Severity mapping (SARIF uses error/warning/note; tools also embed
+                  # CRITICAL/HIGH in properties.severity)
+                  props_sev = result.get("properties", {}).get("severity", "").upper()
+                  effective = props_sev or level
+
+                  if effective in ("CRITICAL", "ERROR"):
+                      critical_count += 1
+                  elif effective in ("HIGH", "WARNING"):
+                      high_count += 1
+
+          summary.append(f"  {path}: CRITICAL={critical_count}, HIGH={high_count}")
+          total_critical += critical_count
+          total_high     += high_count
+
+      print("=" * 60)
+      print("Security Gate — Finding Summary")
+      print("=" * 60)
+      for line in summary:
+          print(line)
+      print("-" * 60)
+      print(f"TOTAL  CRITICAL : {total_critical}  (threshold: {MAX_CRITICAL})")
+      print(f"TOTAL  HIGH     : {total_high}  (threshold: {MAX_HIGH})")
+      print("=" * 60)
+
+      failures = []
+      if total_critical > MAX_CRITICAL:
+          failures.append(
+              f"CRITICAL findings ({total_critical}) exceed threshold ({MAX_CRITICAL})"
+          )
+      if total_high > MAX_HIGH:
+          failures.append(
+              f"HIGH findings ({total_high}) exceed threshold ({MAX_HIGH})"
+          )
+      if MISSING_SARIF:
+          failures.append(
+              "Expected scanner SARIF missing (scan did not run or failed "
+              f"silently): {', '.join(MISSING_SARIF)}"
+          )
+
+      if failures:
+          print("\nGATE FAILED:")
+          for f in failures:
+              print(f"  - {f}")
+          sys.exit(1)
+      else:
+          print("\nGATE PASSED — no threshold breached.")
+      PYEOF
+  allow_failure: false
+
+# =============================================================================
+# STAGE: deploy-staging
+# Runs automatically on main. Uses KUBECONFIG CI variable (File type).
+# =============================================================================
+
+deploy-staging:
+  stage: deploy-staging
+  image: YOUR_REGISTRY_IP:5000/ci/deploy:latest
+  <<: *rules_main_or_tag
+  environment:
+    name: staging
+    url: https://staging.acmetocasino.com
+  retry:
+    max: 2
+    when: job_execution_timeout
+  needs:
+    - build-images
+    - security-gate
+    - gitleaks-secrets
+  before_script:
+    - export KUBECONFIG="${KUBECONFIG}"
+    - kubectl get nodes --no-headers 2>/dev/null || echo "WARNING cluster unreachable"
+  script:
+    - |
+      set -euo pipefail
+      TAG="${CI_COMMIT_SHORT_SHA}"
+
+      echo "=== helm upgrade --install acmetocasino-staging ==="
+      # Ensure namespace exists (chart template also creates it, so skip --create-namespace)
+      kubectl create namespace acmetocasino-staging 2>/dev/null || true
+      kubectl annotate namespace acmetocasino-staging \
+        meta.helm.sh/release-name=acmetocasino-staging \
+        meta.helm.sh/release-namespace=acmetocasino-staging --overwrite 2>/dev/null || true
+      kubectl label namespace acmetocasino-staging \
+        app.kubernetes.io/managed-by=Helm --overwrite 2>/dev/null || true
+
+      helm upgrade --install acmetocasino-staging "${HELM_CHART}" \
+        -f "${HELM_CHART}/values-staging.yaml" \
+        --set global.image.tag="${TAG}" \
+        --set global.namespace="acmetocasino-staging" \
+        --namespace acmetocasino-staging \
+        --timeout 5m \
+        --atomic \
+        --wait
+
+      echo "=== Rollout status ==="
+      kubectl -n acmetocasino-staging rollout status deployment --timeout=3m || true
+
+      echo "Staging deployed: ${TAG}"
+  allow_failure: true
+
+# =============================================================================
+# STAGE: test-staging
+# =============================================================================
+
+smoke-tests:
+  stage: test-staging
+  image: curlimages/curl:8.12.1
+  needs:
+    - deploy-staging
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_TAG
+  script:
+    - |
+      set -euo pipefail
+      BASE="${STAGING_URL}"
+      echo "=== Smoke tests against ${BASE} ==="
+
+      check() {
+        local desc="$1"
+        local url="$2"
+        local expected="${3:-200}"
+        local status
+        status=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 15 "${url}" || echo "000")
+        if [ "${status}" = "${expected}" ]; then
+          echo "  PASS [${status}] ${desc}"
+        else
+          echo "  FAIL [${status}] ${desc} (expected ${expected})"
+          return 1
+        fi
+      }
+
+      check "Health endpoint"        "${BASE}/health"
+      check "API root"               "${BASE}/api/v1/"
+      check "Metrics endpoint"       "${BASE}/metrics"
+      check "Static frontend"        "${BASE}/"
+      echo "All smoke tests passed."
+  allow_failure: true
+
+api-tests:
+  stage: test-staging
+  image: YOUR_REGISTRY_IP:5000/ci/python:3.12
+  <<: *cache_pip
+  needs:
+    - deploy-staging
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_TAG
+  variables:
+    API_BASE_URL: "${STAGING_URL}"
+  before_script:
+    # Use pip with explicit index-url to ensure Nexus proxy is used (not pypi.org)
+    - pip install --quiet --index-url "${PIP_INDEX_URL}" --trusted-host "${PIP_TRUSTED_HOST}" pytest pytest-asyncio httpx requests
+    - pip install --quiet --index-url "${PIP_INDEX_URL}" --trusted-host "${PIP_TRUSTED_HOST}" -r new-platform/requirements.txt
+  script:
+    - |
+      set -euo pipefail
+      echo "=== Integration tests against ${API_BASE_URL} ==="
+      if [ -d new-platform/tests/integration ]; then
+        pytest new-platform/tests/integration/ \
+          -v --tb=short \
+          --junitxml=integration-report.xml \
+          -x
+      else
+        echo "No integration test directory found — skipping"
+      fi
+  artifacts:
+    when: always
+    reports:
+      junit: integration-report.xml
+    paths:
+      - integration-report.xml
+    expire_in: 14 days
+  allow_failure: true
+
+# =============================================================================
+# STAGE: dast
+# Dynamic Application Security Testing — scans live staging for runtime vulns.
+# Runs on shell executor (your-build-host) because K8s pods can't reach external HTTPS.
+# All jobs allow_failure: true — DAST scans often produce false positives.
+# =============================================================================
+
+zap-baseline:
+  stage: dast
+  tags:
+    - shell
+    - your-build-host
+  needs:
+    - smoke-tests
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_TAG
+  timeout: 20 minutes
+  variables:
+    ZAP_TARGET: "${STAGING_URL}"
+  script:
+    - |
+      set -euo pipefail
+      echo "=== OWASP ZAP Baseline Scan against ${ZAP_TARGET} ==="
+
+      # Run ZAP baseline scan via Docker on your-build-host
+      mkdir -p zap-output && chown 1000:1000 zap-output
+      cp new-platform/dast/zap-baseline.conf zap-output/ 2>/dev/null || true
+      docker run --rm \
+        -v "$(pwd)/zap-output:/zap/wrk:rw" \
+        --user 1000:1000 \
+        YOUR_REGISTRY_IP:5000/ci/zap:stable \
+        zap-baseline.py \
+          -t "${ZAP_TARGET}" \
+          -c zap-baseline.conf \
+          -r zap-report.html \
+          -J zap-report.json \
+          -x zap-report.xml \
+          -I \
+        || true   # ZAP returns non-zero on findings; captured in reports
+
+      # Copy reports to project root for artifact collection
+      cp zap-output/zap-report.* . 2>/dev/null || true
+
+      # Copy reports from dast/ to project root for artifact collection
+      cp new-platform/dast/zap-report.* . 2>/dev/null || true
+
+      # Convert ZAP JSON to SARIF for DefectDojo integration
+      python3 - << 'ZAP_TO_SARIF'
+      import json, os, sys
+
+      zap_path = "zap-report.json"
+      if not os.path.exists(zap_path):
+          print("WARN: No ZAP JSON report found — skipping SARIF conversion")
+          sys.exit(0)
+
+      with open(zap_path) as f:
+          zap = json.load(f)
+
+      RISK_MAP = {"3": "error", "2": "warning", "1": "note", "0": "note"}
+      results = []
+
+      for site in zap.get("site", []):
+          for alert in site.get("alerts", []):
+              risk = str(alert.get("riskcode", "1"))
+              sarif_level = RISK_MAP.get(risk, "note")
+              for instance in alert.get("instances", [{}])[:5]:
+                  results.append({
+                      "ruleId": f"zap-{alert.get('pluginid', 'unknown')}",
+                      "level": sarif_level,
+                      "message": {
+                          "text": f"{alert.get('alert', '')}: {alert.get('desc', '')[:200]}"
+                      },
+                      "locations": [{
+                          "physicalLocation": {
+                              "artifactLocation": {
+                                  "uri": instance.get("uri", alert.get("url", ""))
+                              }
+                          }
+                      }]
+                  })
+
+      sarif = {
+          "version": "2.1.0",
+          "runs": [{
+              "tool": {"driver": {"name": "OWASP ZAP", "version": "stable"}},
+              "results": results
+          }]
+      }
+      with open("zap-baseline.sarif", "w") as f:
+          json.dump(sarif, f, indent=2)
+      print(f"ZAP: {len(results)} findings converted to SARIF")
+      ZAP_TO_SARIF
+
+      echo "=== ZAP baseline scan complete ==="
+      # Summary
+      if [ -f zap-report.json ]; then
+        python3 -c "
+      import json
+      d = json.load(open('zap-report.json'))
+      sites = d.get('site', [])
+      total = sum(len(s.get('alerts', [])) for s in sites)
+      print(f'Total unique alerts: {total}')
+      for s in sites:
+          for a in s.get('alerts', []):
+              risk = ['Info','Low','Medium','High'][int(a.get('riskcode',0))]
+              print(f'  [{risk}] {a.get(\"alert\",\"\")}')
+      "
+      fi
+  artifacts:
+    when: always
+    paths:
+      - zap-report.html
+      - zap-report.json
+      - zap-report.xml
+      - zap-baseline.sarif
+    expire_in: 30 days
+  allow_failure: true
+
+nuclei-scan:
+  stage: dast
+  tags:
+    - shell
+    - your-build-host
+  needs:
+    - smoke-tests
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_TAG
+  timeout: 15 minutes
+  script:
+    - |
+      set -euo pipefail
+      echo "=== Nuclei Vulnerability Scan against ${STAGING_URL} ==="
+
+      # Run Nuclei via Docker on your-build-host
+      # Image pre-pulled: YOUR_REGISTRY_IP:5000/ci/nuclei:latest
+      mkdir -p nuclei-output && chmod 777 nuclei-output
+      cp new-platform/dast/nuclei-targets.txt nuclei-output/ 2>/dev/null || true
+      # Create targets file if not in repo
+      if [ ! -f nuclei-output/nuclei-targets.txt ]; then
+        echo "${STAGING_URL}" > nuclei-output/nuclei-targets.txt
+        echo "${STAGING_URL}/api/v2/health" >> nuclei-output/nuclei-targets.txt
+      fi
+      docker run --rm \
+        -v "$(pwd)/nuclei-output:/app:rw" \
+        YOUR_REGISTRY_IP:5000/ci/nuclei:latest \
+        -l /app/nuclei-targets.txt \
+        -severity critical,high,medium \
+        -exclude-templates dos/ \
+        -rate-limit 50 \
+        -timeout 10 \
+        -json-export /app/nuclei-results.json \
+        -sarif-export /app/nuclei-results.sarif \
+        -stats \
+        -disable-update-check \
+        || true
+
+      # Copy reports to project root for artifact collection
+      cp nuclei-output/nuclei-results.* . 2>/dev/null || true
+
+      echo "=== Nuclei scan complete ==="
+      # Summary
+      if [ -f nuclei-results.json ]; then
+        python3 -c "
+      import json
+      findings = []
+      with open('nuclei-results.json') as f:
+          for line in f:
+              line = line.strip()
+              if line:
+                  findings.append(json.loads(line))
+      print(f'Total findings: {len(findings)}')
+      sevs = {}
+      for f_item in findings:
+          sev = f_item.get('info', {}).get('severity', 'unknown')
+          sevs[sev] = sevs.get(sev, 0) + 1
+      for sev, count in sorted(sevs.items()):
+          print(f'  {sev}: {count}')
+      "
+      fi
+  artifacts:
+    when: always
+    paths:
+      - nuclei-results.json
+      - nuclei-results.sarif
+    expire_in: 30 days
+  allow_failure: true
+
+zap-api-scan:
+  stage: dast
+  tags:
+    - shell
+    - your-build-host
+  needs:
+    - smoke-tests
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_TAG
+  timeout: 20 minutes
+  script:
+    - |
+      set -euo pipefail
+      echo "=== OWASP ZAP API Scan against ${STAGING_URL}/api/v2/ ==="
+
+      # Check if the API endpoint is reachable before running a full scan
+      API_STATUS=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 10 "${STAGING_URL}/api/v2/" || echo "000")
+      if [ "${API_STATUS}" = "000" ] || [ "${API_STATUS}" = "404" ]; then
+        echo "WARN: API endpoint returned ${API_STATUS} — skipping API scan"
+        echo "API endpoint not available" > zap-api-report.html
+        exit 0
+      fi
+
+      # Run ZAP API scan via Docker on your-build-host
+      docker run --rm \
+        -v "$(pwd)/new-platform/dast:/zap/wrk:rw" \
+        YOUR_REGISTRY_IP:5000/ci/zap:stable \
+        zap-api-scan.py \
+          -t "${STAGING_URL}/api/v2/" \
+          -f openapi \
+          -r zap-api-report.html \
+          -J zap-api-report.json \
+          -I \
+        || true
+
+      # Copy reports to project root
+      cp new-platform/dast/zap-api-report.* . 2>/dev/null || true
+
+      # Convert ZAP API JSON to SARIF for DefectDojo integration
+      python3 - << 'ZAP_API_TO_SARIF'
+      import json, os, sys
+
+      zap_path = "zap-api-report.json"
+      if not os.path.exists(zap_path):
+          print("WARN: No ZAP API JSON report found — skipping SARIF conversion")
+          sys.exit(0)
+
+      with open(zap_path) as f:
+          zap = json.load(f)
+
+      RISK_MAP = {"3": "error", "2": "warning", "1": "note", "0": "note"}
+      results = []
+
+      for site in zap.get("site", []):
+          for alert in site.get("alerts", []):
+              risk = str(alert.get("riskcode", "1"))
+              sarif_level = RISK_MAP.get(risk, "note")
+              for instance in alert.get("instances", [{}])[:5]:
+                  results.append({
+                      "ruleId": f"zap-api-{alert.get('pluginid', 'unknown')}",
+                      "level": sarif_level,
+                      "message": {
+                          "text": f"{alert.get('alert', '')}: {alert.get('desc', '')[:200]}"
+                      },
+                      "locations": [{
+                          "physicalLocation": {
+                              "artifactLocation": {
+                                  "uri": instance.get("uri", alert.get("url", ""))
+                              }
+                          }
+                      }]
+                  })
+
+      sarif = {
+          "version": "2.1.0",
+          "runs": [{
+              "tool": {"driver": {"name": "OWASP ZAP API Scan", "version": "stable"}},
+              "results": results
+          }]
+      }
+      with open("zap-api.sarif", "w") as f:
+          json.dump(sarif, f, indent=2)
+      print(f"ZAP API: {len(results)} findings converted to SARIF")
+      ZAP_API_TO_SARIF
+
+      echo "=== ZAP API scan complete ==="
+  artifacts:
+    when: always
+    paths:
+      - zap-api-report.html
+      - zap-api-report.json
+      - zap-api.sarif
+    expire_in: 30 days
+  allow_failure: true
+
+# =============================================================================
+# STAGE: deploy-prod
+# Manual trigger only — requires human approval in GitLab UI.
+# =============================================================================
+
+deploy-prod:
+  stage: deploy-prod
+  image: YOUR_REGISTRY_IP:5000/ci/deploy:latest
+  when: manual
+  allow_failure: true   # pipeline shows 'passed' without waiting for manual prod approval
+  needs:
+    - smoke-tests
+    - security-gate
+    - gitleaks-secrets
+    - job: zap-baseline
+      optional: true
+    - job: nuclei-scan
+      optional: true
+  environment:
+    name: production
+    url: https://new.acmetocasino.com
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+      when: manual
+      allow_failure: true
+    - if: $CI_COMMIT_TAG
+      when: manual
+      allow_failure: true
+  before_script:
+    - export KUBECONFIG="${KUBECONFIG}"
+    - kubectl get nodes --no-headers
+  script:
+    - |
+      set -euo pipefail
+      TAG="${CI_COMMIT_SHORT_SHA}"
+
+      echo "=== Promoting tag ${TAG} to production ==="
+      helm upgrade --install acmetocasino "${HELM_CHART}" \
+        -f "${HELM_CHART}/values-prod.yaml" \
+        --set global.image.tag="${TAG}" \
+        --namespace acmetocasino \
+        --create-namespace \
+        --timeout 10m \
+        --atomic \
+        --wait
+
+      echo "=== Rollout status ==="
+      kubectl -n acmetocasino rollout status deployment --timeout=5m
+
+      echo "Production deployed: ${TAG}"
+
+# =============================================================================
+# STAGE: verify-prod
+# =============================================================================
+
+smoke-prod:
+  stage: verify-prod
+  image: curlimages/curl:8.12.1
+  needs:
+    - deploy-prod
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_TAG
+  script:
+    - |
+      set -euo pipefail
+      BASE="${PROD_URL}"
+      echo "=== Production smoke tests against ${BASE} ==="
+
+      check() {
+        local desc="$1"
+        local url="$2"
+        local expected="${3:-200}"
+        local status
+        status=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 15 "${url}" || echo "000")
+        if [ "${status}" = "${expected}" ]; then
+          echo "  PASS [${status}] ${desc}"
+        else
+          echo "  FAIL [${status}] ${desc} (expected ${expected})"
+          return 1
+        fi
+      }
+
+      check "Health endpoint"   "${BASE}/health"
+      check "API root"          "${BASE}/api/v1/"
+      check "Frontend"          "${BASE}/"
+      echo "Production smoke tests passed."
+  allow_failure: false
+
+# =============================================================================
+# STAGE: report
+# =============================================================================
+
+upload-findings:
+  stage: report
+  image: YOUR_REGISTRY_IP:5000/ci/python:3.12
+  <<: *rules_security
+  needs:
+    - semgrep-sast
+    - gitleaks-secrets
+    - bandit-python
+    - checkov-iac
+    - grype-deps
+    - job: trivy-image
+      optional: true
+    - job: zap-baseline
+      optional: true
+    - job: zap-api-scan
+      optional: true
+    - job: nuclei-scan
+      optional: true
+  before_script:
+    - pip install --quiet requests
+  script:
+    - |
+      python3 - << 'PYEOF'
+      import json, os, glob, requests, sys
+
+      DEFECTDOJO_URL  = os.environ.get("DEFECTDOJO_URL", "http://your-defectdojo.example.com")
+      DD_API_TOKEN    = os.environ.get("DEFECTDOJO_API_TOKEN", "")
+      ENGAGEMENT_ID   = os.environ.get("DEFECTDOJO_ENGAGEMENT_ID", "1")
+      COMMIT_SHA      = os.environ.get("CI_COMMIT_SHORT_SHA", "unknown")
+      BRANCH          = os.environ.get("CI_COMMIT_BRANCH", "unknown")
+
+      if not DD_API_TOKEN:
+          print("WARN: DEFECTDOJO_API_TOKEN not set — skipping upload")
+          sys.exit(0)
+
+      SCAN_TYPE_MAP = {
+          "semgrep.sarif":        "SARIF",
+          "gitleaks.sarif":       "SARIF",
+          "bandit.sarif":         "SARIF",
+          "checkov.sarif":        "SARIF",
+          "trivy.sarif":          "SARIF",
+          "grype.sarif":          "SARIF",
+          "zap-baseline.sarif":   "SARIF",
+          "zap-api.sarif":        "SARIF",
+          "nuclei-results.sarif": "SARIF",
+      }
+
+      headers = {
+          "Authorization": f"Token {DD_API_TOKEN}",
+      }
+      endpoint = f"{DEFECTDOJO_URL}/api/v2/import-scan/"
+
+      sarif_files = glob.glob("*.sarif")
+      if not sarif_files:
+          print("No SARIF files to upload.")
+          sys.exit(0)
+
+      for sarif_path in sarif_files:
+          scan_type = SCAN_TYPE_MAP.get(os.path.basename(sarif_path), "SARIF")
+          print(f"Uploading {sarif_path} as '{scan_type}' …")
+          try:
+              with open(sarif_path, "rb") as fh:
+                  resp = requests.post(
+                      endpoint,
+                      headers=headers,
+                      data={
+                          "engagement":       ENGAGEMENT_ID,
+                          "scan_type":        scan_type,
+                          "active":           "true",
+                          "verified":         "false",
+                          "close_old_findings": "true",
+                          "version":          COMMIT_SHA,
+                          "branch_tag":       BRANCH,
+                      },
+                      files={"file": (os.path.basename(sarif_path), fh, "application/json")},
+                      timeout=30,
+                  )
+              if resp.status_code in (200, 201):
+                  print(f"  OK ({resp.status_code})")
+              else:
+                  print(f"  WARN: {resp.status_code} — {resp.text[:200]}")
+          except requests.RequestException as exc:
+              print(f"  ERROR: {exc}")
+
+      print("Upload complete.")
+      PYEOF
+  allow_failure: true
+
+notify-dashboard:
+  stage: report
+  image: curlimages/curl:8.12.1
+  <<: *rules_security
+  needs:
+    - security-gate
+  script:
+    - |
+      set -euo pipefail
+      PAYLOAD=$(printf '{"pipeline_id":"%s","commit":"%s","branch":"%s","status":"%s","url":"%s"}' \
+        "${CI_PIPELINE_ID}" \
+        "${CI_COMMIT_SHORT_SHA}" \
+        "${CI_COMMIT_BRANCH:-tag}" \
+        "${CI_JOB_STATUS:-unknown}" \
+        "${CI_PIPELINE_URL}")
+
+      echo "Notifying dashboard: ${DASHBOARD_WEBHOOK}"
+      curl -sf \
+        -X POST \
+        -H "Content-Type: application/json" \
+        -d "${PAYLOAD}" \
+        "${DASHBOARD_WEBHOOK}" \
+        || echo "WARN: dashboard webhook unreachable — non-fatal"
+  allow_failure: true

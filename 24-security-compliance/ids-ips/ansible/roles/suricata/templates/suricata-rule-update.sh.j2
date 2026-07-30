@@ -1,0 +1,216 @@
+#!/usr/bin/env bash
+# suricata-rule-update — Managed by Ansible
+# Generated for: {{ inventory_hostname }} ({{ sensor_zone | default('unset') }} zone)
+# Scheduled: daily at 03:00 via cron
+#
+# Workflow:
+#   1. Check blackout window (skip during peak hours)
+#   2. Run suricata-update to fetch latest rules
+#   3. Validate new ruleset with suricata -T
+#   4. Hot-reload rules via SIGUSR2 (no packet drops)
+#   5. Verify reload succeeded
+#   6. Send Slack notification with summary
+#   7. Roll back on failure
+
+set -euo pipefail
+
+##############################################################################
+# CONFIGURATION
+##############################################################################
+
+SURICATA_CONF="{{ suricata_config_dir }}/suricata.yaml"
+SURICATA_UPDATE_CONF="{{ suricata_config_dir }}/update.yaml"
+RULES_DIR="{{ suricata_rules_dir }}"
+MERGED_RULES="${RULES_DIR}/suricata.rules"
+PID_FILE="{{ suricata_run_dir }}/suricata.pid"
+LOG_DIR="{{ suricata_log_dir }}"
+BACKUP_DIR="/var/lib/suricata/rules-backup"
+SENSOR_NAME="{{ inventory_hostname }}"
+SENSOR_ZONE="{{ sensor_zone | default('unknown') }}"
+SLACK_WEBHOOK="{{ slack_webhook_url }}"
+SLACK_CHANNEL="{{ slack_channel }}"
+LOCK_FILE="/var/run/suricata-rule-update.lock"
+
+# Blackout window: skip update during 20:00–04:00 UTC (peak iGaming hours)
+# Set BLACKOUT_HOURS="" to always update regardless of time.
+BLACKOUT_START=20
+BLACKOUT_END=4
+
+##############################################################################
+# LOCKING (prevent concurrent runs)
+##############################################################################
+
+cleanup() {
+    rm -f "${LOCK_FILE}"
+}
+trap cleanup EXIT
+
+if ! ( set -o noclobber; echo "$$" > "${LOCK_FILE}" ) 2>/dev/null; then
+    echo "[$(date -u '+%Y-%m-%dT%H:%M:%SZ')] Another rule update is already running (PID $(cat ${LOCK_FILE})). Exiting."
+    exit 0
+fi
+
+##############################################################################
+# HELPERS
+##############################################################################
+
+log()  { echo "[$(date -u '+%Y-%m-%dT%H:%M:%SZ')] $*" | tee -a "${LOG_DIR}/rule-update.log"; }
+fail() { log "ERROR: $*"; send_slack "critical" "Rule update FAILED on ${SENSOR_NAME}: $*"; exit 1; }
+
+send_slack() {
+    local severity="$1"
+    local message="$2"
+    local icon=":white_check_mark:"
+    [[ "$severity" == "warning"  ]] && icon=":warning:"
+    [[ "$severity" == "critical" ]] && icon=":red_circle:"
+
+    if [[ -n "${SLACK_WEBHOOK}" && "${SLACK_WEBHOOK}" != "" ]]; then
+        curl -s -o /dev/null -X POST "${SLACK_WEBHOOK}" \
+            -H 'Content-type: application/json' \
+            --data "{
+              \"channel\": \"${SLACK_CHANNEL}\",
+              \"username\": \"Suricata Rule Updater\",
+              \"icon_emoji\": \"${icon}\",
+              \"text\": \"${icon} *[${SENSOR_ZONE}] ${SENSOR_NAME}*: ${message}\"
+            }" || true
+    fi
+}
+
+##############################################################################
+# BLACKOUT WINDOW CHECK
+##############################################################################
+
+CURRENT_HOUR=$(date -u +%H | sed 's/^0//')
+if [[ -n "${BLACKOUT_START}" && -n "${BLACKOUT_END}" ]]; then
+    # Handle wrap-around (e.g., 20–4 spans midnight)
+    IN_BLACKOUT=0
+    if [[ ${BLACKOUT_START} -gt ${BLACKOUT_END} ]]; then
+        # Spans midnight
+        [[ ${CURRENT_HOUR} -ge ${BLACKOUT_START} || ${CURRENT_HOUR} -lt ${BLACKOUT_END} ]] && IN_BLACKOUT=1
+    else
+        [[ ${CURRENT_HOUR} -ge ${BLACKOUT_START} && ${CURRENT_HOUR} -lt ${BLACKOUT_END} ]] && IN_BLACKOUT=1
+    fi
+
+    if [[ ${IN_BLACKOUT} -eq 1 ]]; then
+        log "SKIP: Inside blackout window (${BLACKOUT_START}:00–${BLACKOUT_END}:00 UTC). Current hour: ${CURRENT_HOUR}:xx UTC."
+        log "      Next update window opens at ${BLACKOUT_END}:00 UTC."
+        exit 0
+    fi
+fi
+
+##############################################################################
+# BACKUP CURRENT RULES
+##############################################################################
+
+log "Starting rule update — backing up current ruleset"
+mkdir -p "${BACKUP_DIR}"
+BACKUP_FILE="${BACKUP_DIR}/suricata.rules.$(date -u +%Y%m%dT%H%M%SZ).bak"
+
+if [[ -f "${MERGED_RULES}" ]]; then
+    cp "${MERGED_RULES}" "${BACKUP_FILE}"
+    log "Backed up current rules to ${BACKUP_FILE}"
+    OLD_COUNT=$(grep -c '^alert\|^drop\|^pass\|^reject' "${MERGED_RULES}" 2>/dev/null || echo 0)
+else
+    OLD_COUNT=0
+    log "No existing rules file found — first-time update"
+fi
+
+# Prune backups older than 7 days
+find "${BACKUP_DIR}" -name '*.bak' -mtime +7 -delete 2>/dev/null || true
+
+##############################################################################
+# RUN SURICATA-UPDATE
+##############################################################################
+
+log "Running suricata-update..."
+UPDATE_OUTPUT=$(suricata-update \
+    --suricata /usr/bin/suricata \
+    --suricata-conf "${SURICATA_CONF}" \
+    --config "${SURICATA_UPDATE_CONF}" \
+    --output "${MERGED_RULES}" \
+    --no-reload 2>&1) || {
+    log "suricata-update failed with output:"
+    log "${UPDATE_OUTPUT}"
+    # Restore backup
+    if [[ -f "${BACKUP_FILE}" ]]; then
+        cp "${BACKUP_FILE}" "${MERGED_RULES}"
+        log "Restored previous ruleset from backup"
+    fi
+    fail "suricata-update exited with error"
+}
+
+log "suricata-update completed"
+
+NEW_COUNT=$(grep -c '^alert\|^drop\|^pass\|^reject' "${MERGED_RULES}" 2>/dev/null || echo 0)
+DIFF_COUNT=$(( NEW_COUNT - OLD_COUNT ))
+DIFF_STR="$( [[ ${DIFF_COUNT} -ge 0 ]] && echo "+${DIFF_COUNT}" || echo "${DIFF_COUNT}" )"
+log "Rule count: ${OLD_COUNT} -> ${NEW_COUNT} (${DIFF_STR})"
+
+##############################################################################
+# VALIDATE NEW RULES
+##############################################################################
+
+log "Validating new ruleset with suricata -T..."
+VALIDATE_OUTPUT=$(suricata -T -c "${SURICATA_CONF}" -l /tmp 2>&1)
+VALIDATE_RC=$?
+
+if [[ ${VALIDATE_RC} -ne 0 ]]; then
+    log "VALIDATION FAILED:"
+    log "${VALIDATE_OUTPUT}"
+    # Restore backup before aborting
+    if [[ -f "${BACKUP_FILE}" ]]; then
+        cp "${BACKUP_FILE}" "${MERGED_RULES}"
+        log "Restored previous ruleset after validation failure"
+    fi
+    fail "New rules failed validation — rolled back to previous ruleset"
+fi
+
+log "Validation passed"
+
+##############################################################################
+# HOT RELOAD (SIGUSR2)
+##############################################################################
+
+if [[ -f "${PID_FILE}" ]]; then
+    SURICATA_PID=$(cat "${PID_FILE}")
+    if kill -0 "${SURICATA_PID}" 2>/dev/null; then
+        log "Sending SIGUSR2 to Suricata (PID ${SURICATA_PID}) for hot rule reload..."
+        kill -USR2 "${SURICATA_PID}"
+
+        # Wait up to 30 seconds for reload to complete
+        RELOAD_TIMEOUT=30
+        RELOAD_WAITED=0
+        while [[ ${RELOAD_WAITED} -lt ${RELOAD_TIMEOUT} ]]; do
+            sleep 2
+            RELOAD_WAITED=$(( RELOAD_WAITED + 2 ))
+            # Check if the reload message appeared in the journal
+            if journalctl -u suricata -n 20 --no-pager 2>/dev/null | grep -q "rule reload"; then
+                log "Rules reloaded successfully after ${RELOAD_WAITED}s"
+                break
+            fi
+        done
+
+        if [[ ${RELOAD_WAITED} -ge ${RELOAD_TIMEOUT} ]]; then
+            log "WARNING: Could not confirm reload within ${RELOAD_TIMEOUT}s — rules may still reload asynchronously"
+        fi
+    else
+        log "WARNING: Suricata PID ${SURICATA_PID} not found — rules will be loaded on next start"
+    fi
+else
+    log "WARNING: PID file not found — Suricata may not be running"
+fi
+
+##############################################################################
+# SEND NOTIFICATION
+##############################################################################
+
+log "Rule update complete"
+
+# Extract update summary from suricata-update output
+ENABLED=$(echo "${UPDATE_OUTPUT}" | grep -oP 'Enabled \d+ rules' | tail -1 || echo "N/A")
+DISABLED=$(echo "${UPDATE_OUTPUT}" | grep -oP 'Disabled \d+ rules' | tail -1 || echo "N/A")
+
+send_slack "ok" "Rule update complete. ${NEW_COUNT} rules loaded (${DIFF_STR} vs previous). ${ENABLED}. ${DISABLED}."
+
+log "Done."
+exit 0

@@ -1,0 +1,72 @@
+# Companion code for "The Backend of Luck" - Chapter 32, Testing and QA in Gambling.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: locust-service-account
+  namespace: load-testing
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::ACCOUNT_ID:role/LocustServiceAccountRole
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: locust-role
+  namespace: load-testing
+rules:
+- apiGroups: [ "" ]
+  resources: [ "pods", "services", "configmaps", "secrets" ]
+  verbs: [ "get", "list", "watch", "create", "update", "patch", "delete" ]
+- apiGroups: [ "apps" ]
+  resources: [ "deployments", "replicasets" ]
+  verbs: [ "get", "list", "watch", "create", "update", "patch", "delete" ]
+- apiGroups: [ "networking.k8s.io" ]
+  resources: [ "ingresses" ]
+  verbs: [ "get", "list", "watch" ]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: locust-role-binding
+  namespace: load-testing
+subjects:
+- kind: ServiceAccount
+  name: locust-service-account
+  namespace: load-testing
+roleRef:
+  kind: Role
+  name: locust-role
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: locust-cluster-role
+rules:
+- apiGroups: [ "" ]
+  resources: [ "nodes", "namespaces" ]
+  verbs: [ "get", "list", "watch" ]
+- apiGroups: [ "metrics.k8s.io" ]
+  resources: [ "pods", "nodes" ]
+  verbs: [ "get", "list", "watch" ]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: locust-cluster-role-binding
+subjects:
+- kind: ServiceAccount
+  name: locust-service-account
+  namespace: load-testing
+roleRef:
+  kind: ClusterRole
+  name: locust-cluster-role
+  apiGroup: rbac.authorization.k8s.io

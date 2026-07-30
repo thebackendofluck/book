@@ -1,0 +1,118 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 27d, PostgreSQL Aegis.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# patroni — wraps Postgres with HA + automated failover. Uses etcd DCS
+# (from the etcd role) and runs alongside the postgresql@{{ pg_version }}-main
+# unit (which Patroni actually drives, bypassing the pkg init).
+
+# --- Fetch secrets on controller (lab-server with sudo bao) BEFORE rendering ---
+- name: Fetch Patroni secrets from Bao (on controller)
+  when: not (pg_superuser_password is defined)
+  delegate_to: localhost
+  run_once: true
+  become: false
+  ansible.builtin.shell: |
+    if [ -f /opt/dashboard-keys/bao_token ]; then
+      T=$(sudo -n cat /opt/dashboard-keys/bao_token 2>/dev/null)
+    else
+      T="${BAO_TOKEN:-}"
+    fi
+    if [ -z "$T" ]; then
+      # Fallback: generate random passwords for this run (NOT persisted)
+      echo "super=$(openssl rand -hex 24)"
+      echo "repl=$(openssl rand -hex 24)"
+      exit 0
+    fi
+    export BAO_ADDR=https://127.0.0.1:8200 BAO_TOKEN=$T
+    SUPER=$(bao kv get -field=value secret/casino/postgres-aegis/super 2>/dev/null || openssl rand -hex 24)
+    REPL=$(bao kv get -field=value secret/casino/postgres-aegis/replicator 2>/dev/null || openssl rand -hex 24)
+    # Write them if missing (idempotent)
+    bao kv get secret/casino/postgres-aegis/super >/dev/null 2>&1 || bao kv put secret/casino/postgres-aegis/super value="$SUPER" >/dev/null
+    bao kv get secret/casino/postgres-aegis/replicator >/dev/null 2>&1 || bao kv put secret/casino/postgres-aegis/replicator value="$REPL" >/dev/null
+    echo "super=$SUPER"
+    echo "repl=$REPL"
+  register: _pg_secrets
+  no_log: true
+  changed_when: false
+
+- name: Set facts for pg passwords
+  when: not (pg_superuser_password is defined)
+  ansible.builtin.set_fact:
+    pg_superuser_password: "{{ _pg_secrets.stdout_lines | select('match', '^super=') | first | regex_replace('^super=', '') }}"
+    pg_repl_password: "{{ _pg_secrets.stdout_lines | select('match', '^repl=') | first | regex_replace('^repl=', '') }}"
+  no_log: true
+
+- name: Install Patroni + deps
+  ansible.builtin.apt:
+    name:
+      - patroni
+      - etcd-client
+      - python3-etcd
+      - python3-psycopg2
+    state: present
+    update_cache: true
+
+- name: Disable the distro postgresql unit (Patroni owns it)
+  ansible.builtin.systemd:
+    name: "postgresql@{{ pg_version }}-main"
+    enabled: false
+    state: stopped
+
+- name: Ensure /etc/patroni directory
+  ansible.builtin.file:
+    path: /etc/patroni
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: "0750"
+
+- name: Render patroni.yml
+  ansible.builtin.template:
+    src: patroni.yml.j2
+    dest: /etc/patroni/patroni.yml
+    owner: postgres
+    group: postgres
+    mode: "0640"
+  notify: Restart patroni
+
+- name: Render systemd unit
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/patroni.service
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Patroni PostgreSQL HA
+      Requires=network-online.target
+      After=network-online.target pg-aegis-luks-unlock.service
+      [Service]
+      Type=simple
+      User=postgres
+      Group=postgres
+      ExecStart=/usr/bin/patroni /etc/patroni/patroni.yml
+      Restart=on-failure
+      RestartSec=5
+      KillMode=process
+      LimitNOFILE=65535
+      LimitNPROC=65535
+      [Install]
+      WantedBy=multi-user.target
+  notify:
+    - Reload systemd
+    - Restart patroni
+
+- name: Enable patroni
+  ansible.builtin.systemd:
+    name: patroni
+    enabled: true
+    state: started
+    daemon_reload: true

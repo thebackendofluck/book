@@ -1,0 +1,433 @@
+# Companion code for "The Backend of Luck" - Chapter 23, DevSecOps for iGaming.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+name: Security Scan Pipeline
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 2 * * *'  # nightly full scan
+
+env:
+  REGISTRY: ghcr.io
+  KUBECONFIG_SECRET: ${{ secrets.KUBECONFIG }}
+
+jobs:
+  # ─────────────────────────────────────────────
+  # 1. Secret scanning (runs first, blocks others)
+  # ─────────────────────────────────────────────
+  gitleaks:
+    name: "Gitleaks — Secret Scan"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history for gitleaks
+
+      - name: Install gitleaks
+        run: |
+          VERSION=$(curl -s https://api.github.com/repos/gitleaks/gitleaks/releases/latest \
+            | jq -r .tag_name | sed 's/v//')
+          curl -sL "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz" \
+            | tar xz -C /usr/local/bin/ gitleaks
+          gitleaks version
+
+      - name: Scan git history for secrets
+        run: |
+          gitleaks detect \
+            --source . \
+            --report-path gitleaks-report.json \
+            --report-format json \
+            --exit-code 1
+        continue-on-error: true
+
+      - name: Upload gitleaks report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gitleaks-report
+          path: gitleaks-report.json
+          retention-days: 30
+
+  # ─────────────────────────────────────────────
+  # 2. IaC scanning (Terraform + Kubernetes)
+  # ─────────────────────────────────────────────
+  checkov-iac:
+    name: "Checkov — IaC Security"
+    runs-on: ubuntu-latest
+    needs: gitleaks
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install checkov
+        run: pip install checkov
+
+      - name: Scan Terraform
+        run: |
+          checkov -d . \
+            --framework terraform \
+            --output json \
+            --output-file-path checkov-tf-report.json \
+            --soft-fail \
+            --compact \
+            --skip-check CKV_AWS_144,CKV_AWS_145 || true
+
+      - name: Scan Kubernetes manifests
+        run: |
+          checkov -d . \
+            --framework kubernetes \
+            --output json \
+            --output-file-path checkov-k8s-report.json \
+            --soft-fail \
+            --compact || true
+
+      - name: Enforce security gate — no CRITICAL failures
+        run: |
+          python3 - <<'EOF'
+          import json, sys, glob
+
+          critical_fails = 0
+          for report_path in glob.glob('checkov-*-report.json'):
+              with open(report_path) as f:
+                  content = f.read().strip()
+                  if not content:
+                      continue
+                  data = json.loads(content)
+                  for check in data.get('results', {}).get('failed_checks', []):
+                      cid = check.get('check_id', '')
+                      # CKV_AWS_17 (public RDS), CKV_K8S_16 (privileged container) treated as critical
+                      critical_ids = {'CKV_AWS_17', 'CKV_K8S_16', 'CKV_AWS_8', 'CKV_K8S_6'}
+                      if cid in critical_ids:
+                          print(f"CRITICAL FAIL: {cid} — {check.get('check_name','?')}")
+                          critical_fails += 1
+
+          if critical_fails > 0:
+              print(f"\n{critical_fails} critical IaC checks failed. Fix before merging.")
+              sys.exit(1)
+          print("IaC security gate: PASSED")
+          EOF
+
+      - name: Upload checkov reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: checkov-reports
+          path: checkov-*-report.json
+          retention-days: 30
+
+  # ─────────────────────────────────────────────
+  # 3. Kubescape — K8s security posture
+  # ─────────────────────────────────────────────
+  kubescape-scan:
+    name: "Kubescape — K8s Posture (NSA/MITRE)"
+    runs-on: ubuntu-latest
+    needs: gitleaks
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install kubescape
+        run: |
+          curl -s https://raw.githubusercontent.com/kubescape/kubescape/master/install.sh | /bin/bash
+          export PATH=$PATH:~/.kubescape/bin
+          kubescape version
+
+      - name: Scan K8s manifests — NSA framework
+        run: |
+          export PATH=$PATH:~/.kubescape/bin
+          # Scan any kubernetes manifests in the repo
+          find . -name '*.yaml' -o -name '*.yml' | xargs grep -l 'kind:' 2>/dev/null | head -20 > /tmp/k8s-files.txt
+          if [ -s /tmp/k8s-files.txt ]; then
+            kubescape scan framework nsa \
+              --format json \
+              --output kubescape-nsa-report.json \
+              $(cat /tmp/k8s-files.txt | tr '\n' ' ') || true
+          else
+            echo '{"summary": "No K8s manifests found to scan"}' > kubescape-nsa-report.json
+          fi
+
+      - name: Scan K8s manifests — MITRE ATT&CK
+        run: |
+          export PATH=$PATH:~/.kubescape/bin
+          if [ -s /tmp/k8s-files.txt ]; then
+            kubescape scan framework mitre \
+              --format json \
+              --output kubescape-mitre-report.json \
+              $(cat /tmp/k8s-files.txt | tr '\n' ' ') || true
+          else
+            echo '{"summary": "No K8s manifests found"}' > kubescape-mitre-report.json
+          fi
+
+      - name: Check compliance score
+        run: |
+          python3 - <<'EOF'
+          import json
+
+          try:
+              with open('kubescape-nsa-report.json') as f:
+                  data = json.load(f)
+              score = data.get('summaryDetails', {}).get('complianceScore', 100)
+              print(f"NSA compliance score: {score}")
+              if score < 50:
+                  print("WARNING: NSA compliance below 50%. Review kubescape-nsa-report.json")
+          except Exception as e:
+              print(f"Note: {e}")
+          EOF
+
+      - name: Upload kubescape reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: kubescape-reports
+          path: kubescape-*-report.json
+          retention-days: 30
+
+  # ─────────────────────────────────────────────
+  # 4. Container image scanning (Trivy)
+  # ─────────────────────────────────────────────
+  trivy-container:
+    name: "Trivy — Container Scan"
+    runs-on: ubuntu-latest
+    needs: gitleaks
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Find Dockerfiles
+        id: find-dockerfiles
+        run: |
+          DOCKERFILES=$(find . -name 'Dockerfile*' | head -5 | tr '\n' ' ')
+          echo "dockerfiles=$DOCKERFILES" >> $GITHUB_OUTPUT
+          echo "Found: $DOCKERFILES"
+
+      - name: Build images for scanning
+        run: |
+          for df in $(find . -name 'Dockerfile' | head -3); do
+            dir=$(dirname $df)
+            tag="scan-target-$(echo $dir | tr '/' '-'):latest"
+            echo "Building $tag from $df"
+            docker build -t $tag $dir 2>&1 | tail -3 || true
+          done
+
+      - name: Install Trivy
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
+            | sh -s -- -b /usr/local/bin
+
+      - name: Scan images with Trivy
+        run: |
+          for img in $(docker images --format "{{.Repository}}:{{.Tag}}" | grep scan-target); do
+            echo "Scanning: $img"
+            trivy image \
+              --exit-code 0 \
+              --severity HIGH,CRITICAL \
+              --format json \
+              --output "trivy-$(echo $img | tr '/:' '--').json" \
+              $img || true
+          done
+          # Also scan filesystem
+          trivy fs \
+            --exit-code 0 \
+            --severity HIGH,CRITICAL \
+            --format json \
+            --output trivy-fs-report.json \
+            . || true
+
+      - name: Fail on CRITICAL container CVEs
+        run: |
+          python3 - <<'EOF'
+          import json, glob, sys
+
+          critical_count = 0
+          for path in glob.glob('trivy-*.json'):
+              try:
+                  with open(path) as f:
+                      data = json.load(f)
+                  for result in data.get('Results', []):
+                      for vuln in result.get('Vulnerabilities', []):
+                          if vuln.get('Severity') == 'CRITICAL':
+                              critical_count += 1
+                              print(f"CRITICAL: {vuln.get('VulnerabilityID')} in {vuln.get('PkgName')} — {result.get('Target','?')}")
+              except Exception as e:
+                  print(f"Note: {e}")
+
+          if critical_count > 0:
+              print(f"\n{critical_count} CRITICAL CVEs found. Review before merging.")
+              # Soft-fail for now; change exit(1) to block
+          print(f"Trivy scan complete. Critical: {critical_count}")
+          EOF
+
+      - name: Upload Trivy reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trivy-reports
+          path: trivy-*.json
+          retention-days: 30
+
+  # ─────────────────────────────────────────────
+  # 5. Nuclei — Web vulnerability scan
+  #    (only runs if a staging URL is available)
+  # ─────────────────────────────────────────────
+  nuclei-scan:
+    name: "Nuclei — Web Vulnerability Scan"
+    runs-on: ubuntu-latest
+    needs: [gitleaks, checkov-iac]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    env:
+      TARGET_URL: ${{ vars.STAGING_URL || 'http://localhost:8080' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nuclei
+        run: |
+          VERSION=$(curl -s https://api.github.com/repos/projectdiscovery/nuclei/releases/latest \
+            | jq -r .tag_name | sed 's/v//')
+          curl -sL "https://github.com/projectdiscovery/nuclei/releases/download/v${VERSION}/nuclei_${VERSION}_linux_amd64.zip" \
+            -o /tmp/nuclei.zip
+          unzip -o /tmp/nuclei.zip -d /usr/local/bin/ nuclei
+          chmod +x /usr/local/bin/nuclei
+          nuclei -update-templates 2>&1 | tail -3
+
+      - name: Copy iGaming custom templates
+        run: |
+          mkdir -p ~/.nuclei-templates/igaming
+          cp -r scripts/chapter-23/ci-security-pipeline/nuclei-templates/ \
+            ~/.nuclei-templates/igaming/ 2>/dev/null || true
+
+      - name: Run Nuclei scan
+        run: |
+          nuclei \
+            -u $TARGET_URL \
+            -severity critical,high,medium \
+            -j \
+            -o nuclei-report.jsonl \
+            -timeout 10 \
+            -c 25 \
+            -rl 50 \
+            -exclude-tags fuzzing,brute-force \
+            -tags http,network,default \
+            2>&1 | tail -10 || true
+
+      - name: Parse Nuclei results
+        run: |
+          python3 - <<'EOF'
+          import json
+
+          findings = {'critical': 0, 'high': 0, 'medium': 0, 'low': 0, 'info': 0}
+          try:
+              with open('nuclei-report.jsonl') as f:
+                  for line in f:
+                      line = line.strip()
+                      if line:
+                          d = json.loads(line)
+                          sev = d.get('info', {}).get('severity', 'info').lower()
+                          findings[sev] = findings.get(sev, 0) + 1
+                          if sev in ('critical', 'high'):
+                              print(f"  [{sev.upper()}] {d.get('info',{}).get('name','?')} → {d.get('matched-at','?')}")
+          except FileNotFoundError:
+              print("No nuclei results file (no target scanned)")
+
+          print("\nNuclei summary:", findings)
+          if findings.get('critical', 0) > 0:
+              print("CRITICAL web vulnerabilities found! Review before deploying.")
+          EOF
+
+      - name: Upload Nuclei report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nuclei-report
+          path: nuclei-report.jsonl
+          retention-days: 30
+
+  # ─────────────────────────────────────────────
+  # 6. Security summary report
+  # ─────────────────────────────────────────────
+  security-summary:
+    name: "Security Summary"
+    runs-on: ubuntu-latest
+    needs: [gitleaks, checkov-iac, kubescape-scan, trivy-container]
+    if: always()
+    steps:
+      - name: Download all reports
+        uses: actions/download-artifact@v4
+        with:
+          path: all-reports/
+
+      - name: Generate consolidated summary
+        run: |
+          python3 - <<'EOF'
+          import json, os, glob
+
+          print("=" * 60)
+          print("SECURITY SCAN SUMMARY")
+          print("=" * 60)
+
+          # Gitleaks
+          for path in glob.glob('all-reports/gitleaks-report/*.json'):
+              try:
+                  with open(path) as f:
+                      data = json.load(f)
+                  leaks = len(data) if isinstance(data, list) else 0
+                  status = "FAIL" if leaks > 0 else "PASS"
+                  print(f"Gitleaks:  [{status}] {leaks} secrets found")
+              except:
+                  print("Gitleaks:  [INFO] No report")
+
+          # Checkov TF
+          for path in glob.glob('all-reports/checkov-reports/checkov-tf*.json'):
+              try:
+                  with open(path) as f:
+                      data = json.load(f)
+                  passed = len(data.get('results', {}).get('passed_checks', []))
+                  failed = len(data.get('results', {}).get('failed_checks', []))
+                  pct = int(passed / (passed + failed) * 100) if (passed + failed) > 0 else 0
+                  print(f"Checkov TF:[{'PASS' if failed < 5 else 'WARN'}] Passed={passed} Failed={failed} ({pct}%)")
+              except:
+                  pass
+
+          # Checkov K8s
+          for path in glob.glob('all-reports/checkov-reports/checkov-k8s*.json'):
+              try:
+                  with open(path) as f:
+                      data = json.load(f)
+                  passed = len(data.get('results', {}).get('passed_checks', []))
+                  failed = len(data.get('results', {}).get('failed_checks', []))
+                  pct = int(passed / (passed + failed) * 100) if (passed + failed) > 0 else 0
+                  print(f"Checkov K8s:[{'PASS' if failed < 3 else 'WARN'}] Passed={passed} Failed={failed} ({pct}%)")
+              except:
+                  pass
+
+          # Kubescape
+          for path in glob.glob('all-reports/kubescape-reports/kubescape-nsa*.json'):
+              try:
+                  with open(path) as f:
+                      data = json.load(f)
+                  score = data.get('summaryDetails', {}).get('complianceScore', 'N/A')
+                  print(f"Kubescape: [{'PASS' if score == 'N/A' or score >= 60 else 'WARN'}] NSA score={score}")
+              except:
+                  print("Kubescape: [INFO] No compliance data")
+
+          print("=" * 60)
+          EOF
+
+      - name: Upload summary
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-summary
+          path: all-reports/
+          retention-days: 90

@@ -1,0 +1,266 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 45, Secure Infrastructure Decommissioning.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# Complete Infrastructure Destruction Playbook
+# WARNING: This playbook performs IRREVERSIBLE destruction of all infrastructure
+
+- name: Complete Infrastructure Destruction
+  hosts: all
+  gather_facts: false
+  serial: 1 # Process hosts one at a time for safety
+  max_fail_percentage: 0 # Stop on any failure
+
+  vars:
+    destruction_mode: "{{ destruction_mode | default('safe') }}"
+    backup_before_destroy: "{{ backup_before_destroy | default(true) }}"
+    verify_destruction: "{{ verify_destruction | default(true) }}"
+
+  pre_tasks:
+  - name: Validate destruction mode
+    assert:
+      that:
+      - destruction_mode in ['safe', 'destructive']
+      fail_msg: "Invalid destruction_mode. Must be 'safe' or 'destructive'"
+
+  - name: Emergency stop check
+    stat:
+      path: /tmp/emergency_stop
+    register: emergency_stop
+    failed_when: false
+
+  - name: Stop if emergency stop triggered
+    fail:
+      msg: "Emergency stop triggered - halting destruction"
+    when: emergency_stop.stat.exists
+
+  - name: Log destruction start
+    lineinfile:
+      path: /var/log/ansible_destruction.log
+      line: "{{ ansible_date_time.iso8601 }} - STARTING DESTRUCTION on {{ inventory_hostname }}"
+      create: true
+    delegate_to: localhost
+
+  tasks:
+  # Phase 1: Backup critical data (if requested)
+  - name: Create backup directory
+    file:
+      path: "/backup/{{ inventory_hostname }}"
+      state: directory
+      mode: '0755'
+    when: backup_before_destroy
+
+  - name: Backup critical configuration files
+    copy:
+      src: "{{ item }}"
+      dest: "/backup/{{ inventory_hostname }}/{{ item | basename }}"
+      remote_src: true
+    loop:
+    - /etc/passwd
+    - /etc/shadow
+    - /etc/group
+    - /etc/sudoers
+    - /etc/ssh/sshd_config
+    - /etc/fstab
+    - /etc/crontab
+    when: backup_before_destroy
+    ignore_errors: true
+
+  - name: Backup application configurations
+    archive:
+      path:
+      - /etc/
+      - /opt/
+      - /var/lib/
+      dest: "/backup/{{ inventory_hostname }}/configs.tar.gz"
+      format: gz
+    when: backup_before_destroy
+    ignore_errors: true
+
+  # Phase 2: Stop all services
+  - name: Stop all systemd services
+    systemd:
+      name: "{{ item }}"
+      state: stopped
+      enabled: false
+    loop: "{{ ansible_facts.services | selectattr('status', 'equalto', 'enabled') | map(attribute='name') | list }}"
+    ignore_errors: true
+
+  - name: Kill all remaining processes (except system processes)
+    shell: |
+      # Kill all user processes
+      pkill -u root -f -9 || true
+      pkill -u "{{ ansible_user }}" -f -9 || true
+
+      # Kill common application processes
+      for proc in postgres mysql apache2 nginx docker kubelet; do
+        pkill -f "$proc" -9 || true
+      done
+    ignore_errors: true
+
+  # Phase 3: Unmount filesystems
+  - name: Get mounted filesystems
+    shell: mount | grep -v ' / ' | awk '{print $3}'
+    register: mounted_fs
+    ignore_errors: true
+
+  - name: Unmount all filesystems
+    mount:
+      path: "{{ item }}"
+      state: unmounted
+    loop: "{{ mounted_fs.stdout_lines | default([]) }}"
+    ignore_errors: true
+
+  # Phase 4: Destroy data
+  - name: Get all disk devices
+    shell: lsblk -d -n -o NAME | grep -v 'loop\|sr\|fd'
+    register: disk_devices
+    ignore_errors: true
+
+  - name: Secure erase all disks (destructive mode only)
+    shell: |
+      if [ "{{ destruction_mode }}" = "destructive" ]; then
+        for disk in {{ disk_devices.stdout_lines | join(' ') }}; do
+          echo "Secure erasing /dev/$disk"
+          # Use shred for secure deletion
+          shred -u -v -n 3 "/dev/$disk" &
+        done
+        wait
+      else
+        echo "SAFE MODE: Would erase disks {{ disk_devices.stdout_lines | join(', ') }}"
+      fi
+    when: disk_devices.stdout_lines | length > 0
+    ignore_errors: true
+
+  # Phase 5: Remove system configuration
+  - name: Remove all users and groups
+    shell: |
+      # Remove all non-system users
+      for user in $(awk -F: '$3 >= 1000 {print $1}' /etc/passwd 2>/dev/null); do
+        userdel -r "$user" 2>/dev/null || true
+      done
+
+      # Remove all non-system groups
+      for group in $(awk -F: '$3 >= 1000 {print $1}' /etc/group 2>/dev/null); do
+        groupdel "$group" 2>/dev/null || true
+      done
+    ignore_errors: true
+
+  - name: Remove all cron jobs
+    file:
+      path: "{{ item }}"
+      state: absent
+    loop:
+    - /etc/crontab
+    - /etc/cron.d
+    - /etc/cron.daily
+    - /etc/cron.hourly
+    - /etc/cron.monthly
+    - /etc/cron.weekly
+    - /var/spool/cron
+    ignore_errors: true
+
+  # Phase 6: Remove network configuration
+  - name: Disable all network interfaces
+    shell: |
+      for iface in $(ip link show | grep -v lo | awk -F: '{print $2}' | tr -d ' '); do
+        ip link set "$iface" down 2>/dev/null || true
+      done
+    ignore_errors: true
+
+  - name: Remove network configuration files
+    file:
+      path: "{{ item }}"
+      state: absent
+    loop:
+    - /etc/network/interfaces
+    - /etc/netplan/
+    - /etc/NetworkManager/
+    - /etc/sysconfig/network-scripts/
+    ignore_errors: true
+
+  # Phase 7: Remove system logs and audit trails
+  - name: Clear system logs
+    shell: |
+      # Clear common log files
+      for log in /var/log/*; do
+        if [ -f "$log" ]; then
+          > "$log" 2>/dev/null || true
+        fi
+      done
+
+      # Clear journald logs
+      journalctl --vacuum-time=1s 2>/dev/null || true
+    ignore_errors: true
+
+  # Phase 8: Final system halt (destructive mode only)
+  - name: Final system halt
+    shell: |
+      if [ "{{ destruction_mode }}" = "destructive" ]; then
+        echo "System will halt in 10 seconds..."
+        sleep 10
+        # Force immediate halt
+        echo b > /proc/sysrq-trigger
+      else
+        echo "SAFE MODE: Would halt system"
+      fi
+    async: 15
+    poll: 0
+    ignore_errors: true
+
+  post_tasks:
+  - name: Log destruction completion
+    lineinfile:
+      path: /var/log/ansible_destruction.log
+      line: "{{ ansible_date_time.iso8601 }} - DESTRUCTION COMPLETED on {{ inventory_hostname }}"
+      create: true
+    delegate_to: localhost
+    ignore_errors: true
+
+  - name: Verify destruction (if requested)
+    shell: |
+      if [ "{{ verify_destruction }}" = "true" ]; then
+        echo "Verifying destruction on {{ inventory_hostname }}"
+
+        # Check if disks are erased
+        if [ "{{ destruction_mode }}" = "destructive" ]; then
+          for disk in {{ disk_devices.stdout_lines | default([]) | join(' ') }}; do
+            if [ -b "/dev/$disk" ]; then
+              echo "WARNING: Disk /dev/$disk still exists"
+            fi
+          done
+        fi
+
+        # Check if users remain
+        user_count=$(awk -F: '$3 >= 1000 {count++} END {print count+0}' /etc/passwd 2>/dev/null || echo "0")
+        if [ "$user_count" -gt 0 ]; then
+          echo "WARNING: $user_count non-system users still exist"
+        fi
+
+        echo "Verification completed for {{ inventory_hostname }}"
+      fi
+    delegate_to: localhost
+    ignore_errors: true
+
+  handlers:
+  - name: Log destruction error
+    lineinfile:
+      path: /var/log/ansible_destruction.log
+      line: "{{ ansible_date_time.iso8601 }} - DESTRUCTION ERROR on {{ inventory_hostname }}: {{ ansible_failed_task }}"
+      create: true
+    delegate_to: localhost
+    listen: destruction_failed
+
+  - name: Trigger emergency stop on failure
+    file:
+      path: /tmp/emergency_stop
+      state: touch
+    delegate_to: localhost
+    listen: destruction_failed

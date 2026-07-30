@@ -1,0 +1,121 @@
+# Companion code for "The Backend of Luck" - Chapter 37, Marketing Technology and CRM Systems.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# docker-compose.yml — Local development stack for the VIP Rule Processor
+#
+# Services:
+#   zookeeper     — Required by Kafka for broker coordination
+#   kafka         — Message broker with pre-created topics
+#   db            — PostgreSQL for VIP rules, transactions, and user status
+#   db-spec       — Separate PostgreSQL instance for integration tests
+#   vip-processor — The application itself (image built via sbt-native-packager)
+
+version: "3.8"
+services:
+  zookeeper:
+    image: wurstmeister/zookeeper:3.4.6
+    ports:
+      - "127.0.0.1:2181:2181"
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+
+  kafka:
+    image: wurstmeister/kafka:2.13-2.6.3
+    ports:
+      - "127.0.0.1:9092:9092"
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_CREATE_TOPICS: "transaction:3:1,vip-rules_commands:3:1,vip-rules_events:3:1"
+      HOSTNAME_COMMAND: "route -n | awk '/UG[ \\t]/{print $$2}'"
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+          cpus: "1.0"
+
+  db-spec:
+    image: postgres:18-alpine
+    ports:
+      - "127.0.0.1:5433:5432"
+    environment:
+      - POSTGRES_DB=pdb
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${POSTGRES_SPEC_PASSWORD:?POSTGRES_SPEC_PASSWORD must be set}
+    healthcheck:
+      test: "pg_isready --username=postgres && psql --username=postgres --list"
+      interval: 5s
+      timeout: 10s
+      retries: 20
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+
+  db:
+    image: postgres:18-alpine
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      - POSTGRES_DB=viprules
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+    healthcheck:
+      test: "pg_isready --username=postgres && psql --username=postgres --list"
+      interval: 5s
+      timeout: 10s
+      retries: 20
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+
+  vip-processor:
+    image: vip-processor:1.0.0
+    ports:
+      - "127.0.0.1:8888:8888"
+    environment:
+      DATABASE_URI: "jdbc:postgresql://db:5432/viprules"
+      DATABASE_SCHEMA: "public"
+      DATABASE_USERNAME: "postgres"
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      KAFKA_SERVERS: "kafka:9092"
+      CLOCK_INTERVAL: "5 seconds"
+      CLOCK_OVERRIDE_ENABLED: "true"
+      METRICS_ENABLED: "false"
+    depends_on:
+      kafka:
+        condition: service_started
+      db:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"

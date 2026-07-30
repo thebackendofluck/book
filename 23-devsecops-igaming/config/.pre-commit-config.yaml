@@ -1,0 +1,190 @@
+# Companion code for "The Backend of Luck" - Chapter 23, DevSecOps for iGaming.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# Universal DevSecOps Pre-commit Configuration
+# Comprehensive security hooks for all project types
+
+repos:
+# Security - Secret Detection
+- repo: https://github.com/gitleaks/gitleaks
+  rev: v8.18.2
+  hooks:
+  - id: gitleaks
+    name: Gitleaks Secret Detection
+    description: Detect hardcoded secrets in git history
+    entry: gitleaks protect --verbose --redact --staged
+    language: golang
+    pass_filenames: false
+
+- repo: https://github.com/trufflesecurity/trufflehog
+  rev: v3.63.0
+  hooks:
+  - id: trufflehog
+    name: TruffleHog Advanced Secret Detection
+    description: Find credentials in git history and files
+    entry: trufflehog git file://. --no-verification --max-depth=1
+    language: golang
+    pass_filenames: false
+
+# Python Security
+- repo: https://github.com/PyCQA/bandit
+  rev: 1.7.6
+  hooks:
+  - id: bandit
+    name: Bandit Python Security
+    description: Find security issues in Python code
+    args: [ -r ]
+    files: \.py$
+
+- repo: https://github.com/Lucas-C/pre-commit-hooks-safety
+  rev: v1.3.2
+  hooks:
+  - id: python-safety-dependencies-check
+    name: Safety Dependency Vulnerabilities
+    description: Check Python dependencies for known vulnerabilities
+    files: requirements.*\.txt$
+
+# Code Quality - Python
+- repo: https://github.com/psf/black
+  rev: 23.12.1
+  hooks:
+  - id: black
+    name: Black Python Formatting
+    description: Format Python code consistently
+    language_version: python3.11
+    types: [ python ]
+
+- repo: https://github.com/pycqa/isort
+  rev: 5.13.2
+  hooks:
+  - id: isort
+    name: isort Import Sorting
+    description: Sort Python imports automatically
+    args: [ "--profile", "black" ]
+    types: [ python ]
+
+- repo: https://github.com/pycqa/flake8
+  rev: 7.0.0
+  hooks:
+  - id: flake8
+    name: Flake8 Python Linting
+    description: Check Python code for style and errors
+    args: [ '--max-line-length=88', '--extend-ignore=E203,W503' ]
+    types: [ python ]
+
+# Code Quality - General
+- repo: https://github.com/pre-commit/pre-commit-hooks
+  rev: v4.5.0
+  hooks:
+  - id: trailing-whitespace
+    name: Trailing Whitespace
+    description: Remove trailing whitespace
+  - id: end-of-file-fixer
+    name: End of File Fixer
+    description: Ensure files end with newline
+  - id: check-yaml
+    name: YAML Syntax Check
+    description: Validate YAML syntax
+  - id: check-json
+    name: JSON Syntax Check
+    description: Validate JSON syntax
+  - id: check-merge-conflict
+    name: Merge Conflict Check
+    description: Check for merge conflict markers
+  - id: check-executables-have-shebangs
+    name: Shebang Check
+    description: Check that executables have shebangs
+
+# Shell Script Analysis
+- repo: https://github.com/shellcheck-py/shellcheck-py
+  rev: v0.9.0.2
+  hooks:
+  - id: shellcheck
+    name: ShellCheck Script Analysis
+    description: Static analysis for shell scripts
+    types: [ shell ]
+
+# YAML Linting
+- repo: https://github.com/adrienverge/yamllint
+  rev: v1.33.0
+  hooks:
+  - id: yamllint
+    name: YAMLLint YAML Validation
+    description: Lint YAML files for syntax and style issues
+    types: [ yaml ]
+
+# Markdown Linting
+- repo: https://github.com/igorshubovych/markdownlint-cli
+  rev: v0.38.0
+  hooks:
+  - id: markdownlint
+    name: MarkdownLint Markdown Validation
+    description: Lint Markdown files for style issues
+    types: [ markdown ]
+
+# Terraform Security
+- repo: https://github.com/antonbabenko/pre-commit-terraform
+  rev: v1.86.0
+  hooks:
+  - id: terraform_fmt
+    name: Terraform Format
+    description: Format Terraform files
+  - id: terraform_validate
+    name: Terraform Validate
+    description: Validate Terraform configuration
+  - id: terraform_tflint
+    name: TFLint Terraform Linting
+    description: Lint Terraform files for errors and best practices
+  - id: terraform_tfsec
+    name: TFSec Terraform Security
+    description: Security scan for Terraform files
+
+# Commit Message Validation
+- repo: https://github.com/conventional-changelog/commitlint
+  rev: v18.4.4
+  hooks:
+  - id: commitlint
+    name: CommitLint Commit Message Validation
+    description: Validate commit messages follow conventional commits
+    stages: [ commit-msg ]
+    additional_dependencies: [ '@commitlint/config-conventional' ]
+
+# Semgrep Security Scanning
+- repo: https://github.com/returntocorp/semgrep
+  rev: v1.52.0
+  hooks:
+  - id: semgrep
+    name: Semgrep Security Pattern Scanning
+    description: Find security vulnerabilities with static analysis
+    args: [ '--config=auto', '--error' ]
+    types: [ python, javascript, ts, go, java, yaml ]
+
+# JavaScript/TypeScript
+- repo: https://github.com/pre-commit/mirrors-eslint
+  rev: v8.56.0
+  hooks:
+  - id: eslint
+    name: ESLint JavaScript/TypeScript Linting
+    description: Find and fix problems in JavaScript code
+    additional_dependencies:
+    - eslint@8.56.0
+    - eslint-config-standard
+    - eslint-plugin-import
+    - eslint-plugin-n
+    - eslint-plugin-promise
+    types: [ javascript, ts ]
+
+- repo: https://github.com/pre-commit/mirrors-prettier
+  rev: v3.1.0
+  hooks:
+  - id: prettier
+    name: Prettier Code Formatting
+    description: Format JavaScript, TypeScript, JSON, Markdown
+    types_or: [ javascript, ts, json, markdown, yaml ]

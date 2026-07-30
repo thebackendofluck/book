@@ -1,0 +1,1755 @@
+{
+  "yubihsm_devices": [
+    {
+      "serial": "auto-detected",
+      "model": "YubiHSM 2 FIPS",
+      "capacity": 256,
+      "fips_certified": true,
+      "source": "documentation_analysis"
+    }
+  ],
+  "yubikey_tokens": [],
+  "aws_accounts": [
+    {
+      "name": "dev",
+      "path": "../infrastructure/infrastructure-live/dev",
+      "type": "terragrunt",
+      "regions": [
+        "eu-west-2"
+      ]
+    },
+    {
+      "name": "prod",
+      "path": "../infrastructure/infrastructure-live/prod",
+      "type": "terragrunt",
+      "regions": [
+        "eu-west-2"
+      ]
+    },
+    {
+      "name": "security",
+      "path": "../infrastructure/infrastructure-live/security",
+      "type": "terragrunt",
+      "regions": [
+        "eu-west-1"
+      ]
+    },
+    {
+      "name": "shared",
+      "path": "../infrastructure/infrastructure-live/shared",
+      "type": "terragrunt",
+      "regions": [
+        "eu-west-1"
+      ]
+    },
+    {
+      "name": "stage",
+      "path": "../infrastructure/infrastructure-live/stage",
+      "type": "terragrunt",
+      "regions": [
+        "eu-west-2"
+      ]
+    }
+  ],
+  "ansible_hosts": [],
+  "terraform_workspaces": [],
+  "meraki_networks": [
+    {
+      "id": "L_MERAKI_NETWORK_ID",
+      "type": "meraki_network",
+      "source": "topology"
+    },
+    {
+      "id": "L_MERAKI_NETWORK_ID",
+      "type": "meraki_network",
+      "source": "topology"
+    },
+    {
+      "id": "L_MERAKI_NETWORK_ID",
+      "type": "meraki_network",
+      "source": "topology"
+    },
+    {
+      "id": "L_MERAKI_NETWORK_ID",
+      "type": "meraki_network",
+      "source": "topology"
+    },
+    {
+      "id": "L_MERAKI_NETWORK_ID",
+      "type": "meraki_network",
+      "source": "topology"
+    },
+    {
+      "id": "L_MERAKI_NETWORK_ID",
+      "type": "meraki_network",
+      "source": "topology"
+    },
+    {
+      "id": "L_MERAKI_NETWORK_ID",
+      "type": "meraki_network",
+      "source": "topology"
+    },
+    {
+      "id": "L_MERAKI_NETWORK_ID",
+      "type": "meraki_network",
+      "source": "topology"
+    },
+    {
+      "id": "L_MERAKI_NETWORK_ID",
+      "type": "meraki_network",
+      "source": "topology"
+    },
+    {
+      "id": "L_MERAKI_NETWORK_ID",
+      "type": "meraki_network",
+      "source": "topology"
+    },
+    {
+      "id": "L_MERAKI_NETWORK_ID",
+      "type": "meraki_network",
+      "source": "topology"
+    },
+    {
+      "id": "L_MERAKI_NETWORK_ID",
+      "type": "meraki_network",
+      "source": "topology"
+    },
+    {
+      "model": "MX250",
+      "type": "security_appliance",
+      "source": "inventory"
+    },
+    {
+      "model": "MX100",
+      "type": "security_appliance",
+      "source": "inventory"
+    },
+    {
+      "model": "MX250",
+      "type": "security_appliance",
+      "source": "inventory"
+    },
+    {
+      "model": "MX250",
+      "type": "security_appliance",
+      "source": "inventory"
+    },
+    {
+      "model": "MX250",
+      "type": "security_appliance",
+      "source": "inventory"
+    },
+    {
+      "model": "MX250",
+      "type": "security_appliance",
+      "source": "inventory"
+    },
+    {
+      "model": "MX250",
+      "type": "security_appliance",
+      "source": "inventory"
+    },
+    {
+      "model": "MX250",
+      "type": "security_appliance",
+      "source": "inventory"
+    },
+    {
+      "model": "MX250",
+      "type": "security_appliance",
+      "source": "inventory"
+    },
+    {
+      "model": "MX1",
+      "type": "security_appliance",
+      "source": "inventory"
+    },
+    {
+      "model": "MX250",
+      "type": "security_appliance",
+      "source": "inventory"
+    },
+    {
+      "model": "MX2",
+      "type": "security_appliance",
+      "source": "inventory"
+    },
+    {
+      "model": "MX250",
+      "type": "security_appliance",
+      "source": "inventory"
+    },
+    {
+      "model": "MX1",
+      "type": "security_appliance",
+      "source": "inventory"
+    },
+    {
+      "model": "MX2",
+      "type": "security_appliance",
+      "source": "inventory"
+    },
+    {
+      "model": "MX1",
+      "type": "security_appliance",
+      "source": "inventory"
+    },
+    {
+      "model": "MX1",
+      "type": "security_appliance",
+      "source": "inventory"
+    },
+    {
+      "model": "MX1",
+      "type": "security_appliance",
+      "source": "inventory"
+    },
+    {
+      "model": "MX1",
+      "type": "security_appliance",
+      "source": "inventory"
+    },
+    {
+      "model": "MX2",
+      "type": "security_appliance",
+      "source": "inventory"
+    },
+    {
+      "model": "MX250",
+      "type": "security_appliance",
+      "source": "inventory"
+    },
+    {
+      "model": "MX250",
+      "type": "security_appliance",
+      "source": "inventory"
+    },
+    {
+      "model": "MX250",
+      "type": "security_appliance",
+      "source": "inventory"
+    },
+    {
+      "model": "MX250",
+      "type": "security_appliance",
+      "source": "inventory"
+    },
+    {
+      "model": "MX250",
+      "type": "security_appliance",
+      "source": "inventory"
+    },
+    {
+      "model": "MX250",
+      "type": "security_appliance",
+      "source": "inventory"
+    },
+    {
+      "model": "MX250",
+      "type": "security_appliance",
+      "source": "inventory"
+    },
+    {
+      "model": "MX250",
+      "type": "security_appliance",
+      "source": "inventory"
+    },
+    {
+      "model": "MX250",
+      "type": "security_appliance",
+      "source": "inventory"
+    },
+    {
+      "model": "MX250",
+      "type": "security_appliance",
+      "source": "inventory"
+    },
+    {
+      "model": "MX1",
+      "type": "security_appliance",
+      "source": "inventory"
+    },
+    {
+      "model": "MX250",
+      "type": "security_appliance",
+      "source": "inventory"
+    },
+    {
+      "model": "MX2",
+      "type": "security_appliance",
+      "source": "inventory"
+    },
+    {
+      "model": "MX250",
+      "type": "security_appliance",
+      "source": "inventory"
+    },
+    {
+      "model": "MX1",
+      "type": "security_appliance",
+      "source": "inventory"
+    },
+    {
+      "model": "MX1",
+      "type": "security_appliance",
+      "source": "inventory"
+    },
+    {
+      "model": "MX2",
+      "type": "security_appliance",
+      "source": "inventory"
+    },
+    {
+      "model": "MX2",
+      "type": "security_appliance",
+      "source": "inventory"
+    },
+    {
+      "model": "MX1",
+      "type": "security_appliance",
+      "source": "inventory"
+    },
+    {
+      "model": "MX2",
+      "type": "security_appliance",
+      "source": "inventory"
+    },
+    {
+      "model": "MX1",
+      "type": "security_appliance",
+      "source": "inventory"
+    },
+    {
+      "model": "MX2",
+      "type": "security_appliance",
+      "source": "inventory"
+    },
+    {
+      "model": "MS350",
+      "type": "switch",
+      "source": "inventory"
+    },
+    {
+      "model": "MS350",
+      "type": "switch",
+      "source": "inventory"
+    },
+    {
+      "model": "MS350",
+      "type": "switch",
+      "source": "inventory"
+    },
+    {
+      "model": "MS350",
+      "type": "switch",
+      "source": "inventory"
+    },
+    {
+      "model": "MS350",
+      "type": "switch",
+      "source": "inventory"
+    },
+    {
+      "model": "MS350",
+      "type": "switch",
+      "source": "inventory"
+    },
+    {
+      "model": "MS350",
+      "type": "switch",
+      "source": "inventory"
+    },
+    {
+      "model": "MS350",
+      "type": "switch",
+      "source": "inventory"
+    },
+    {
+      "model": "MS350",
+      "type": "switch",
+      "source": "inventory"
+    },
+    {
+      "model": "MS350",
+      "type": "switch",
+      "source": "inventory"
+    },
+    {
+      "model": "MS350",
+      "type": "switch",
+      "source": "inventory"
+    },
+    {
+      "model": "MS350",
+      "type": "switch",
+      "source": "inventory"
+    },
+    {
+      "model": "MS350",
+      "type": "switch",
+      "source": "inventory"
+    },
+    {
+      "model": "MS350",
+      "type": "switch",
+      "source": "inventory"
+    },
+    {
+      "model": "MS350",
+      "type": "switch",
+      "source": "inventory"
+    },
+    {
+      "model": "MS350",
+      "type": "switch",
+      "source": "inventory"
+    },
+    {
+      "model": "MS350",
+      "type": "switch",
+      "source": "inventory"
+    },
+    {
+      "model": "MS350",
+      "type": "switch",
+      "source": "inventory"
+    },
+    {
+      "model": "MS350",
+      "type": "switch",
+      "source": "inventory"
+    },
+    {
+      "model": "MS350",
+      "type": "switch",
+      "source": "inventory"
+    },
+    {
+      "model": "MS350",
+      "type": "switch",
+      "source": "inventory"
+    },
+    {
+      "model": "vMX100",
+      "type": "virtual_mx",
+      "source": "inventory"
+    }
+  ],
+  "mikrotik_devices": [],
+  "security_configs": {
+    "yubihsm_config": {
+      "fips_certified": true,
+      "storage_capacity": true,
+      "encryption_standard": true,
+      "key_types": true,
+      "ecc_keys": true,
+      "storage_recommendations": "\n| Object Type | Recommended Allocation | Use Case | Priority |\n|-------------|------------------------|----------|----------|\n| **Critical Passwords** | 50-80 objects | Root passwords, admin accounts | High |\n| **SSL/TLS Certificates** | 30-50 objects | Production certificates | High |\n| **API Keys** | 40-60 objects | Third-party service keys | Medium |\n| **Encryption Keys** | 30-40 objects | Data encryption keys | High |\n| **SSH Keys** | 20-30 objects | Server access keys | Medium |\n| **Database Credentials** | 20-30 objects | Production DB access | High |\n| **Backup/Recovery Keys** | 10-20 objects | Disaster recovery | Critical |\n| **Reserved for Growth** | 16-26 objects | Future expansion | - |",
+      "terraform_config": "terraform {\n  required_version = \">= 1.5.0\"\n  required_providers {\n    aws = {\n      source  = \"hashicorp/aws\"\n      version = \"~> 5.0\"\n    }\n  }\n\n  backend \"s3\" {\n    # Configure via terraform.tfvars or CLI\n    # bucket = \"your-terraform-state-bucket\"\n    # key    = \"yubihsm-infrastructure/terraform.tfstate\"\n    # region = \"us-east-1\"\n  }\n}\n\nprovider \"aws\" {\n  region = var.aws_region\n\n  default_tags {\n    tags = {\n      Project       = var.project_name\n      Environment   = var.environment\n      ManagedBy     = \"Terraform\"\n      SecurityLevel = \"High\"\n    }\n  }\n}\n\n# Data sources\ndata \"aws_caller_identity\" \"current\" {}\ndata \"aws_region\" \"current\" {}\n\n# Local values\nlocals {\n  common_tags = {\n    Project     = var.project_name\n    Environment = var.environment\n    Owner       = var.owner\n    CostCenter  = var.cost_center\n  }\n\n  name_prefix = \"${var.project_name}-${var.environment}\"\n}\n\n# Modules\nmodule \"networking\" {\n  source = \"./modules/networking\"\n\n  project_name = var.project_name\n  environment  = var.environment\n  aws_region   = var.aws_region\n\n  vpc_cidr_block     = var.vpc_cidr_block\n  availability_zones = var.availability_zones\n\n  public_subnet_cidrs   = var.public_subnet_cidrs\n  private_subnet_cidrs  = var.private_subnet_cidrs\n  database_subnet_cidrs = var.database_subnet_cidrs\n\n  enable_nat_gateway = var.enable_nat_gateway\n  single_nat_gateway = var.single_nat_gateway\n\n  tags = local.common_tags\n}\n\nmodule \"security\" {\n  source = \"./modules/security\"\n\n  project_name = var.project_name\n  environment  = var.environment\n\n  vpc_id             = module.networking.vpc_id\n  private_subnet_ids = module.networking.private_subnet_ids\n\n  yubihsm_auth_key_id = var.yubihsm_auth_key_id\n  yubihsm_password    = var.yubihsm_password\n\n  enable_key_rotation = var.enable_key_rotation\n  key_rotation_days   = var.key_rotation_days\n\n  tags = local.common_tags\n}\n\nmodule \"compute\" {\n  source = \"./modules/compute\"\n\n  project_name = var.project_name\n  environment  = var.environment\n\n  vpc_id             = module.networking.vpc_id\n  private_subnet_ids = module.networking.private_subnet_ids\n  public_subnet_ids  = module.networking.public_subnet_ids\n\n  app_server_instance_type    = var.app_server_instance_type\n  nitro_enclave_instance_type = var.nitro_enclave_instance_type\n\n  app_server_ami_id    = var.app_server_ami_id\n  nitro_enclave_ami_id = var.nitro_enclave_ami_id\n\n  key_pair_name = var.key_pair_name\n\n  yubihsm_security_group_id = module.security.yubihsm_security_group_id\n  app_security_group_id     = module.security.app_security_group_id\n\n  kms_key_arn = module.security.kms_key_arn\n\n  user_data_scripts = {\n    app_server    = file(\"${path.module}/scripts/app_server_init.sh\")\n    nitro_enclave = file(\"${path.module}/scripts/nitro_enclave_init.sh\")\n  }\n\n  tags = local.common_tags\n}\n\nmodule \"storage\" {\n  source = \"./modules/storage\"\n\n  project_name = var.project_name\n  environment  = var.environment\n\n  vpc_id             = module.networking.vpc_id\n  private_subnet_ids = module.networking.private_subnet_ids\n\n  kms_key_arn = module.security.kms_key_arn\n\n  ebs_volume_size = var.ebs_volume_size\n  ebs_encrypted   = var.ebs_encrypted\n\n  enable_efs    = var.enable_efs\n  efs_encrypted = var.enable_efs ? var.efs_encrypted : false\n\n  s3_bucket_name = var.s3_bucket_name\n  s3_versioning  = var.s3_versioning\n\n  tags = local.common_tags\n}\n\nmodule \"database\" {\n  source = \"./modules/database\"\n\n  project_name = var.project_name\n  environment  = var.environment\n\n  vpc_id              = module.networking.vpc_id\n  database_subnet_ids = module.networking.database_subnet_ids\n\n  db_instance_class = var.db_instance_class\n  db_engine_version = var.db_engine_version\n\n  db_allocated_storage     = var.db_allocated_storage\n  db_max_allocated_storage = var.db_max_allocated_storage\n\n  db_name     = var.db_name\n  db_username = var.db_username\n  db_password = var.db_password\n\n  db_multi_az                = var.db_multi_az\n  db_backup_retention_period = var.db_backup_retention_period\n\n  kms_key_arn = module.security.kms_key_arn\n\n  db_security_group_id = module.security.database_security_group_id\n\n  enable_tde = var.enable_tde\n\n  tags = local.common_tags\n}\n\nmodule \"containers\" {\n  source = \"./modules/containers\"\n\n  project_name = var.project_name\n  environment  = var.environment\n\n  vpc_id             = module.networking.vpc_id\n  private_subnet_ids = module.networking.private_subnet_ids\n\n  ecs_cluster_name = var.ecs_cluster_name\n\n  vaultwarden_image  = var.vaultwarden_image\n  vaultwarden_cpu    = var.vaultwarden_cpu\n  vaultwarden_memory = var.vaultwarden_memory\n\n  yubihsm_connector_image  = var.yubihsm_connector_image\n  yubihsm_connector_cpu    = var.yubihsm_connector_cpu\n  yubihsm_connector_memory = var.yubihsm_connector_memory\n\n  container_security_group_id = module.security.container_security_group_id\n\n  kms_key_arn = module.security.kms_key_arn\n\n  tags = local.common_tags\n}\n\n# CloudWatch Alarms\nresource \"aws_cloudwatch_metric_alarm\" \"high_cpu\" {\n  alarm_name          = \"${local.name_prefix}-high-cpu\"\n  comparison_operator = \"GreaterThanThreshold\"\n  evaluation_periods  = \"2\"\n  metric_name         = \"CPUUtilization\"\n  namespace           = \"AWS/EC2\"\n  period              = \"300\"\n  statistic           = \"Average\"\n  threshold           = \"80\"\n  alarm_description   = \"This metric monitors ec2 cpu utilization\"\n  alarm_actions       = []\n\n  dimensions = {\n    InstanceId = module.compute.app_server_instance_id\n  }\n\n  tags = local.common_tags\n}\n\n# Route 53 Health Checks (if domain is provided)\nresource \"aws_route53_health_check\" \"vaultwarden\" {\n  count = var.vaultwarden_domain != \"\" ? 1 : 0\n\n  fqdn              = var.vaultwarden_domain\n  port              = 443\n  type              = \"HTTPS\"\n  resource_path     = \"/api/status\"\n  failure_threshold = \"3\"\n  request_interval  = \"30\"\n\n  tags = local.common_tags\n}\n\n# SNS Topic for alerts\nresource \"aws_sns_topic\" \"alerts\" {\n  name = \"${local.name_prefix}-alerts\"\n\n  tags = local.common_tags\n}\n\nresource \"aws_sns_topic_subscription\" \"alerts_email\" {\n  count     = var.alert_email != \"\" ? 1 : 0\n  topic_arn = aws_sns_topic.alerts.arn\n  protocol  = \"email\"\n  endpoint  = var.alert_email\n}",
+      "terraform_variables": "# Project Configuration\nvariable \"project_name\" {\n  description = \"Name of the project\"\n  type        = string\n  default     = \"yubihsm\"\n}\n\nvariable \"environment\" {\n  description = \"Environment name (dev, staging, prod)\"\n  type        = string\n  default     = \"dev\"\n}\n\nvariable \"owner\" {\n  description = \"Owner of the infrastructure\"\n  type        = string\n  default     = \"security-team\"\n}\n\nvariable \"cost_center\" {\n  description = \"Cost center for billing\"\n  type        = string\n  default     = \"security\"\n}\n\n# AWS Configuration\nvariable \"aws_region\" {\n  description = \"AWS region to deploy resources\"\n  type        = string\n  default     = \"us-east-1\"\n}\n\nvariable \"availability_zones\" {\n  description = \"List of availability zones\"\n  type        = list(string)\n  default     = [\"us-east-1a\", \"us-east-1b\", \"us-east-1c\"]\n}\n\n# Networking\nvariable \"vpc_cidr_block\" {\n  description = \"CIDR block for VPC\"\n  type        = string\n  default     = \"10.0.0.0/16\"\n}\n\nvariable \"public_subnet_cidrs\" {\n  description = \"CIDR blocks for public subnets\"\n  type        = list(string)\n  default     = [\"10.0.10.0/24\", \"10.0.11.0/24\", \"10.0.12.0/24\"]\n}\n\nvariable \"private_subnet_cidrs\" {\n  description = \"CIDR blocks for private subnets\"\n  type        = list(string)\n  default     = [\"10.0.20.0/24\", \"10.0.21.0/24\", \"10.0.22.0/24\"]\n}\n\nvariable \"database_subnet_cidrs\" {\n  description = \"CIDR blocks for database subnets\"\n  type        = list(string)\n  default     = [\"10.0.30.0/24\", \"10.0.31.0/24\", \"10.0.32.0/24\"]\n}\n\nvariable \"enable_nat_gateway\" {\n  description = \"Enable NAT Gateway for private subnets\"\n  type        = bool\n  default     = true\n}\n\nvariable \"single_nat_gateway\" {\n  description = \"Use single NAT Gateway instead of one per AZ\"\n  type        = bool\n  default     = false\n}\n\n# YubiHSM Configuration\nvariable \"yubihsm_auth_key_id\" {\n  description = \"YubiHSM authentication key ID\"\n  type        = number\n  default     = 1\n  sensitive   = true\n}\n\nvariable \"yubihsm_password\" {\n  description = \"YubiHSM authentication password\"\n  type        = string\n  sensitive   = true\n}\n\n# Security Configuration\nvariable \"enable_key_rotation\" {\n  description = \"Enable automatic KMS key rotation\"\n  type        = bool\n  default     = true\n}\n\nvariable \"key_rotation_days\" {\n  description = \"Days between key rotations\"\n  type        = number\n  default     = 90\n}\n\n# Compute Configuration\nvariable \"app_server_instance_type\" {\n  description = \"EC2 instance type for application servers\"\n  type        = string\n  default     = \"t3.medium\"\n}\n\nvariable \"nitro_enclave_instance_type\" {\n  description = \"EC2 instance type for Nitro Enclave\"\n  type        = string\n  default     = \"c5.xlarge\"\n}\n\nvariable \"app_server_ami_id\" {\n  description = \"AMI ID for application servers\"\n  type        = string\n  default     = \"\" # Will use latest Amazon Linux 2 if not specified\n}\n\nvariable \"nitro_enclave_ami_id\" {\n  description = \"AMI ID for Nitro Enclave instances\"\n  type        = string\n  default     = \"\" # Will use latest Amazon Linux 2 if not specified\n}\n\nvariable \"key_pair_name\" {\n  description = \"SSH key pair name for EC2 instances\"\n  type        = string\n  default     = \"\"\n}\n\n# Storage Configuration\nvariable \"ebs_volume_size\" {\n  description = \"Size of EBS volumes in GB\"\n  type        = number\n  default     = 100\n}\n\nvariable \"ebs_encrypted\" {\n  description = \"Enable EBS encryption\"\n  type        = bool\n  default     = true\n}\n\nvariable \"enable_efs\" {\n  description = \"Enable EFS file system\"\n  type        = bool\n  default     = true\n}\n\nvariable \"efs_encrypted\" {\n  description = \"Enable EFS encryption\"\n  type        = bool\n  default     = true\n}\n\nvariable \"s3_bucket_name\" {\n  description = \"Name of S3 bucket for backups and configuration\"\n  type        = string\n  default     = \"\"\n}\n\nvariable \"s3_versioning\" {\n  description = \"Enable S3 versioning\"\n  type        = bool\n  default     = true\n}\n\n# Database Configuration\nvariable \"db_instance_class\" {\n  description = \"RDS instance class\"\n  type        = string\n  default     = \"db.t3.medium\"\n}\n\nvariable \"db_engine_version\" {\n  description = \"PostgreSQL engine version\"\n  type        = string\n  default     = \"16.1\"\n}\n\nvariable \"db_allocated_storage\" {\n  description = \"Initial allocated storage in GB\"\n  type        = number\n  default     = 100\n}\n\nvariable \"db_max_allocated_storage\" {\n  description = \"Maximum allocated storage in GB (for autoscaling)\"\n  type        = number\n  default     = 1000\n}\n\nvariable \"db_name\" {\n  description = \"Database name\"\n  type        = string\n  default     = \"yubihsm_db\"\n}\n\nvariable \"db_username\" {\n  description = \"Database username\"\n  type        = string\n  default     = \"yubihsm_admin\"\n}\n\nvariable \"db_password\" {\n  description = \"Database password\"\n  type        = string\n  sensitive   = true\n}\n\nvariable \"db_multi_az\" {\n  description = \"Enable Multi-AZ deployment\"\n  type        = bool\n  default     = true\n}\n\nvariable \"db_backup_retention_period\" {\n  description = \"Backup retention period in days\"\n  type        = number\n  default     = 30\n}\n\nvariable \"enable_tde\" {\n  description = \"Enable Transparent Data Encryption\"\n  type        = bool\n  default     = true\n}\n\n# Container Configuration\nvariable \"ecs_cluster_name\" {\n  description = \"Name of ECS cluster\"\n  type        = string\n  default     = \"yubihsm-cluster\"\n}\n\nvariable \"vaultwarden_image\" {\n  description = \"Vaultwarden Docker image\"\n  type        = string\n  default     = \"vaultwarden/server:latest\"\n}\n\nvariable \"vaultwarden_cpu\" {\n  description = \"CPU units for Vaultwarden container\"\n  type        = number\n  default     = 512\n}\n\nvariable \"vaultwarden_memory\" {\n  description = \"Memory for Vaultwarden container in MB\"\n  type        = number\n  default     = 1024\n}\n\nvariable \"yubihsm_connector_image\" {\n  description = \"YubiHSM Connector Docker image\"\n  type        = string\n  default     = \"yubico/yubihsm-connector:latest\"\n}\n\nvariable \"yubihsm_connector_cpu\" {\n  description = \"CPU units for YubiHSM Connector container\"\n  type        = number\n  default     = 256\n}\n\nvariable \"yubihsm_connector_memory\" {\n  description = \"Memory for YubiHSM Connector container in MB\"\n  type        = number\n  default     = 512\n}\n\n# Application Configuration\nvariable \"vaultwarden_domain\" {\n  description = \"Domain name for Vaultwarden\"\n  type        = string\n  default     = \"\"\n}\n\n# Monitoring and Alerting\nvariable \"alert_email\" {\n  description = \"Email address for alerts\"\n  type        = string\n  default     = \"\"\n}\n\n# Terraform Backend Configuration\nvariable \"terraform_state_bucket\" {\n  description = \"S3 bucket for Terraform state\"\n  type        = string\n  default     = \"\"\n}\n\nvariable \"terraform_state_key\" {\n  description = \"S3 key for Terraform state\"\n  type        = string\n  default     = \"yubihsm-infrastructure/terraform.tfstate\"\n}\n\nvariable \"terraform_state_region\" {\n  description = \"Region for Terraform state bucket\"\n  type        = string\n  default     = \"us-east-1\"\n}",
+      "script_yubihsm_complete_storage.sh": "#!/bin/bash\n# YubiHSM 2 Complete Storage Guide\n# What can be stored and how to manage it securely\n\nset -euo pipefail\n\n# ============================================================================\n# YubiHSM 2 STORAGE CAPABILITIES GUIDE\n# ============================================================================\n\ncat << 'EOF' > /tmp/yubihsm2_storage_guide.md\n# \ud83d\udd10 YubiHSM 2 Complete Storage Guide\n\n## \ud83d\udcca Storage Capacity & Object Types\n\n### Maximum Storage Capacity\n- **Total Objects**: Up to 256 objects\n- **Key Storage**: ~3,500 cryptographic keys (depending on type)\n- **Sessions**: 16 concurrent sessions\n- **Domains**: 16 logical domains for separation\n\n### What Can Be Stored\n\n| Object Type | Max Count | Use Case | Size |\n|-------------|-----------|----------|------|\n| **Asymmetric Keys** | ~127 | RSA, ECC private keys | 2048-4096 bits |\n| **Symmetric Keys** | ~255 | AES encryption keys | 128-256 bits |\n| **HMAC Keys** | ~255 | Message authentication | 128-512 bits |\n| **Wrap Keys** | ~127 | Key export/import | 128-256 bits |\n| **Opaque Objects** | ~255 | Certificates, passwords | Up to 2048 bytes |\n| **Authentication Keys** | ~255 | HSM access control | Variable |\n| **Template Objects** | ~127 | Object templates | Variable |\n\n## \ud83d\udd11 What You CAN Store\n\n### \u2705 1. Cryptographic Keys\n- **RSA Private Keys** (2048, 3072, 4096 bits)\n- **ECC Private Keys** (P-224, P-256, P-384, P-521, secp256k1)\n- **AES Keys** (128, 192, 256 bits)\n- **HMAC Keys** (SHA-1, SHA-256, SHA-384, SHA-512)\n- **Wrap Keys** for secure key export/import\n\n### \u2705 2. Certificates (as Opaque Objects)\n- X.509 certificates (up to 2048 bytes)\n- Certificate chains\n- CA certificates\n- Code signing certificates\n- TLS/SSL certificates\n\n### \u2705 3. Passwords & Secrets (as Opaque Objects)\n- Application passwords (encrypted)\n- API keys\n- Database credentials\n- Service account passwords\n- OAuth tokens\n\n### \u2705 4. Authentication Credentials\n- YubiHSM authentication keys\n- M of N authorization keys\n- Derivation passwords\n\n## \u274c What You CANNOT Store\n\n### Direct Storage Limitations\n- **Plain text files** larger than 2048 bytes\n- **Binary data** exceeding object size limits\n- **Complete databases**\n- **Large documents** or files\n- **Unencrypted sensitive data** (must be wrapped)\n\n## \ud83d\ude80 Implementation Examples\n\nEOF\n\n# ============================================================================\n# IMPLEMENTATION SCRIPT\n# ============================================================================\n\n# Configuration\nYUBIHSM_CONNECTOR_URL=\"${YUBIHSM_CONNECTOR_URL:-http://localhost:12345}\"\nYUBIHSM_AUTH_KEY=\"${YUBIHSM_AUTH_KEY:-2}\"\nLOG_FILE=\"/var/log/yubihsm-storage.log\"\n\n# Object ID ranges for organization\nID_RANGE_PASSWORDS=1000    # 1000-1999 for passwords\nID_RANGE_CERTS=2000        # 2000-2999 for certificates  \nID_RANGE_KEYS=3000         # 3000-3999 for encryption keys\nID_RANGE_SIGNING=4000      # 4000-4999 for signing keys\nID_RANGE_SSH=5000          # 5000-5999 for SSH keys\n\n# Colors\nRED='\\033[0;31m'\nGREEN='\\033[0;32m'\nYELLOW='\\033[1;33m'\nBLUE='\\033[0;34m'\nNC='\\033[0m'\n\n# Logging\nlog() {\n    echo \"[$(date '+%Y-%m-%d %H:%M:%S')] $1\" | tee -a \"$LOG_FILE\"\n}\n\ninfo() {\n    echo -e \"${BLUE}[INFO]${NC} $1\"\n    log \"INFO: $1\"\n}\n\nsuccess() {\n    echo -e \"${GREEN}[SUCCESS]${NC} $1\"\n    log \"SUCCESS: $1\"\n}\n\nerror() {\n    echo -e \"${RED}[ERROR]${NC} $1\" >&2\n    log \"ERROR: $1\"\n    exit 1\n}\n\n# ============================================================================\n# PASSWORD STORAGE FUNCTIONS\n# ============================================================================\n\nstore_password() {\n    local name=\"$1\"\n    local password=\"$2\"\n    local object_id=$((ID_RANGE_PASSWORDS + $(echo \"$name\" | cksum | cut -d' ' -f1) % 1000))\n    \n    info \"Storing password: $name (ID: $object_id)\"\n    \n    python3 - <<EOF\nimport sys\nimport os\nimport getpass\nfrom yubihsm import YubiHsm\nfrom yubihsm.defs import CAPABILITY, ALGORITHM, OBJECT\nfrom yubihsm.objects import Opaque\nimport hashlib\nimport json\nfrom cryptography.hazmat.primitives.ciphers.aead import AESGCM\nfrom cryptography.hazmat.primitives import hashes\nfrom cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2\nimport secrets\n\ntry:\n    # Connect to YubiHSM\n    hsm = YubiHsm.connect(\"$YUBIHSM_CONNECTOR_URL\")\n    password = os.getenv('YUBIHSM_PASSWORD', getpass.getpass(\"YubiHSM password: \"))\n    session = hsm.create_session_derived($YUBIHSM_AUTH_KEY, password)\n    \n    # Create password object\n    password_data = {\n        \"name\": \"$name\",\n        \"password\": \"$password\",\n        \"created\": \"$(date -Iseconds)\",\n        \"type\": \"password\"\n    }\n    \n    # Convert to bytes\n    password_bytes = json.dumps(password_data).encode()\n    \n    # Store as opaque object\n    opaque = Opaque.put(\n        session=session,\n        object_id=$object_id,\n        label=f\"pwd-$name\"[:40],\n        domains=1,\n        capabilities=CAPABILITY.EXPORTABLE_UNDER_WRAP,\n        algorithm=ALGORITHM.OPAQUE_DATA,\n        data=password_bytes\n    )\n    \n    print(f\"Password stored with ID: {opaque.id}\")\n    session.close()\n    \nexcept Exception as e:\n    print(f\"Error: {e}\", file=sys.stderr)\n    sys.exit(1)\nEOF\n    \n    if [ $? -eq 0 ]; then\n        success \"Password stored successfully\"\n    else\n        error \"Failed to store password\"\n    fi\n}\n\nretrieve_password() {\n    local name=\"$1\"\n    local object_id=$((ID_RANGE_PASSWORDS + $(echo \"$name\" | cksum | cut -d' ' -f1) % 1000))\n    \n    info \"Retrieving password: $name (ID: $object_id)\"\n    \n    python3 - <<EOF\nimport sys\nimport os\nfrom yubihsm import YubiHsm\nfrom yubihsm.defs import OBJECT\nimport json\n\ntry:\n    # Connect to YubiHSM\n    hsm = YubiHsm.connect(\"$YUBIHSM_CONNECTOR_URL\")\n    password = os.getenv('YUBIHSM_PASSWORD', 'password')\n    session = hsm.create_session_derived($YUBIHSM_AUTH_KEY, password)\n    \n    # Retrieve opaque object\n    opaque = session.get_object($object_id, OBJECT.OPAQUE)\n    data = opaque.get()\n    \n    # Parse password data\n    password_data = json.loads(data.decode())\n    print(f\"Name: {password_data['name']}\")\n    print(f\"Password: {password_data['password']}\")\n    print(f\"Created: {password_data['created']}\")\n    \n    session.close()\n    \nexcept Exception as e:\n    print(f\"Error: {e}\", file=sys.stderr)\n    sys.exit(1)\nEOF\n}\n\n# ============================================================================\n# CERTIFICATE STORAGE FUNCTIONS\n# ============================================================================\n\nstore_certificate() {\n    local cert_file=\"$1\"\n    local cert_name=\"$(basename $cert_file .crt)\"\n    local object_id=$((ID_RANGE_CERTS + $(echo \"$cert_name\" | cksum | cut -d' ' -f1) % 1000))\n    \n    info \"Storing certificate: $cert_name (ID: $object_id)\"\n    \n    python3 - <<EOF\nimport sys\nimport os\nfrom yubihsm import YubiHsm\nfrom yubihsm.defs import CAPABILITY, ALGORITHM, OBJECT\nfrom yubihsm.objects import Opaque\nfrom cryptography import x509\nfrom cryptography.hazmat.backends import default_backend\n\ntry:\n    # Connect to YubiHSM\n    hsm = YubiHsm.connect(\"$YUBIHSM_CONNECTOR_URL\")\n    password = os.getenv('YUBIHSM_PASSWORD', 'password')\n    session = hsm.create_session_derived($YUBIHSM_AUTH_KEY, password)\n    \n    # Read certificate\n    with open(\"$cert_file\", \"rb\") as f:\n        cert_data = f.read()\n    \n    # Parse to verify it's valid\n    cert = x509.load_pem_x509_certificate(cert_data, default_backend())\n    \n    # Store as opaque object\n    opaque = Opaque.put(\n        session=session,\n        object_id=$object_id,\n        label=f\"cert-$cert_name\"[:40],\n        domains=1,\n        capabilities=CAPABILITY.EXPORTABLE_UNDER_WRAP,\n        algorithm=ALGORITHM.OPAQUE_X509_CERTIFICATE,\n        data=cert_data\n    )\n    \n    print(f\"Certificate stored with ID: {opaque.id}\")\n    print(f\"Subject: {cert.subject}\")\n    print(f\"Issuer: {cert.issuer}\")\n    print(f\"Valid until: {cert.not_valid_after}\")\n    \n    session.close()\n    \nexcept Exception as e:\n    print(f\"Error: {e}\", file=sys.stderr)\n    sys.exit(1)\nEOF\n    \n    if [ $? -eq 0 ]; then\n        success \"Certificate stored successfully\"\n    else\n        error \"Failed to store certificate\"\n    fi\n}\n\n# ============================================================================\n# SSH KEY STORAGE FUNCTIONS\n# ============================================================================\n\nstore_ssh_key() {\n    local key_name=\"$1\"\n    local key_file=\"${2:-~/.ssh/id_rsa}\"\n    local object_id=$((ID_RANGE_SSH + $(echo \"$key_name\" | cksum | cut -d' ' -f1) % 1000))\n    \n    info \"Storing SSH key: $key_name (ID: $object_id)\"\n    \n    python3 - <<EOF\nimport sys\nimport os\nfrom yubihsm import YubiHsm\nfrom yubihsm.defs import CAPABILITY, ALGORITHM, OBJECT\nfrom yubihsm.objects import AsymmetricKey\nfrom cryptography.hazmat.primitives import serialization\nfrom cryptography.hazmat.backends import default_backend\n\ntry:\n    # Connect to YubiHSM\n    hsm = YubiHsm.connect(\"$YUBIHSM_CONNECTOR_URL\")\n    password = os.getenv('YUBIHSM_PASSWORD', 'password')\n    session = hsm.create_session_derived($YUBIHSM_AUTH_KEY, password)\n    \n    # Read SSH private key\n    with open(\"$key_file\", \"rb\") as f:\n        key_data = f.read()\n    \n    # Parse private key\n    private_key = serialization.load_pem_private_key(\n        key_data, \n        password=None,\n        backend=default_backend()\n    )\n    \n    # Import into YubiHSM (for RSA keys)\n    if hasattr(private_key, 'private_numbers'):\n        # RSA key\n        key = AsymmetricKey.put_rsa(\n            session=session,\n            object_id=$object_id,\n            label=f\"ssh-$key_name\"[:40],\n            domains=1,\n            capabilities=CAPABILITY.SIGN_SSH_CERTIFICATE | CAPABILITY.SIGN_PKCS,\n            p=private_key.private_numbers().p,\n            q=private_key.private_numbers().q\n        )\n        print(f\"SSH RSA key stored with ID: {key.id}\")\n    else:\n        # Store as opaque for other key types\n        opaque = Opaque.put(\n            session=session,\n            object_id=$object_id,\n            label=f\"ssh-$key_name\"[:40],\n            domains=1,\n            capabilities=CAPABILITY.EXPORTABLE_UNDER_WRAP,\n            algorithm=ALGORITHM.OPAQUE_DATA,\n            data=key_data\n        )\n        print(f\"SSH key stored as opaque with ID: {opaque.id}\")\n    \n    session.close()\n    \nexcept Exception as e:\n    print(f\"Error: {e}\", file=sys.stderr)\n    sys.exit(1)\nEOF\n}\n\n# ============================================================================\n# API KEY / TOKEN STORAGE\n# ============================================================================\n\nstore_api_key() {\n    local service=\"$1\"\n    local api_key=\"$2\"\n    local object_id=$((ID_RANGE_PASSWORDS + 500 + $(echo \"$service\" | cksum | cut -d' ' -f1) % 500))\n    \n    info \"Storing API key for: $service\"\n    \n    python3 - <<EOF\nimport sys\nimport os\nimport json\nfrom yubihsm import YubiHsm\nfrom yubihsm.defs import CAPABILITY, ALGORITHM, OBJECT\nfrom yubihsm.objects import Opaque\n\ntry:\n    # Connect to YubiHSM\n    hsm = YubiHsm.connect(\"$YUBIHSM_CONNECTOR_URL\")\n    password = os.getenv('YUBIHSM_PASSWORD', 'password')\n    session = hsm.create_session_derived($YUBIHSM_AUTH_KEY, password)\n    \n    # Create API key object\n    api_data = {\n        \"service\": \"$service\",\n        \"api_key\": \"$api_key\",\n        \"created\": \"$(date -Iseconds)\",\n        \"type\": \"api_key\"\n    }\n    \n    # Store as opaque object\n    opaque = Opaque.put(\n        session=session,\n        object_id=$object_id,\n        label=f\"api-$service\"[:40],\n        domains=1,\n        capabilities=CAPABILITY.EXPORTABLE_UNDER_WRAP,\n        algorithm=ALGORITHM.OPAQUE_DATA,\n        data=json.dumps(api_data).encode()\n    )\n    \n    print(f\"API key stored with ID: {opaque.id}\")\n    session.close()\n    \nexcept Exception as e:\n    print(f\"Error: {e}\", file=sys.stderr)\n    sys.exit(1)\nEOF\n}\n\n# ============================================================================\n# DATABASE CREDENTIALS STORAGE\n# ============================================================================\n\nstore_db_credentials() {\n    local db_name=\"$1\"\n    local username=\"$2\"\n    local password=\"$3\"\n    local host=\"${4:-localhost}\"\n    local port=\"${5:-5432}\"\n    local object_id=$((ID_RANGE_PASSWORDS + 200 + $(echo \"$db_name\" | cksum | cut -d' ' -f1) % 300))\n    \n    info \"Storing database credentials for: $db_name\"\n    \n    python3 - <<EOF\nimport sys\nimport os\nimport json\nfrom yubihsm import YubiHsm\nfrom yubihsm.defs import CAPABILITY, ALGORITHM, OBJECT\nfrom yubihsm.objects import Opaque\n\ntry:\n    # Connect to YubiHSM\n    hsm = YubiHsm.connect(\"$YUBIHSM_CONNECTOR_URL\")\n    password = os.getenv('YUBIHSM_PASSWORD', 'password')\n    session = hsm.create_session_derived($YUBIHSM_AUTH_KEY, password)\n    \n    # Create database credentials object\n    db_data = {\n        \"database\": \"$db_name\",\n        \"username\": \"$username\",\n        \"password\": \"$password\",\n        \"host\": \"$host\",\n        \"port\": $port,\n        \"connection_string\": f\"postgresql://$username:$password@$host:$port/$db_name\",\n        \"created\": \"$(date -Iseconds)\",\n        \"type\": \"database\"\n    }\n    \n    # Store as opaque object\n    opaque = Opaque.put(\n        session=session,\n        object_id=$object_id,\n        label=f\"db-$db_name\"[:40],\n        domains=1,\n        capabilities=CAPABILITY.EXPORTABLE_UNDER_WRAP,\n        algorithm=ALGORITHM.OPAQUE_DATA,\n        data=json.dumps(db_data).encode()\n    )\n    \n    print(f\"Database credentials stored with ID: {opaque.id}\")\n    session.close()\n    \nexcept Exception as e:\n    print(f\"Error: {e}\", file=sys.stderr)\n    sys.exit(1)\nEOF\n}\n\n# ============================================================================\n# SIGNING KEY STORAGE\n# ============================================================================\n\ngenerate_signing_key() {\n    local key_name=\"$1\"\n    local key_type=\"${2:-RSA4096}\"  # RSA2048, RSA3072, RSA4096, ECP256, ECP384\n    local object_id=$((ID_RANGE_SIGNING + $(echo \"$key_name\" | cksum | cut -d' ' -f1) % 1000))\n    \n    info \"Generating signing key: $key_name (Type: $key_type)\"\n    \n    python3 - <<EOF\nimport sys\nimport os\nfrom yubihsm import YubiHsm\nfrom yubihsm.defs import CAPABILITY, ALGORITHM, OBJECT\nfrom yubihsm.objects import AsymmetricKey\n\ntry:\n    # Connect to YubiHSM\n    hsm = YubiHsm.connect(\"$YUBIHSM_CONNECTOR_URL\")\n    password = os.getenv('YUBIHSM_PASSWORD', 'password')\n    session = hsm.create_session_derived($YUBIHSM_AUTH_KEY, password)\n    \n    # Map key type to algorithm\n    algorithms = {\n        \"RSA2048\": ALGORITHM.RSA_2048,\n        \"RSA3072\": ALGORITHM.RSA_3072,\n        \"RSA4096\": ALGORITHM.RSA_4096,\n        \"ECP256\": ALGORITHM.EC_P256,\n        \"ECP384\": ALGORITHM.EC_P384\n    }\n    \n    algorithm = algorithms.get(\"$key_type\", ALGORITHM.RSA_4096)\n    \n    # Generate signing key\n    key = AsymmetricKey.generate(\n        session=session,\n        object_id=$object_id,\n        label=f\"sign-$key_name\"[:40],\n        domains=1,\n        capabilities=CAPABILITY.SIGN_PKCS | CAPABILITY.SIGN_PSS | \n                     CAPABILITY.SIGN_ATTESTATION_CERTIFICATE,\n        algorithm=algorithm\n    )\n    \n    print(f\"Signing key generated with ID: {key.id}\")\n    print(f\"Algorithm: $key_type\")\n    \n    # Get public key for verification\n    public_key = key.get_public_key()\n    \n    session.close()\n    \nexcept Exception as e:\n    print(f\"Error: {e}\", file=sys.stderr)\n    sys.exit(1)\nEOF\n}\n\n# ============================================================================\n# ENCRYPTION KEY STORAGE\n# ============================================================================\n\ngenerate_encryption_key() {\n    local key_name=\"$1\"\n    local key_size=\"${2:-256}\"  # 128, 192, or 256 bits\n    local object_id=$((ID_RANGE_KEYS + $(echo \"$key_name\" | cksum | cut -d' ' -f1) % 1000))\n    \n    info \"Generating AES encryption key: $key_name ($key_size bits)\"\n    \n    python3 - <<EOF\nimport sys\nimport os\nfrom yubihsm import YubiHsm\nfrom yubihsm.defs import CAPABILITY, ALGORITHM, OBJECT\nfrom yubihsm.objects import SymmetricKey\n\ntry:\n    # Connect to YubiHSM\n    hsm = YubiHsm.connect(\"$YUBIHSM_CONNECTOR_URL\")\n    password = os.getenv('YUBIHSM_PASSWORD', 'password')\n    session = hsm.create_session_derived($YUBIHSM_AUTH_KEY, password)\n    \n    # Map key size to algorithm\n    algorithms = {\n        \"128\": ALGORITHM.AES128,\n        \"192\": ALGORITHM.AES192,\n        \"256\": ALGORITHM.AES256\n    }\n    \n    algorithm = algorithms.get(\"$key_size\", ALGORITHM.AES256)\n    \n    # Generate encryption key\n    key = SymmetricKey.generate(\n        session=session,\n        object_id=$object_id,\n        label=f\"enc-$key_name\"[:40],\n        domains=1,\n        capabilities=CAPABILITY.ENCRYPT_CBC | CAPABILITY.DECRYPT_CBC |\n                     CAPABILITY.ENCRYPT_ECB | CAPABILITY.DECRYPT_ECB,\n        algorithm=algorithm\n    )\n    \n    print(f\"Encryption key generated with ID: {key.id}\")\n    print(f\"Algorithm: AES-{$key_size}\")\n    \n    session.close()\n    \nexcept Exception as e:\n    print(f\"Error: {e}\", file=sys.stderr)\n    sys.exit(1)\nEOF\n}\n\n# ============================================================================\n# LIST STORED OBJECTS\n# ============================================================================\n\nlist_stored_objects() {\n    info \"Listing all stored objects in YubiHSM...\"\n    \n    python3 - <<EOF\nimport sys\nimport os\nfrom yubihsm import YubiHsm\nfrom yubihsm.defs import OBJECT\nfrom tabulate import tabulate\n\ntry:\n    # Connect to YubiHSM\n    hsm = YubiHsm.connect(\"$YUBIHSM_CONNECTOR_URL\")\n    password = os.getenv('YUBIHSM_PASSWORD', 'password')\n    session = hsm.create_session_derived($YUBIHSM_AUTH_KEY, password)\n    \n    # List all objects\n    objects = session.list_objects()\n    \n    # Categorize objects\n    table_data = []\n    for obj in objects:\n        # Determine category based on ID range\n        if 1000 <= obj.id < 2000:\n            category = \"Password/Secret\"\n        elif 2000 <= obj.id < 3000:\n            category = \"Certificate\"\n        elif 3000 <= obj.id < 4000:\n            category = \"Encryption Key\"\n        elif 4000 <= obj.id < 5000:\n            category = \"Signing Key\"\n        elif 5000 <= obj.id < 6000:\n            category = \"SSH Key\"\n        else:\n            category = \"Other\"\n        \n        table_data.append([\n            obj.id,\n            obj.object_type.name,\n            obj.label,\n            category,\n            obj.domains,\n            obj.algorithm.name if hasattr(obj, 'algorithm') else 'N/A'\n        ])\n    \n    # Print table\n    headers = [\"ID\", \"Type\", \"Label\", \"Category\", \"Domains\", \"Algorithm\"]\n    print(tabulate(table_data, headers=headers, tablefmt=\"grid\"))\n    print(f\"\\nTotal objects: {len(objects)}\")\n    print(f\"Free slots: {256 - len(objects)}\")\n    \n    session.close()\n    \nexcept Exception as e:\n    print(f\"Error: {e}\", file=sys.stderr)\n    sys.exit(1)\nEOF\n}\n\n# ============================================================================\n# BACKUP AND RESTORE\n# ============================================================================\n\nbackup_objects() {\n    local backup_dir=\"${1:-/backup/yubihsm}\"\n    mkdir -p \"$backup_dir\"\n    \n    info \"Backing up YubiHSM objects to: $backup_dir\"\n    \n    python3 - <<EOF\nimport sys\nimport os\nimport json\nfrom yubihsm import YubiHsm\nfrom yubihsm.defs import CAPABILITY, ALGORITHM, OBJECT\nfrom yubihsm.objects import WrapKey\nimport base64\nfrom datetime import datetime\n\ntry:\n    # Connect to YubiHSM\n    hsm = YubiHsm.connect(\"$YUBIHSM_CONNECTOR_URL\")\n    password = os.getenv('YUBIHSM_PASSWORD', 'password')\n    session = hsm.create_session_derived($YUBIHSM_AUTH_KEY, password)\n    \n    # Create or get wrap key for backup\n    try:\n        wrap_key = session.get_object(999, OBJECT.WRAP_KEY)\n    except:\n        wrap_key = WrapKey.generate(\n            session=session,\n            object_id=999,\n            label=\"backup-wrap-key\",\n            domains=0xFFFF,  # All domains\n            capabilities=CAPABILITY.EXPORT_WRAPPED | CAPABILITY.IMPORT_WRAPPED,\n            algorithm=ALGORITHM.AES256_CCM_WRAP\n        )\n    \n    # List and export objects\n    objects = session.list_objects()\n    backup_data = {\n        \"timestamp\": datetime.now().isoformat(),\n        \"objects\": []\n    }\n    \n    for obj in objects:\n        if obj.id == 999:  # Skip wrap key itself\n            continue\n            \n        try:\n            # Export wrapped object\n            wrapped = obj.export_wrapped(wrap_key)\n            \n            backup_data[\"objects\"].append({\n                \"id\": obj.id,\n                \"type\": obj.object_type.name,\n                \"label\": obj.label,\n                \"wrapped_data\": base64.b64encode(wrapped).decode(),\n                \"domains\": obj.domains,\n                \"algorithm\": obj.algorithm.name if hasattr(obj, 'algorithm') else None\n            })\n            print(f\"Backed up: {obj.label} (ID: {obj.id})\")\n            \n        except Exception as e:\n            print(f\"Failed to backup {obj.label}: {e}\")\n    \n    # Save backup\n    backup_file = f\"$backup_dir/yubihsm_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json\"\n    with open(backup_file, \"w\") as f:\n        json.dump(backup_data, f, indent=2)\n    \n    print(f\"\\nBackup saved to: {backup_file}\")\n    print(f\"Total objects backed up: {len(backup_data['objects'])}\")\n    \n    session.close()\n    \nexcept Exception as e:\n    print(f\"Error: {e}\", file=sys.stderr)\n    sys.exit(1)\nEOF\n}\n\n# ============================================================================\n# USAGE STATISTICS\n# ============================================================================\n\nshow_usage_stats() {\n    info \"YubiHSM Storage Usage Statistics\"\n    \n    python3 - <<EOF\nimport sys\nimport os\nfrom yubihsm import YubiHsm\n\ntry:\n    # Connect to YubiHSM\n    hsm = YubiHsm.connect(\"$YUBIHSM_CONNECTOR_URL\")\n    password = os.getenv('YUBIHSM_PASSWORD', 'password')\n    session = hsm.create_session_derived($YUBIHSM_AUTH_KEY, password)\n    \n    # Get device info\n    info = session.get_device_info()\n    \n    print(\"\\n=== YubiHSM 2 Device Information ===\")\n    print(f\"Serial Number: {info.serial}\")\n    print(f\"Version: {info.version}\")\n    print(f\"Log Entries: {info.log_used}/{info.log_size}\")\n    \n    # List objects and calculate usage\n    objects = session.list_objects()\n    \n    # Count by type\n    type_counts = {}\n    for obj in objects:\n        obj_type = obj.object_type.name\n        type_counts[obj_type] = type_counts.get(obj_type, 0) + 1\n    \n    print(\"\\n=== Storage Usage ===\")\n    print(f\"Total Objects: {len(objects)}/256\")\n    print(f\"Usage: {(len(objects)/256)*100:.1f}%\")\n    print(f\"Free Slots: {256 - len(objects)}\")\n    \n    print(\"\\n=== Objects by Type ===\")\n    for obj_type, count in sorted(type_counts.items()):\n        print(f\"{obj_type}: {count}\")\n    \n    # Estimate storage by category\n    passwords = sum(1 for o in objects if 1000 <= o.id < 2000)\n    certs = sum(1 for o in objects if 2000 <= o.id < 3000)\n    enc_keys = sum(1 for o in objects if 3000 <= o.id < 4000)\n    sign_keys = sum(1 for o in objects if 4000 <= o.id < 5000)\n    ssh_keys = sum(1 for o in objects if 5000 <= o.id < 6000)\n    \n    print(\"\\n=== Objects by Category ===\")\n    print(f\"Passwords/Secrets: {passwords}\")\n    print(f\"Certificates: {certs}\")\n    print(f\"Encryption Keys: {enc_keys}\")\n    print(f\"Signing Keys: {sign_keys}\")\n    print(f\"SSH Keys: {ssh_keys}\")\n    print(f\"Other: {len(objects) - passwords - certs - enc_keys - sign_keys - ssh_keys}\")\n    \n    session.close()\n    \nexcept Exception as e:\n    print(f\"Error: {e}\", file=sys.stderr)\n    sys.exit(1)\nEOF\n}\n\n# ============================================================================\n# MAIN MENU\n# ============================================================================\n\nshow_menu() {\n    echo -e \"${GREEN}\u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557${NC}\"\n    echo -e \"${GREEN}\u2551     YubiHSM 2 - Secure Storage Management System     \u2551${NC}\"\n    echo -e \"${GREEN}\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d${NC}\"\n    echo \"\"\n    echo -e \"${BLUE}Password & Secret Management:${NC}\"\n    echo \"  1. Store Password\"\n    echo \"  2. Retrieve Password\"\n    echo \"  3. Store API Key\"\n    echo \"  4. Store Database Credentials\"\n    echo \"\"\n    echo -e \"${BLUE}Certificate Management:${NC}\"\n    echo \"  5. Store Certificate\"\n    echo \"  6. Store SSH Key\"\n    echo \"\"\n    echo -e \"${BLUE}Key Management:${NC}\"\n    echo \"  7. Generate Signing Key\"\n    echo \"  8. Generate Encryption Key\"\n    echo \"\"\n    echo -e \"${BLUE}Administration:${NC}\"\n    echo \"  9. List All Objects\"\n    echo \"  10. Show Usage Statistics\"\n    echo \"  11. Backup Objects\"\n    echo \"  12. Show Storage Guide\"\n    echo \"\"\n    echo \"  0. Exit\"\n    echo \"\"\n}\n\n# Interactive mode\ninteractive_mode() {\n    while true; do\n        show_menu\n        read -p \"Select option: \" choice\n        \n        case $choice in\n            1)\n                read -p \"Enter password name: \" name\n                read -s -p \"Enter password: \" pass\n                echo\n                store_password \"$name\" \"$pass\"\n                ;;\n            2)\n                read -p \"Enter password name: \" name\n                retrieve_password \"$name\"\n                ;;\n            3)\n                read -p \"Enter service name: \" service\n                read -p \"Enter API key: \" key\n                store_api_key \"$service\" \"$key\"\n                ;;\n            4)\n                read -p \"Database name: \" db\n                read -p \"Username: \" user\n                read -s -p \"Password: \" pass\n                echo\n                read -p \"Host [localhost]: \" host\n                read -p \"Port [5432]: \" port\n                store_db_credentials \"$db\" \"$user\" \"$pass\" \"${host:-localhost}\" \"${port:-5432}\"\n                ;;\n            5)\n                read -p \"Certificate file path: \" cert\n                store_certificate \"$cert\"\n                ;;\n            6)\n                read -p \"SSH key name: \" name\n                read -p \"Key file path [~/.ssh/id_rsa]: \" file\n                store_ssh_key \"$name\" \"${file:-~/.ssh/id_rsa}\"\n                ;;\n            7)\n                read -p \"Signing key name: \" name\n                read -p \"Key type [RSA4096]: \" type\n                generate_signing_key \"$name\" \"${type:-RSA4096}\"\n                ;;\n            8)\n                read -p \"Encryption key name: \" name\n                read -p \"Key size [256]: \" size\n                generate_encryption_key \"$name\" \"${size:-256}\"\n                ;;\n            9)\n                list_stored_objects\n                ;;\n            10)\n                show_usage_stats\n                ;;\n            11)\n                read -p \"Backup directory [/backup/yubihsm]: \" dir\n                backup_objects \"${dir:-/backup/yubihsm}\"\n                ;;\n            12)\n                cat /tmp/yubihsm2_storage_guide.md\n                ;;\n            0)\n                echo \"Exiting...\"\n                exit 0\n                ;;\n            *)\n                echo \"Invalid option\"\n                ;;\n        esac\n        \n        echo \"\"\n        read -p \"Press Enter to continue...\"\n    done\n}\n\n# Main function\nmain() {\n    case \"${1:-}\" in\n        store-password)\n            shift\n            store_password \"$@\"\n            ;;\n        get-password)\n            shift\n            retrieve_password \"$@\"\n            ;;\n        store-api)\n            shift\n            store_api_key \"$@\"\n            ;;\n        store-db)\n            shift\n            store_db_credentials \"$@\"\n            ;;\n        store-cert)\n            shift\n            store_certificate \"$@\"\n            ;;\n        store-ssh)\n            shift\n            store_ssh_key \"$@\"\n            ;;\n        gen-sign-key)\n            shift\n            generate_signing_key \"$@\"\n            ;;\n        gen-enc-key)\n            shift\n            generate_encryption_key \"$@\"\n            ;;\n        list)\n            list_stored_objects\n            ;;\n        stats)\n            show_usage_stats\n            ;;\n        backup)\n            shift\n            backup_objects \"$@\"\n            ;;\n        guide)\n            cat /tmp/yubihsm2_storage_guide.md\n            ;;\n        interactive)\n            interactive_mode\n            ;;\n        *)\n            echo -e \"${GREEN}YubiHSM 2 Storage Management${NC}\"\n            echo \"\"\n            echo \"Usage: $0 <command> [options]\"\n            echo \"\"\n            echo \"Commands:\"\n            echo \"  store-password <n> <pass>  Store password\"\n            echo \"  get-password <n>         Retrieve password\"\n            echo \"  store-api <service> <key>   Store API key\"\n            echo \"  store-db <db> <u> <p> [h] [port] Store DB credentials\"\n            echo \"  store-cert <file>          Store certificate\"\n            echo \"  store-ssh <n> [file]     Store SSH key\"\n            echo \"  gen-sign-key <n> [type]  Generate signing key\"\n            echo \"  gen-enc-key <n> [size]   Generate encryption key\"\n            echo \"  list                         List all objects\"\n            echo \"  stats                        Show usage statistics\"\n            echo \"  backup [dir]                 Backup all objects\"\n            echo \"  guide                        Show storage guide\"\n            echo \"  interactive                  Interactive menu\"\n            echo \"\"\n            echo \"Examples:\"\n            echo \"  $0 store-password gmail 'MySecretPass123'\"\n            echo \"  $0 store-api github 'ghp_xxxxxxxxxxxx'\"\n            echo \"  $0 store-cert /path/to/cert.pem\"\n            echo \"  $0 gen-sign-key code-signing RSA4096\"\n            echo \"  $0 interactive\"\n            exit 1\n            ;;\n    esac\n}\n\n# Create log directory\nmkdir -p \"$(dirname \"$LOG_FILE\")\"\n\n# Run main function\nmain \"$@\"\n",
+      "script_yubihsm_lifecycle_management.sh": "#!/bin/bash\n# YubiHSM 2 Lifecycle Management System\n# Complete object lifecycle: Create, Read, Update, Delete, Rotate, Cleanup\n\nset -euo pipefail\n\n# Configuration\nYUBIHSM_CONNECTOR_URL=\"${YUBIHSM_CONNECTOR_URL:-http://localhost:12345}\"\nYUBIHSM_AUTH_KEY=\"${YUBIHSM_AUTH_KEY:-2}\"\nLOG_FILE=\"/var/log/yubihsm-lifecycle.log\"\nAUDIT_FILE=\"/var/log/yubihsm-audit.log\"\n\n# Object ID ranges\nID_RANGE_PASSWORDS=1000\nID_RANGE_CERTS=2000\nID_RANGE_KEYS=3000\nID_RANGE_SIGNING=4000\nID_RANGE_SSH=5000\n\n# Colors\nRED='\\033[0;31m'\nGREEN='\\033[0;32m'\nYELLOW='\\033[1;33m'\nBLUE='\\033[0;34m'\nPURPLE='\\033[0;35m'\nNC='\\033[0m'\n\n# Logging\nlog() {\n    echo \"[$(date '+%Y-%m-%d %H:%M:%S')] $1\" | tee -a \"$LOG_FILE\"\n}\n\naudit_log() {\n    echo \"[$(date '+%Y-%m-%d %H:%M:%S')] AUDIT: $1\" | tee -a \"$AUDIT_FILE\"\n}\n\ninfo() {\n    echo -e \"${BLUE}[INFO]${NC} $1\"\n    log \"INFO: $1\"\n}\n\nsuccess() {\n    echo -e \"${GREEN}[SUCCESS]${NC} $1\"\n    log \"SUCCESS: $1\"\n}\n\nwarning() {\n    echo -e \"${YELLOW}[WARNING]${NC} $1\"\n    log \"WARNING: $1\"\n}\n\nerror() {\n    echo -e \"${RED}[ERROR]${NC} $1\" >&2\n    log \"ERROR: $1\"\n    exit 1\n}\n\n# ============================================================================\n# DELETE OPERATIONS\n# ============================================================================\n\ndelete_object_by_id() {\n    local object_id=\"$1\"\n    local confirm=\"${2:-no}\"\n    \n    if [ \"$confirm\" != \"yes\" ]; then\n        warning \"About to DELETE object ID: $object_id\"\n        read -p \"Are you sure? Type 'yes' to confirm: \" confirm\n        if [ \"$confirm\" != \"yes\" ]; then\n            info \"Deletion cancelled\"\n            return 1\n        fi\n    fi\n    \n    info \"Deleting object ID: $object_id\"\n    \n    python3 - <<EOF\nimport sys\nimport os\nfrom yubihsm import YubiHsm\nfrom yubihsm.defs import OBJECT\n\ntry:\n    # Connect to YubiHSM\n    hsm = YubiHsm.connect(\"$YUBIHSM_CONNECTOR_URL\")\n    password = os.getenv('YUBIHSM_PASSWORD', 'password')\n    session = hsm.create_session_derived($YUBIHSM_AUTH_KEY, password)\n    \n    # Get object info before deletion\n    try:\n        objects = session.list_objects()\n        target_obj = None\n        for obj in objects:\n            if obj.id == $object_id:\n                target_obj = obj\n                break\n        \n        if target_obj:\n            print(f\"Found object: {target_obj.label} (Type: {target_obj.object_type.name})\")\n            \n            # Delete the object\n            session.delete_object(target_obj.id, target_obj.object_type)\n            print(f\"\u2713 Deleted object ID {$object_id}: {target_obj.label}\")\n            \n            # Log the deletion\n            with open(\"$AUDIT_FILE\", \"a\") as f:\n                f.write(f\"DELETED: ID={$object_id}, Label={target_obj.label}, Type={target_obj.object_type.name}\\n\")\n        else:\n            print(f\"Object ID {$object_id} not found\")\n            sys.exit(1)\n            \n    except Exception as e:\n        print(f\"Error during deletion: {e}\", file=sys.stderr)\n        sys.exit(1)\n    \n    session.close()\n    \nexcept Exception as e:\n    print(f\"Connection error: {e}\", file=sys.stderr)\n    sys.exit(1)\nEOF\n    \n    if [ $? -eq 0 ]; then\n        success \"Object deleted successfully\"\n        audit_log \"Deleted object ID: $object_id\"\n    else\n        error \"Failed to delete object\"\n    fi\n}\n\ndelete_password() {\n    local name=\"$1\"\n    local object_id=$((ID_RANGE_PASSWORDS + $(echo \"$name\" | cksum | cut -d' ' -f1) % 1000))\n    \n    info \"Deleting password: $name (ID: $object_id)\"\n    delete_object_by_id \"$object_id\"\n}\n\ndelete_certificate() {\n    local cert_name=\"$1\"\n    local object_id=$((ID_RANGE_CERTS + $(echo \"$cert_name\" | cksum | cut -d' ' -f1) % 1000))\n    \n    info \"Deleting certificate: $cert_name (ID: $object_id)\"\n    delete_object_by_id \"$object_id\"\n}\n\n# ============================================================================\n# UPDATE/ROTATE OPERATIONS\n# ============================================================================\n\nupdate_password() {\n    local name=\"$1\"\n    local new_password=\"$2\"\n    local object_id=$((ID_RANGE_PASSWORDS + $(echo \"$name\" | cksum | cut -d' ' -f1) % 1000))\n    \n    info \"Updating password: $name (ID: $object_id)\"\n    \n    # Delete old password\n    delete_object_by_id \"$object_id\" \"yes\"\n    \n    # Store new password\n    python3 - <<EOF\nimport sys\nimport os\nimport json\nfrom yubihsm import YubiHsm\nfrom yubihsm.defs import CAPABILITY, ALGORITHM, OBJECT\nfrom yubihsm.objects import Opaque\nfrom datetime import datetime\n\ntry:\n    # Connect to YubiHSM\n    hsm = YubiHsm.connect(\"$YUBIHSM_CONNECTOR_URL\")\n    password = os.getenv('YUBIHSM_PASSWORD', 'password')\n    session = hsm.create_session_derived($YUBIHSM_AUTH_KEY, password)\n    \n    # Create new password object\n    password_data = {\n        \"name\": \"$name\",\n        \"password\": \"$new_password\",\n        \"created\": datetime.now().isoformat(),\n        \"updated\": datetime.now().isoformat(),\n        \"type\": \"password\",\n        \"rotation_count\": 1\n    }\n    \n    # Store as opaque object\n    opaque = Opaque.put(\n        session=session,\n        object_id=$object_id,\n        label=f\"pwd-$name\"[:40],\n        domains=1,\n        capabilities=CAPABILITY.EXPORTABLE_UNDER_WRAP,\n        algorithm=ALGORITHM.OPAQUE_DATA,\n        data=json.dumps(password_data).encode()\n    )\n    \n    print(f\"Password updated with ID: {opaque.id}\")\n    session.close()\n    \nexcept Exception as e:\n    print(f\"Error: {e}\", file=sys.stderr)\n    sys.exit(1)\nEOF\n    \n    if [ $? -eq 0 ]; then\n        success \"Password updated successfully\"\n        audit_log \"Updated password: $name\"\n    fi\n}\n\nrotate_encryption_key() {\n    local key_name=\"$1\"\n    local object_id=$((ID_RANGE_KEYS + $(echo \"$key_name\" | cksum | cut -d' ' -f1) % 1000))\n    local backup_id=$((object_id + 10000))  # Backup with offset\n    \n    info \"Rotating encryption key: $key_name\"\n    \n    python3 - <<EOF\nimport sys\nimport os\nfrom yubihsm import YubiHsm\nfrom yubihsm.defs import CAPABILITY, ALGORITHM, OBJECT\nfrom yubihsm.objects import SymmetricKey, WrapKey\nfrom datetime import datetime\n\ntry:\n    # Connect to YubiHSM\n    hsm = YubiHsm.connect(\"$YUBIHSM_CONNECTOR_URL\")\n    password = os.getenv('YUBIHSM_PASSWORD', 'password')\n    session = hsm.create_session_derived($YUBIHSM_AUTH_KEY, password)\n    \n    # Get old key\n    try:\n        old_key = session.get_object($object_id, OBJECT.SYMMETRIC_KEY)\n        print(f\"Found existing key: {old_key.label}\")\n        \n        # Create backup of old key (as wrapped export)\n        wrap_key = session.get_object(999, OBJECT.WRAP_KEY)\n        wrapped_key = old_key.export_wrapped(wrap_key)\n        \n        # Delete old key\n        session.delete_object($object_id, OBJECT.SYMMETRIC_KEY)\n        print(\"Old key deleted\")\n        \n    except:\n        print(\"No existing key found, creating new one\")\n    \n    # Generate new key with same ID\n    new_key = SymmetricKey.generate(\n        session=session,\n        object_id=$object_id,\n        label=f\"enc-$key_name-v{datetime.now().strftime('%Y%m%d')}\"[:40],\n        domains=1,\n        capabilities=CAPABILITY.ENCRYPT_CBC | CAPABILITY.DECRYPT_CBC,\n        algorithm=ALGORITHM.AES256\n    )\n    \n    print(f\"\u2713 New encryption key generated with ID: {new_key.id}\")\n    print(f\"  Algorithm: AES-256\")\n    print(f\"  Rotated at: {datetime.now().isoformat()}\")\n    \n    session.close()\n    \nexcept Exception as e:\n    print(f\"Error: {e}\", file=sys.stderr)\n    sys.exit(1)\nEOF\n    \n    if [ $? -eq 0 ]; then\n        success \"Encryption key rotated successfully\"\n        audit_log \"Rotated encryption key: $key_name\"\n    fi\n}\n\n# ============================================================================\n# BULK DELETE OPERATIONS\n# ============================================================================\n\nbulk_delete_passwords() {\n    warning \"This will delete ALL passwords (ID range 1000-1999)\"\n    read -p \"Are you ABSOLUTELY sure? Type 'DELETE ALL PASSWORDS': \" confirm\n    \n    if [ \"$confirm\" != \"DELETE ALL PASSWORDS\" ]; then\n        info \"Bulk deletion cancelled\"\n        return\n    fi\n    \n    python3 - <<EOF\nimport sys\nimport os\nfrom yubihsm import YubiHsm\n\ntry:\n    # Connect to YubiHSM\n    hsm = YubiHsm.connect(\"$YUBIHSM_CONNECTOR_URL\")\n    password = os.getenv('YUBIHSM_PASSWORD', 'password')\n    session = hsm.create_session_derived($YUBIHSM_AUTH_KEY, password)\n    \n    # List all objects\n    objects = session.list_objects()\n    deleted_count = 0\n    \n    for obj in objects:\n        if 1000 <= obj.id < 2000:  # Password range\n            try:\n                session.delete_object(obj.id, obj.object_type)\n                print(f\"Deleted: {obj.label} (ID: {obj.id})\")\n                deleted_count += 1\n            except Exception as e:\n                print(f\"Failed to delete {obj.id}: {e}\")\n    \n    print(f\"\\n\u2713 Total passwords deleted: {deleted_count}\")\n    session.close()\n    \nexcept Exception as e:\n    print(f\"Error: {e}\", file=sys.stderr)\n    sys.exit(1)\nEOF\n    \n    audit_log \"BULK DELETE: Removed all passwords\"\n}\n\n# ============================================================================\n# CLEANUP OPERATIONS\n# ============================================================================\n\ncleanup_expired_certificates() {\n    info \"Scanning for expired certificates...\"\n    \n    python3 - <<EOF\nimport sys\nimport os\nfrom yubihsm import YubiHsm\nfrom yubihsm.defs import OBJECT\nfrom cryptography import x509\nfrom cryptography.hazmat.backends import default_backend\nfrom datetime import datetime\n\ntry:\n    # Connect to YubiHSM\n    hsm = YubiHsm.connect(\"$YUBIHSM_CONNECTOR_URL\")\n    password = os.getenv('YUBIHSM_PASSWORD', 'password')\n    session = hsm.create_session_derived($YUBIHSM_AUTH_KEY, password)\n    \n    # List all objects\n    objects = session.list_objects()\n    expired_count = 0\n    \n    for obj in objects:\n        if 2000 <= obj.id < 3000:  # Certificate range\n            if obj.object_type == OBJECT.OPAQUE:\n                try:\n                    # Get certificate data\n                    cert_data = session.get_object(obj.id, OBJECT.OPAQUE).get()\n                    \n                    # Parse certificate\n                    cert = x509.load_pem_x509_certificate(cert_data, default_backend())\n                    \n                    # Check expiration\n                    if datetime.utcnow() > cert.not_valid_after:\n                        print(f\"Expired certificate found: {obj.label}\")\n                        print(f\"  Expired on: {cert.not_valid_after}\")\n                        \n                        # Delete expired certificate\n                        session.delete_object(obj.id, obj.object_type)\n                        print(f\"  \u2713 Deleted\")\n                        expired_count += 1\n                        \n                except Exception as e:\n                    print(f\"Error processing {obj.id}: {e}\")\n    \n    print(f\"\\n\u2713 Total expired certificates removed: {expired_count}\")\n    session.close()\n    \nexcept Exception as e:\n    print(f\"Error: {e}\", file=sys.stderr)\n    sys.exit(1)\nEOF\n    \n    audit_log \"Cleaned up expired certificates\"\n}\n\ncleanup_old_objects() {\n    local days=\"${1:-90}\"\n    info \"Cleaning objects older than $days days...\"\n    \n    python3 - <<EOF\nimport sys\nimport os\nimport json\nfrom yubihsm import YubiHsm\nfrom yubihsm.defs import OBJECT\nfrom datetime import datetime, timedelta\n\ntry:\n    # Connect to YubiHSM\n    hsm = YubiHsm.connect(\"$YUBIHSM_CONNECTOR_URL\")\n    password = os.getenv('YUBIHSM_PASSWORD', 'password')\n    session = hsm.create_session_derived($YUBIHSM_AUTH_KEY, password)\n    \n    # Calculate cutoff date\n    cutoff_date = datetime.now() - timedelta(days=$days)\n    \n    # List all objects\n    objects = session.list_objects()\n    deleted_count = 0\n    \n    for obj in objects:\n        if obj.object_type == OBJECT.OPAQUE:\n            try:\n                # Get object data\n                data = session.get_object(obj.id, OBJECT.OPAQUE).get()\n                \n                # Try to parse as JSON\n                try:\n                    obj_data = json.loads(data.decode())\n                    created_str = obj_data.get('created', '')\n                    \n                    if created_str:\n                        created_date = datetime.fromisoformat(created_str.replace('Z', '+00:00'))\n                        \n                        if created_date < cutoff_date:\n                            print(f\"Old object found: {obj.label}\")\n                            print(f\"  Created: {created_str}\")\n                            print(f\"  Age: {(datetime.now() - created_date).days} days\")\n                            \n                            # Delete old object\n                            session.delete_object(obj.id, obj.object_type)\n                            print(f\"  \u2713 Deleted\")\n                            deleted_count += 1\n                            \n                except (json.JSONDecodeError, ValueError):\n                    pass  # Not a JSON object or no date\n                    \n            except Exception as e:\n                print(f\"Error processing {obj.id}: {e}\")\n    \n    print(f\"\\n\u2713 Total old objects removed: {deleted_count}\")\n    session.close()\n    \nexcept Exception as e:\n    print(f\"Error: {e}\", file=sys.stderr)\n    sys.exit(1)\nEOF\n}\n\n# ============================================================================\n# SPACE MANAGEMENT\n# ============================================================================\n\nshow_space_usage() {\n    info \"Analyzing YubiHSM space usage...\"\n    \n    python3 - <<EOF\nimport sys\nimport os\nfrom yubihsm import YubiHsm\nfrom yubihsm.defs import OBJECT\nfrom tabulate import tabulate\nfrom collections import defaultdict\n\ntry:\n    # Connect to YubiHSM\n    hsm = YubiHsm.connect(\"$YUBIHSM_CONNECTOR_URL\")\n    password = os.getenv('YUBIHSM_PASSWORD', 'password')\n    session = hsm.create_session_derived($YUBIHSM_AUTH_KEY, password)\n    \n    # Get device info\n    info = session.get_device_info()\n    \n    # List all objects\n    objects = session.list_objects()\n    \n    # Analyze by category\n    categories = defaultdict(list)\n    \n    for obj in objects:\n        if 1000 <= obj.id < 2000:\n            categories['Passwords'].append(obj)\n        elif 2000 <= obj.id < 3000:\n            categories['Certificates'].append(obj)\n        elif 3000 <= obj.id < 4000:\n            categories['Encryption Keys'].append(obj)\n        elif 4000 <= obj.id < 5000:\n            categories['Signing Keys'].append(obj)\n        elif 5000 <= obj.id < 6000:\n            categories['SSH Keys'].append(obj)\n        else:\n            categories['Other'].append(obj)\n    \n    # Print summary\n    print(\"\\n\" + \"=\"*60)\n    print(\" \"*20 + \"YUBIHSM SPACE USAGE\")\n    print(\"=\"*60)\n    \n    print(f\"\\nDevice Serial: {info.serial}\")\n    print(f\"Firmware Version: {info.version}\")\n    \n    # Usage bar\n    used = len(objects)\n    total = 256\n    percentage = (used/total) * 100\n    bar_length = 40\n    filled_length = int(bar_length * used // total)\n    bar = '\u2588' * filled_length + '\u2591' * (bar_length - filled_length)\n    \n    print(f\"\\n[{bar}] {percentage:.1f}%\")\n    print(f\"Used: {used}/{total} objects\")\n    print(f\"Free: {total-used} objects\")\n    \n    # Category breakdown\n    print(\"\\n\" + \"-\"*60)\n    print(\"CATEGORY BREAKDOWN:\")\n    print(\"-\"*60)\n    \n    table_data = []\n    for category, objs in sorted(categories.items()):\n        count = len(objs)\n        pct = (count/used*100) if used > 0 else 0\n        table_data.append([category, count, f\"{pct:.1f}%\"])\n    \n    print(tabulate(table_data, headers=[\"Category\", \"Count\", \"% of Used\"], tablefmt=\"grid\"))\n    \n    # Recommendations\n    print(\"\\n\" + \"-\"*60)\n    print(\"RECOMMENDATIONS:\")\n    print(\"-\"*60)\n    \n    if percentage > 90:\n        print(\"\u26a0\ufe0f  CRITICAL: Over 90% usage! Consider:\")\n        print(\"   - Delete unused objects\")\n        print(\"   - Archive old passwords\")\n        print(\"   - Remove expired certificates\")\n    elif percentage > 75:\n        print(\"\u26a0\ufe0f  WARNING: Over 75% usage. Consider cleanup soon.\")\n    elif percentage > 50:\n        print(\"\u2139\ufe0f  INFO: Moderate usage. Monitor growth.\")\n    else:\n        print(\"\u2713  GOOD: Plenty of space available.\")\n    \n    # Quick actions\n    print(\"\\n\" + \"-\"*60)\n    print(\"QUICK ACTIONS:\")\n    print(\"-\"*60)\n    print(\"1. Run cleanup-expired to remove expired certificates\")\n    print(\"2. Run cleanup-old 90 to remove objects older than 90 days\")\n    print(\"3. Run defrag to optimize space\")\n    print(\"4. Run backup before any major cleanup\")\n    \n    session.close()\n    \nexcept Exception as e:\n    print(f\"Error: {e}\", file=sys.stderr)\n    sys.exit(1)\nEOF\n}\n\n# ============================================================================\n# DEFRAGMENTATION / OPTIMIZATION\n# ============================================================================\n\ndefragment_space() {\n    info \"Optimizing YubiHSM storage space...\"\n    \n    python3 - <<EOF\nimport sys\nimport os\nimport json\nfrom yubihsm import YubiHsm\nfrom yubihsm.defs import CAPABILITY, ALGORITHM, OBJECT\nfrom yubihsm.objects import WrapKey, Opaque\n\ntry:\n    # Connect to YubiHSM\n    hsm = YubiHsm.connect(\"$YUBIHSM_CONNECTOR_URL\")\n    password = os.getenv('YUBIHSM_PASSWORD', 'password')\n    session = hsm.create_session_derived($YUBIHSM_AUTH_KEY, password)\n    \n    print(\"Starting defragmentation process...\")\n    \n    # Create or get wrap key\n    try:\n        wrap_key = session.get_object(999, OBJECT.WRAP_KEY)\n    except:\n        wrap_key = WrapKey.generate(\n            session=session,\n            object_id=999,\n            label=\"defrag-wrap-key\",\n            domains=0xFFFF,\n            capabilities=CAPABILITY.EXPORT_WRAPPED | CAPABILITY.IMPORT_WRAPPED,\n            algorithm=ALGORITHM.AES256_CCM_WRAP\n        )\n    \n    # List all moveable objects\n    objects = session.list_objects()\n    reorganized = 0\n    \n    # Group objects by category\n    passwords = []\n    certificates = []\n    keys = []\n    \n    for obj in objects:\n        if obj.id == 999:  # Skip wrap key\n            continue\n            \n        if 1000 <= obj.id < 2000:\n            passwords.append(obj)\n        elif 2000 <= obj.id < 3000:\n            certificates.append(obj)\n        else:\n            keys.append(obj)\n    \n    # Reorganize passwords to start from 1000\n    new_id = 1000\n    for obj in sorted(passwords, key=lambda x: x.id):\n        if obj.id != new_id:\n            try:\n                # Export object\n                if obj.object_type == OBJECT.OPAQUE:\n                    data = session.get_object(obj.id, OBJECT.OPAQUE).get()\n                    \n                    # Delete old\n                    session.delete_object(obj.id, obj.object_type)\n                    \n                    # Create with new ID\n                    Opaque.put(\n                        session=session,\n                        object_id=new_id,\n                        label=obj.label,\n                        domains=obj.domains,\n                        capabilities=obj.capabilities,\n                        algorithm=obj.algorithm,\n                        data=data\n                    )\n                    \n                    print(f\"Moved {obj.label} from ID {obj.id} to {new_id}\")\n                    reorganized += 1\n                    \n            except Exception as e:\n                print(f\"Failed to move {obj.label}: {e}\")\n        \n        new_id += 1\n    \n    print(f\"\\n\u2713 Defragmentation complete\")\n    print(f\"  Objects reorganized: {reorganized}\")\n    print(f\"  Space optimized: Yes\")\n    \n    session.close()\n    \nexcept Exception as e:\n    print(f\"Error: {e}\", file=sys.stderr)\n    sys.exit(1)\nEOF\n}\n\n# ============================================================================\n# MIGRATION TOOLS\n# ============================================================================\n\nexport_for_migration() {\n    local export_file=\"${1:-yubihsm_export_$(date +%Y%m%d_%H%M%S).json}\"\n    \n    info \"Exporting all objects for migration...\"\n    \n    python3 - <<EOF\nimport sys\nimport os\nimport json\nimport base64\nfrom yubihsm import YubiHsm\nfrom yubihsm.defs import OBJECT\nfrom datetime import datetime\n\ntry:\n    # Connect to YubiHSM\n    hsm = YubiHsm.connect(\"$YUBIHSM_CONNECTOR_URL\")\n    password = os.getenv('YUBIHSM_PASSWORD', 'password')\n    session = hsm.create_session_derived($YUBIHSM_AUTH_KEY, password)\n    \n    # List all objects\n    objects = session.list_objects()\n    \n    export_data = {\n        \"export_date\": datetime.now().isoformat(),\n        \"device_serial\": session.get_device_info().serial,\n        \"total_objects\": len(objects),\n        \"objects\": []\n    }\n    \n    for obj in objects:\n        obj_info = {\n            \"id\": obj.id,\n            \"type\": obj.object_type.name,\n            \"label\": obj.label,\n            \"domains\": obj.domains,\n            \"capabilities\": obj.capabilities.value if hasattr(obj, 'capabilities') else None,\n            \"algorithm\": obj.algorithm.name if hasattr(obj, 'algorithm') else None\n        }\n        \n        # Export data if opaque\n        if obj.object_type == OBJECT.OPAQUE:\n            try:\n                data = session.get_object(obj.id, OBJECT.OPAQUE).get()\n                obj_info[\"data\"] = base64.b64encode(data).decode()\n            except:\n                obj_info[\"data\"] = None\n        \n        export_data[\"objects\"].append(obj_info)\n        print(f\"Exported: {obj.label} (ID: {obj.id})\")\n    \n    # Save to file\n    with open(\"$export_file\", \"w\") as f:\n        json.dump(export_data, f, indent=2)\n    \n    print(f\"\\n\u2713 Export complete: $export_file\")\n    print(f\"  Total objects exported: {len(objects)}\")\n    \n    session.close()\n    \nexcept Exception as e:\n    print(f\"Error: {e}\", file=sys.stderr)\n    sys.exit(1)\nEOF\n    \n    success \"Migration export complete: $export_file\"\n}\n\n# ============================================================================\n# FACTORY RESET\n# ============================================================================\n\nfactory_reset() {\n    echo -e \"${RED}\u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557${NC}\"\n    echo -e \"${RED}\u2551              \u26a0\ufe0f  FACTORY RESET WARNING \u26a0\ufe0f              \u2551${NC}\"\n    echo -e \"${RED}\u2560\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2563${NC}\"\n    echo -e \"${RED}\u2551  This will DELETE ALL objects in the YubiHSM!       \u2551${NC}\"\n    echo -e \"${RED}\u2551  This action is IRREVERSIBLE!                       \u2551${NC}\"\n    echo -e \"${RED}\u2551                                                      \u2551${NC}\"\n    echo -e \"${RED}\u2551  All passwords, certificates, and keys will be lost!\u2551${NC}\"\n    echo -e \"${RED}\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d${NC}\"\n    echo \"\"\n    \n    read -p \"Type 'FACTORY RESET YUBIHSM' to confirm: \" confirm\n    \n    if [ \"$confirm\" != \"FACTORY RESET YUBIHSM\" ]; then\n        info \"Factory reset cancelled\"\n        return\n    fi\n    \n    # Create backup first\n    warning \"Creating emergency backup before reset...\"\n    export_for_migration \"emergency_backup_$(date +%Y%m%d_%H%M%S).json\"\n    \n    yubihsm-shell <<EOF\nconnect\nsession open 1 password\nreset 0\nsession close\nquit\nEOF\n    \n    if [ $? -eq 0 ]; then\n        success \"Factory reset complete - YubiHSM is now empty\"\n        audit_log \"FACTORY RESET PERFORMED\"\n    else\n        error \"Factory reset failed\"\n    fi\n}\n\n# ============================================================================\n# INTERACTIVE MANAGEMENT MENU\n# ============================================================================\n\nshow_management_menu() {\n    clear\n    echo -e \"${GREEN}\u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557${NC}\"\n    echo -e \"${GREEN}\u2551    YubiHSM 2 - Lifecycle Management System          \u2551${NC}\"\n    echo -e \"${GREEN}\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d${NC}\"\n    echo \"\"\n    \n    # Show current usage\n    python3 -c \"\nfrom yubihsm import YubiHsm\nhsm = YubiHsm.connect('$YUBIHSM_CONNECTOR_URL')\nsession = hsm.create_session_derived($YUBIHSM_AUTH_KEY, 'password')\nobjects = session.list_objects()\nused = len(objects)\nfree = 256 - used\npct = (used/256)*100\nbar_len = 30\nfilled = int(bar_len * used // 256)\nbar = '\u2588' * filled + '\u2591' * (bar_len - filled)\nprint(f'Storage: [{bar}] {pct:.1f}% ({used}/256)')\nprint(f'Free slots: {free}')\nsession.close()\n\" 2>/dev/null || echo \"Storage: [Unable to connect]\"\n    \n    echo \"\"\n    echo -e \"${BLUE}Object Management:${NC}\"\n    echo \"  1. Delete object by ID\"\n    echo \"  2. Delete password by name\"\n    echo \"  3. Delete certificate by name\"\n    echo \"  4. Update/rotate password\"\n    echo \"  5. Rotate encryption key\"\n    echo \"\"\n    echo -e \"${YELLOW}Bulk Operations:${NC}\"\n    echo \"  6. Delete ALL passwords\"\n    echo \"  7. Cleanup expired certificates\"\n    echo \"  8. Cleanup old objects (>90 days)\"\n    echo \"  9. Defragment/optimize space\"\n    echo \"\"\n    echo -e \"${PURPLE}Space Management:${NC}\"\n    echo \"  10. Show detailed space usage\"\n    echo \"  11. Export for migration\"\n    echo \"  12. Factory reset (DELETE ALL)\"\n    echo \"\"\n    echo \"  0. Exit\"\n    echo \"\"\n}\n\n# Interactive mode\ninteractive() {\n    while true; do\n        show_management_menu\n        read -p \"Select option: \" choice\n        \n        case $choice in\n            1)\n                read -p \"Enter object ID to delete: \" id\n                delete_object_by_id \"$id\"\n                ;;\n            2)\n                read -p \"Enter password name to delete: \" name\n                delete_password \"$name\"\n                ;;\n            3)\n                read -p \"Enter certificate name to delete: \" name\n                delete_certificate \"$name\"\n                ;;\n            4)\n                read -p \"Enter password name to update: \" name\n                read -s -p \"Enter new password: \" pass\n                echo\n                update_password \"$name\" \"$pass\"\n                ;;\n            5)\n                read -p \"Enter key name to rotate: \" name\n                rotate_encryption_key \"$name\"\n                ;;\n            6)\n                bulk_delete_passwords\n                ;;\n            7)\n                cleanup_expired_certificates\n                ;;\n            8)\n                read -p \"Delete objects older than (days) [90]: \" days\n                cleanup_old_objects \"${days:-90}\"\n                ;;\n            9)\n                defragment_space\n                ;;\n            10)\n                show_space_usage\n                ;;\n            11)\n                read -p \"Export filename [auto]: \" filename\n                export_for_migration \"$filename\"\n                ;;\n            12)\n                factory_reset\n                ;;\n            0)\n                echo \"Exiting...\"\n                exit 0\n                ;;\n            *)\n                echo \"Invalid option\"\n                ;;\n        esac\n        \n        echo \"\"\n        read -p \"Press Enter to continue...\"\n    done\n}\n\n# Main function\nmain() {\n    case \"${1:-}\" in\n        delete)\n            shift\n            delete_object_by_id \"$@\"\n            ;;\n        delete-password)\n            shift\n            delete_password \"$@\"\n            ;;\n        delete-cert)\n            shift\n            delete_certificate \"$@\"\n            ;;\n        update-password)\n            shift\n            update_password \"$@\"\n            ;;\n        rotate-key)\n            shift\n            rotate_encryption_key \"$@\"\n            ;;\n        bulk-delete-passwords)\n            bulk_delete_passwords\n            ;;\n        cleanup-expired)\n            cleanup_expired_certificates\n            ;;\n        cleanup-old)\n            shift\n            cleanup_old_objects \"${1:-90}\"\n            ;;\n        defrag)\n            defragment_space\n            ;;\n        space)\n            show_space_usage\n            ;;\n        export)\n            shift\n            export_for_migration \"$@\"\n            ;;\n        factory-reset)\n            factory_reset\n            ;;\n        interactive)\n            interactive\n            ;;\n        *)\n            echo -e \"${GREEN}YubiHSM 2 Lifecycle Management${NC}\"\n            echo \"\"\n            echo \"Usage: $0 <command> [options]\"\n            echo \"\"\n            echo \"Delete Commands:\"\n            echo \"  delete <id>                Delete object by ID\"\n            echo \"  delete-password <name>     Delete password\"\n            echo \"  delete-cert <name>         Delete certificate\"\n            echo \"\"\n            echo \"Update Commands:\"\n            echo \"  update-password <n> <p>  Update password\"\n            echo \"  rotate-key <name>           Rotate encryption key\"\n            echo \"\"\n            echo \"Cleanup Commands:\"\n            echo \"  bulk-delete-passwords       Delete ALL passwords\"\n            echo \"  cleanup-expired             Remove expired certificates\"\n            echo \"  cleanup-old [days]          Remove old objects\"\n            echo \"  defrag                      Optimize space usage\"\n            echo \"\"\n            echo \"Management Commands:\"\n            echo \"  space                       Show space usage\"\n            echo \"  export [file]               Export for migration\"\n            echo \"  factory-reset               DELETE EVERYTHING\"\n            echo \"  interactive                 Interactive menu\"\n            echo \"\"\n            echo \"Examples:\"\n            echo \"  $0 delete 1234\"\n            echo \"  $0 delete-password gmail\"\n            echo \"  $0 update-password gmail 'NewP@ss123'\"\n            echo \"  $0 cleanup-old 30\"\n            echo \"  $0 space\"\n            exit 1\n            ;;\n    esac\n}\n\n# Create log directories\nmkdir -p \"$(dirname \"$LOG_FILE\")\"\nmkdir -p \"$(dirname \"$AUDIT_FILE\")\"\n\n# Run main function\nmain \"$@\"\n",
+      "script_password_vault.py": "#!/usr/bin/env python3\n\"\"\"\nYubiHSM 2 Password Vault Manager\nSecure password management system using YubiHSM 2 FIPS hardware security module\n\"\"\"\n\nimport sys\nimport os\nimport json\nimport secrets\nimport string\nimport argparse\nimport getpass\nimport hashlib\nimport logging\nfrom datetime import datetime, timedelta\nfrom typing import Optional, Dict, List, Tuple\nfrom dataclasses import dataclass, asdict\nfrom enum import Enum\n\ntry:\n    from yubihsm import YubiHsm\n    from yubihsm.defs import CAPABILITY, ALGORITHM, OBJECT, COMMAND\n    from yubihsm.objects import AsymmetricKey, AuthenticationKey, WrapKey, OpaqueObject\n    from cryptography.hazmat.primitives import serialization, hashes\n    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes\n    from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2\n    from cryptography.hazmat.backends import default_backend\nexcept ImportError as e:\n    print(f\"Error: Required module not found. Please install: pip install yubihsm[http,usb] cryptography\")\n    print(f\"Missing module: {e}\")\n    sys.exit(1)\n\n# Configure logging\nlogging.basicConfig(\n    level=logging.INFO,\n    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'\n)\nlogger = logging.getLogger(__name__)\n\n# Configuration constants\nHSM_CONNECTOR_URL = os.getenv('YUBIHSM_CONNECTOR_URL', 'http://localhost:12345')\nDEFAULT_AUTH_KEY_ID = 2\nDEFAULT_WRAP_KEY_ID = 3\nVAULT_KEY_ID = 10\nPASSWORD_DOMAIN = 1\nAUDIT_DOMAIN = 2\n\nclass PasswordCategory(Enum):\n    \"\"\"Password categories for organization\"\"\"\n    DATABASE = \"database\"\n    SERVER = \"server\"\n    APPLICATION = \"application\"\n    SERVICE = \"service\"\n    DISK = \"disk\"\n    CERTIFICATE = \"certificate\"\n    API = \"api\"\n    OTHER = \"other\"\n\n@dataclass\nclass PasswordEntry:\n    \"\"\"Password entry data structure\"\"\"\n    name: str\n    username: str\n    password: str\n    category: PasswordCategory\n    description: str\n    created_at: datetime\n    modified_at: datetime\n    last_rotation: Optional[datetime] = None\n    rotation_interval_days: int = 90\n    metadata: Dict = None\n\n    def to_json(self) -> str:\n        \"\"\"Convert to JSON for storage\"\"\"\n        data = asdict(self)\n        data['category'] = self.category.value\n        data['created_at'] = self.created_at.isoformat()\n        data['modified_at'] = self.modified_at.isoformat()\n        if self.last_rotation:\n            data['last_rotation'] = self.last_rotation.isoformat()\n        return json.dumps(data)\n\n    @classmethod\n    def from_json(cls, json_str: str) -> 'PasswordEntry':\n        \"\"\"Create from JSON string\"\"\"\n        data = json.loads(json_str)\n        data['category'] = PasswordCategory(data['category'])\n        data['created_at'] = datetime.fromisoformat(data['created_at'])\n        data['modified_at'] = datetime.fromisoformat(data['modified_at'])\n        if data.get('last_rotation'):\n            data['last_rotation'] = datetime.fromisoformat(data['last_rotation'])\n        return cls(**data)\n\nclass YubiHSMPasswordVault:\n    \"\"\"Main password vault manager using YubiHSM 2\"\"\"\n    \n    def __init__(self, connector_url: str = HSM_CONNECTOR_URL):\n        self.connector_url = connector_url\n        self.hsm = None\n        self.session = None\n        \n    def connect(self, auth_key_id: int = DEFAULT_AUTH_KEY_ID, password: Optional[str] = None):\n        \"\"\"Connect to YubiHSM 2 and establish authenticated session\"\"\"\n        try:\n            logger.info(f\"Connecting to YubiHSM at {self.connector_url}\")\n            self.hsm = YubiHsm.connect(self.connector_url)\n            \n            if password is None:\n                password = getpass.getpass(f\"Enter password for auth key {auth_key_id}: \")\n            \n            self.session = self.hsm.create_session_derived(auth_key_id, password)\n            logger.info(\"Successfully connected to YubiHSM\")\n            \n            # Verify FIPS mode\n            if hasattr(self.session, 'get_fips_mode'):\n                fips_mode = self.session.get_fips_mode()\n                if fips_mode:\n                    logger.info(\"YubiHSM is running in FIPS mode\")\n                else:\n                    logger.warning(\"YubiHSM is NOT in FIPS mode. Enable FIPS mode for compliance.\")\n                    \n        except Exception as e:\n            logger.error(f\"Failed to connect to YubiHSM: {e}\")\n            raise\n    \n    def disconnect(self):\n        \"\"\"Close YubiHSM session\"\"\"\n        if self.session:\n            self.session.close()\n            logger.info(\"Disconnected from YubiHSM\")\n    \n    def initialize_vault(self):\n        \"\"\"Initialize password vault with required keys\"\"\"\n        try:\n            logger.info(\"Initializing password vault...\")\n            \n            # Create wrap key for password encryption\n            wrap_key = WrapKey.generate(\n                session=self.session,\n                object_id=DEFAULT_WRAP_KEY_ID,\n                label=\"Password Vault Wrap Key\",\n                domains=PASSWORD_DOMAIN,\n                capabilities=CAPABILITY.EXPORT_WRAPPED | CAPABILITY.IMPORT_WRAPPED |\n                            CAPABILITY.WRAP_DATA | CAPABILITY.UNWRAP_DATA,\n                algorithm=ALGORITHM.AES256_CCM_WRAP\n            )\n            logger.info(f\"Created wrap key ID: {wrap_key.id}\")\n            \n            # Create audit key for logging\n            audit_key = AsymmetricKey.generate(\n                session=self.session,\n                object_id=0,  # Auto-assign ID\n                label=\"Vault Audit Key\",\n                domains=AUDIT_DOMAIN,\n                capabilities=CAPABILITY.SIGN_ECDSA | CAPABILITY.VERIFY_ECDSA,\n                algorithm=ALGORITHM.EC_P256\n            )\n            logger.info(f\"Created audit key ID: {audit_key.id}\")\n            \n            return True\n            \n        except Exception as e:\n            logger.error(f\"Failed to initialize vault: {e}\")\n            return False\n    \n    def generate_password(self, length: int = 24, include_special: bool = True) -> str:\n        \"\"\"Generate a secure random password\"\"\"\n        characters = string.ascii_letters + string.digits\n        if include_special:\n            characters += string.punctuation\n        \n        # Use HSM random number generator if available\n        try:\n            random_bytes = self.session.get_pseudo_random(length)\n            password = ''.join(characters[b % len(characters)] for b in random_bytes)\n        except:\n            # Fallback to system random\n            password = ''.join(secrets.choice(characters) for _ in range(length))\n        \n        return password\n    \n    def store_password(self, entry: PasswordEntry) -> int:\n        \"\"\"Store password entry in YubiHSM\"\"\"\n        try:\n            # Generate unique ID based on name hash\n            entry_id = int(hashlib.sha256(entry.name.encode()).hexdigest()[:8], 16) % 65000\n            \n            # Encrypt password data\n            encrypted_data = self._encrypt_password_entry(entry)\n            \n            # Store as opaque object\n            opaque = OpaqueObject.put(\n                session=self.session,\n                object_id=entry_id,\n                label=f\"pwd:{entry.name[:20]}\",\n                domains=PASSWORD_DOMAIN,\n                capabilities=CAPABILITY.OPAQUE_WRITE | CAPABILITY.OPAQUE_READ,\n                algorithm=ALGORITHM.AES256,\n                data=encrypted_data\n            )\n            \n            logger.info(f\"Stored password for '{entry.name}' with ID: {entry_id}\")\n            self._audit_log(\"STORE\", entry.name, entry.username)\n            \n            return entry_id\n            \n        except Exception as e:\n            logger.error(f\"Failed to store password: {e}\")\n            raise\n    \n    def retrieve_password(self, name: str) -> Optional[PasswordEntry]:\n        \"\"\"Retrieve password entry from YubiHSM\"\"\"\n        try:\n            # Calculate ID from name\n            entry_id = int(hashlib.sha256(name.encode()).hexdigest()[:8], 16) % 65000\n            \n            # Retrieve opaque object\n            opaque = self.session.get_object(entry_id, OBJECT.OPAQUE)\n            encrypted_data = opaque.get()\n            \n            # Decrypt password entry\n            entry = self._decrypt_password_entry(encrypted_data)\n            \n            logger.info(f\"Retrieved password for '{name}'\")\n            self._audit_log(\"RETRIEVE\", name, entry.username)\n            \n            return entry\n            \n        except Exception as e:\n            logger.error(f\"Failed to retrieve password for '{name}': {e}\")\n            return None\n    \n    def update_password(self, name: str, new_password: Optional[str] = None) -> bool:\n        \"\"\"Update existing password entry\"\"\"\n        try:\n            # Retrieve current entry\n            entry = self.retrieve_password(name)\n            if not entry:\n                logger.error(f\"Password entry '{name}' not found\")\n                return False\n            \n            # Generate new password if not provided\n            if new_password is None:\n                new_password = self.generate_password()\n            \n            # Update entry\n            entry.password = new_password\n            entry.modified_at = datetime.now()\n            entry.last_rotation = datetime.now()\n            \n            # Store updated entry\n            self.store_password(entry)\n            \n            logger.info(f\"Updated password for '{name}'\")\n            self._audit_log(\"UPDATE\", name, entry.username)\n            \n            return True\n            \n        except Exception as e:\n            logger.error(f\"Failed to update password: {e}\")\n            return False\n    \n    def delete_password(self, name: str) -> bool:\n        \"\"\"Delete password entry from YubiHSM\"\"\"\n        try:\n            # Calculate ID from name\n            entry_id = int(hashlib.sha256(name.encode()).hexdigest()[:8], 16) % 65000\n            \n            # Delete object\n            self.session.delete_object(entry_id, OBJECT.OPAQUE)\n            \n            logger.info(f\"Deleted password for '{name}'\")\n            self._audit_log(\"DELETE\", name, \"\")\n            \n            return True\n            \n        except Exception as e:\n            logger.error(f\"Failed to delete password: {e}\")\n            return False\n    \n    def list_passwords(self, category: Optional[PasswordCategory] = None) -> List[Dict]:\n        \"\"\"List all password entries\"\"\"\n        try:\n            # Get all opaque objects\n            objects = self.session.list_objects(object_type=OBJECT.OPAQUE)\n            \n            passwords = []\n            for obj in objects:\n                if obj.label.startswith(\"pwd:\"):\n                    try:\n                        # Retrieve and decrypt entry\n                        opaque = self.session.get_object(obj.id, OBJECT.OPAQUE)\n                        encrypted_data = opaque.get()\n                        entry = self._decrypt_password_entry(encrypted_data)\n                        \n                        # Filter by category if specified\n                        if category is None or entry.category == category:\n                            passwords.append({\n                                'name': entry.name,\n                                'username': entry.username,\n                                'category': entry.category.value,\n                                'description': entry.description,\n                                'created_at': entry.created_at.isoformat(),\n                                'modified_at': entry.modified_at.isoformat(),\n                                'needs_rotation': self._needs_rotation(entry)\n                            })\n                    except:\n                        continue\n            \n            return passwords\n            \n        except Exception as e:\n            logger.error(f\"Failed to list passwords: {e}\")\n            return []\n    \n    def rotate_passwords(self, force: bool = False) -> List[str]:\n        \"\"\"Rotate passwords that need rotation\"\"\"\n        rotated = []\n        \n        try:\n            passwords = self.list_passwords()\n            \n            for pwd_info in passwords:\n                if force or pwd_info['needs_rotation']:\n                    if self.update_password(pwd_info['name']):\n                        rotated.append(pwd_info['name'])\n                        logger.info(f\"Rotated password for '{pwd_info['name']}'\")\n            \n            logger.info(f\"Rotated {len(rotated)} passwords\")\n            return rotated\n            \n        except Exception as e:\n            logger.error(f\"Failed to rotate passwords: {e}\")\n            return rotated\n    \n    def export_passwords(self, output_file: str, wrap_key_id: int = DEFAULT_WRAP_KEY_ID) -> bool:\n        \"\"\"Export all passwords wrapped with specified key\"\"\"\n        try:\n            # Get wrap key\n            wrap_key = self.session.get_object(wrap_key_id, OBJECT.WRAP_KEY)\n            \n            # Export all password objects\n            exports = []\n            objects = self.session.list_objects(object_type=OBJECT.OPAQUE)\n            \n            for obj in objects:\n                if obj.label.startswith(\"pwd:\"):\n                    wrapped = obj.export_wrapped(wrap_key)\n                    exports.append({\n                        'id': obj.id,\n                        'label': obj.label,\n                        'wrapped_data': wrapped.hex()\n                    })\n            \n            # Save to file\n            with open(output_file, 'w') as f:\n                json.dump(exports, f, indent=2)\n            \n            logger.info(f\"Exported {len(exports)} passwords to {output_file}\")\n            return True\n            \n        except Exception as e:\n            logger.error(f\"Failed to export passwords: {e}\")\n            return False\n    \n    def _encrypt_password_entry(self, entry: PasswordEntry) -> bytes:\n        \"\"\"Encrypt password entry data\"\"\"\n        # Serialize entry to JSON\n        json_data = entry.to_json().encode()\n        \n        # Generate random IV\n        iv = os.urandom(16)\n        \n        # Use session key for encryption (simplified - use proper key derivation in production)\n        key = hashlib.sha256(f\"vault_key_{VAULT_KEY_ID}\".encode()).digest()\n        \n        # Encrypt data\n        cipher = Cipher(\n            algorithms.AES(key),\n            modes.CBC(iv),\n            backend=default_backend()\n        )\n        encryptor = cipher.encryptor()\n        \n        # Pad data to AES block size\n        padding_len = 16 - (len(json_data) % 16)\n        padded_data = json_data + bytes([padding_len] * padding_len)\n        \n        # Encrypt\n        encrypted = encryptor.update(padded_data) + encryptor.finalize()\n        \n        # Return IV + encrypted data\n        return iv + encrypted\n    \n    def _decrypt_password_entry(self, encrypted_data: bytes) -> PasswordEntry:\n        \"\"\"Decrypt password entry data\"\"\"\n        # Extract IV\n        iv = encrypted_data[:16]\n        ciphertext = encrypted_data[16:]\n        \n        # Use session key for decryption\n        key = hashlib.sha256(f\"vault_key_{VAULT_KEY_ID}\".encode()).digest()\n        \n        # Decrypt data\n        cipher = Cipher(\n            algorithms.AES(key),\n            modes.CBC(iv),\n            backend=default_backend()\n        )\n        decryptor = cipher.decryptor()\n        \n        # Decrypt\n        padded_data = decryptor.update(ciphertext) + decryptor.finalize()\n        \n        # Remove padding\n        padding_len = padded_data[-1]\n        json_data = padded_data[:-padding_len]\n        \n        # Deserialize entry\n        return PasswordEntry.from_json(json_data.decode())\n    \n    def _needs_rotation(self, entry: PasswordEntry) -> bool:\n        \"\"\"Check if password needs rotation\"\"\"\n        if entry.last_rotation is None:\n            last_change = entry.created_at\n        else:\n            last_change = entry.last_rotation\n        \n        days_since_change = (datetime.now() - last_change).days\n        return days_since_change >= entry.rotation_interval_days\n    \n    def _audit_log(self, action: str, resource: str, username: str):\n        \"\"\"Log audit event\"\"\"\n        timestamp = datetime.now().isoformat()\n        message = f\"{timestamp} | {action} | {resource} | {username}\"\n        logger.info(f\"AUDIT: {message}\")\n        # In production, also log to YubiHSM audit log\n\ndef main():\n    \"\"\"Main CLI interface\"\"\"\n    parser = argparse.ArgumentParser(description='YubiHSM 2 Password Vault Manager')\n    subparsers = parser.add_subparsers(dest='command', help='Available commands')\n    \n    # Init command\n    parser_init = subparsers.add_parser('init', help='Initialize password vault')\n    \n    # Store command\n    parser_store = subparsers.add_parser('store', help='Store a password')\n    parser_store.add_argument('--name', required=True, help='Password entry name')\n    parser_store.add_argument('--username', required=True, help='Username')\n    parser_store.add_argument('--category', default='other', \n                            choices=[c.value for c in PasswordCategory],\n                            help='Password category')\n    parser_store.add_argument('--description', default='', help='Description')\n    parser_store.add_argument('--password', help='Password (will prompt if not provided)')\n    parser_store.add_argument('--generate', action='store_true', help='Generate random password')\n    \n    # Get command\n    parser_get = subparsers.add_parser('get', help='Retrieve a password')\n    parser_get.add_argument('--name', required=True, help='Password entry name')\n    parser_get.add_argument('--show', action='store_true', help='Show password in output')\n    \n    # Update command\n    parser_update = subparsers.add_parser('update', help='Update a password')\n    parser_update.add_argument('--name', required=True, help='Password entry name')\n    parser_update.add_argument('--password', help='New password (will generate if not provided)')\n    \n    # Delete command\n    parser_delete = subparsers.add_parser('delete', help='Delete a password')\n    parser_delete.add_argument('--name', required=True, help='Password entry name')\n    \n    # List command\n    parser_list = subparsers.add_parser('list', help='List passwords')\n    parser_list.add_argument('--category', choices=[c.value for c in PasswordCategory],\n                           help='Filter by category')\n    \n    # Rotate command\n    parser_rotate = subparsers.add_parser('rotate', help='Rotate passwords')\n    parser_rotate.add_argument('--force', action='store_true', help='Force rotation of all passwords')\n    \n    # Export command\n    parser_export = subparsers.add_parser('export', help='Export passwords')\n    parser_export.add_argument('--output', required=True, help='Output file path')\n    \n    args = parser.parse_args()\n    \n    if not args.command:\n        parser.print_help()\n        return\n    \n    # Initialize vault\n    vault = YubiHSMPasswordVault()\n    \n    try:\n        # Connect to YubiHSM\n        vault.connect()\n        \n        # Execute command\n        if args.command == 'init':\n            if vault.initialize_vault():\n                print(\"Password vault initialized successfully\")\n            else:\n                print(\"Failed to initialize password vault\")\n                \n        elif args.command == 'store':\n            # Get or generate password\n            if args.generate:\n                password = vault.generate_password()\n                print(f\"Generated password: {password}\")\n            elif args.password:\n                password = args.password\n            else:\n                password = getpass.getpass(\"Enter password: \")\n            \n            # Create entry\n            entry = PasswordEntry(\n                name=args.name,\n                username=args.username,\n                password=password,\n                category=PasswordCategory(args.category),\n                description=args.description,\n                created_at=datetime.now(),\n                modified_at=datetime.now()\n            )\n            \n            # Store entry\n            entry_id = vault.store_password(entry)\n            print(f\"Stored password for '{args.name}' with ID: {entry_id}\")\n            \n        elif args.command == 'get':\n            entry = vault.retrieve_password(args.name)\n            if entry:\n                print(f\"Name: {entry.name}\")\n                print(f\"Username: {entry.username}\")\n                print(f\"Category: {entry.category.value}\")\n                print(f\"Description: {entry.description}\")\n                print(f\"Created: {entry.created_at}\")\n                print(f\"Modified: {entry.modified_at}\")\n                if args.show:\n                    print(f\"Password: {entry.password}\")\n                else:\n                    print(\"Password: [hidden - use --show to display]\")\n            else:\n                print(f\"Password entry '{args.name}' not found\")\n                \n        elif args.command == 'update':\n            if vault.update_password(args.name, args.password):\n                print(f\"Password updated for '{args.name}'\")\n            else:\n                print(f\"Failed to update password for '{args.name}'\")\n                \n        elif args.command == 'delete':\n            if vault.delete_password(args.name):\n                print(f\"Password deleted for '{args.name}'\")\n            else:\n                print(f\"Failed to delete password for '{args.name}'\")\n                \n        elif args.command == 'list':\n            category = PasswordCategory(args.category) if args.category else None\n            passwords = vault.list_passwords(category)\n            \n            if passwords:\n                print(f\"Found {len(passwords)} password(s):\")\n                for pwd in passwords:\n                    rotation = \" [NEEDS ROTATION]\" if pwd['needs_rotation'] else \"\"\n                    print(f\"  - {pwd['name']} ({pwd['username']}) - {pwd['category']}{rotation}\")\n            else:\n                print(\"No passwords found\")\n                \n        elif args.command == 'rotate':\n            rotated = vault.rotate_passwords(force=args.force)\n            if rotated:\n                print(f\"Rotated {len(rotated)} password(s):\")\n                for name in rotated:\n                    print(f\"  - {name}\")\n            else:\n                print(\"No passwords needed rotation\")\n                \n        elif args.command == 'export':\n            if vault.export_passwords(args.output):\n                print(f\"Passwords exported to {args.output}\")\n            else:\n                print(\"Failed to export passwords\")\n        \n    except Exception as e:\n        logger.error(f\"Command failed: {e}\")\n        sys.exit(1)\n        \n    finally:\n        vault.disconnect()\n\nif __name__ == '__main__':\n    main()"
+    },
+    "meraki_config": {
+      "security_topology": "# Security and Firewall Rules Topology - AcmetoCasino Network\n\n## Security Architecture Overview\n\n```mermaid\ngraph TD\n    subgraph \"External Threat Landscape\"\n        INTERNET[Internet<br/>Public Networks]\n        ATTACKERS[Potential Attackers<br/>Malware/Bots]\n        AWS[AWS Cloud Services<br/>Third-party VPN]\n    end\n    \n    subgraph \"Perimeter Security Layer\"\n        FIREWALL1[MX250 Firewall<br/>L3/L4 Firewall Rules]\n        GEOIP[Geo-IP Filtering<br/>Country Blocking]\n        DOS[DDoS Protection<br/>Rate Limiting]\n        VPNSEC[VPN Security<br/>Certificate Auth]\n    end\n    \n    subgraph \"Network Segmentation Layer\"\n        DMZ[DMZ Network<br/>Public Services]\n        CORP[Corporate Network<br/>Internal Users]\n        GUEST[Guest Network<br/>Isolated Access]\n        MGMT[Management Network<br/>Administrative Access]\n    end\n    \n    subgraph \"Application Security Layer\"\n        WAF[Web Application Firewall<br/>L7 Protection]\n        IPS[Intrusion Prevention<br/>Signature Detection]\n        MALWARE[Malware Protection<br/>Content Filtering]\n        FILTER[Content Filtering<br/>URL Categories]\n    end\n    \n    subgraph \"Internal Security Layer\"\n        ACL[Access Control Lists<br/>Inter-VLAN Routing]\n        STP[STP Security<br/>BPDU Guard]\n        PORT[Port Security<br/>MAC Limiting]\n        STORM[Storm Control<br/>Broadcast Suppression]\n    end\n    \n    subgraph \"Data Protection Layer\"\n        ENCRYPT[Encryption<br/>AES-256]\n        CERT[Certificates<br/>PKI Infrastructure]\n        BACKUP[Backup Systems<br/>Data Protection]\n        AUDIT[Audit Logging<br/>Compliance]\n    end\n    \n    INTERNET -->|Filtered| FIREWALL1\n    ATTACKERS -->|Blocked| GEOIP\n    AWS -->|Encrypted| VPNSEC\n    \n    FIREWALL1 --> DMZ\n    FIREWALL1 --> CORP\n    FIREWALL1 --> GUEST\n    FIREWALL1 --> MGMT\n    \n    DMZ --> WAF\n    CORP --> IPS\n    GUEST --> FILTER\n    MGMT --> MALWARE\n    \n    CORP --> ACL\n    DMZ --> STP\n    GUEST --> PORT\n    MGMT --> STORM\n    \n    VPNSEC --> ENCRYPT\n    FIREWALL1 --> CERT\n    MGMT --> BACKUP\n    IPS --> AUDIT\n    \n    style FIREWALL1 fill:#F44336\n    style WAF fill:#FF9800\n    style IPS fill:#4CAF50\n    style ENCRYPT fill:#2196F3\n```\n\n## Firewall Rule Configuration\n\n### **1. VPN Firewall Rules (Global Policy)**\n```json\n{\n    \"rules\": [\n        {\n            \"comment\": \"Default rule\",\n            \"policy\": \"allow\",\n            \"protocol\": \"Any\",\n            \"srcPort\": \"Any\",\n            \"srcCidr\": \"Any\",\n            \"destPort\": \"Any\",\n            \"destCidr\": \"Any\",\n            \"syslogEnabled\": true\n        }\n    ]\n}\n```\n\n### **2. Network-Specific Firewall Rules**\n\n#### **Indiana Network - L3/L4 Firewall Rules**\n```\nRule 1: Allow Management Access\n- Source: 192.168.128.0/24 (Management VLAN)\n- Destination: Any\n- Protocol: TCP/UDP\n- Ports: 22, 80, 443, 3389\n- Action: Allow\n\nRule 2: Allow VPN Traffic\n- Source: 10.0.0.0/16 (VPN Network)\n- Destination: Any VPN Network (10.x.0.0/16)\n- Protocol: Any\n- Action: Allow\n\nRule 3: Block External to Internal\n- Source: Any External\n- Destination: 192.168.0.0/16\n- Protocol: Any\n- Action: Deny\n\nRule 4: Allow Gaming Traffic\n- Source: Any\n- Destination: Gaming Servers\n- Protocol: UDP\n- Ports: 30000-30030\n- Action: Allow\n\nRule 5: Default Deny\n- Source: Any\n- Destination: Any\n- Protocol: Any\n- Action: Deny\n```\n\n## Security Zones and Traffic Flow\n\n```mermaid\ngraph LR\n    subgraph \"Untrusted Zone\"\n        INTERNET[Internet<br/>0.0.0.0/0]\n        EXTERNAL[External Users<br/>Public IPs]\n    end\n    \n    subgraph \"DMZ Zone\"\n        WEB[Web Servers<br/>10.x.203.0/24]\n        DNS[DNS Servers<br/>10.x.204.0/24]\n        VPN[VPN Concentrators<br/>Public IPs]\n    end\n    \n    subgraph \"Trusted Zone\"\n        CORP[Corporate Network<br/>10.x.0.0/16]\n        USER[User Workstations<br/>10.x.10-49.0/24]\n        SERVER[Internal Servers<br/>10.x.200-209.0/24]\n    end\n    \n    subgraph \"Restricted Zone\"\n        MGMT[Management<br/>192.168.128.0/24]\n        BACKUP[Backup Systems<br/>10.x.250.0/24]\n        MONITOR[Monitoring<br/>10.x.251.0/24]\n    end\n    \n    INTERNET -->|80, 443| WEB\n    INTERNET -->|53| DNS\n    EXTERNAL -->|IPSec| VPN\n    \n    WEB -->|443| SERVER\n    DNS -->|53| CORP\n    VPN -->|Any| CORP\n    \n    CORP --> USER\n    CORP --> SERVER\n    USER -->|Auth Required| MGMT\n    SERVER -->|Backup Traffic| BACKUP\n    \n    style INTERNET fill:#F44336\n    style DMZ fill:#FF9800\n    style CORP fill:#4CAF50\n    style MGMT fill:#9C27B0\n```\n\n## Intrusion Detection and Prevention\n\n### **1. Security Appliance Configuration**\n```mermaid\ngraph TD\n    subgraph \"Traffic Inspection Points\"\n        WAN[WAN Interface<br/>Internet Ingress]\n        LAN[LAN Interface<br/>Internal Network]\n        VPN[VPN Interface<br/>Encrypted Tunnels]\n    end\n    \n    subgraph \"Security Engines\"\n        IDS[Intrusion Detection<br/>Signature Based]\n        IPS[Intrusion Prevention<br/>Real-time Blocking]\n        ML[Machine Learning<br/>Anomaly Detection]\n        BEHAVIOR[Behavioral Analysis<br/>User Patterns]\n    end\n    \n    subgraph \"Threat Intelligence\"\n        FEED[Threat Feeds<br/>External Sources]\n        REPUTATION[IP Reputation<br/>Geo-location]\n        SIGNATURE[Signature Updates<br/>Daily Updates]\n        SANDBOX[File Sandbox<br/>Malware Analysis]\n    end\n    \n    subgraph \"Response Actions\"\n        ALERT[Alert Generation<br/>SIEM Integration]\n        BLOCK[Automatic Blocking<br/>IP Blacklisting]\n        QUARANTINE[Network Isolation<br/>VLAN Segregation]\n        LOG[Event Logging<br/>Forensic Data]\n    end\n    \n    WAN --> IDS\n    LAN --> IPS\n    VPN --> ML\n    \n    IDS --> FEED\n    IPS --> REPUTATION\n    ML --> BEHAVIOR\n    \n    FEED --> ALERT\n    REPUTATION --> BLOCK\n    BEHAVIOR --> QUARANTINE\n    SIGNATURE --> LOG\n    \n    style IDS fill:#FF5722\n    style IPS fill:#4CAF50\n    style ML fill:#2196F3\n    style BLOCK fill:#F44336\n```\n\n### **2. Security Event Processing**\n```\nEvent Detection Pipeline:\n1. Packet Capture \u2192 Deep Packet Inspection\n2. Signature Matching \u2192 Known Threat Database\n3. Anomaly Detection \u2192 Behavioral Baselines\n4. Threat Correlation \u2192 Multi-event Analysis\n5. Risk Scoring \u2192 Priority Classification\n6. Automated Response \u2192 Block/Alert/Log\n7. Human Review \u2192 Security Team Analysis\n```\n\n## Content Filtering and Application Control\n\n### **1. Content Filtering Categories**\n```\nBlocked Categories:\n- Adult/Mature Content\n- Gambling (except approved gaming sites)\n- Illegal Activities\n- Malware Distribution\n- Phishing Websites\n- Proxy/Anonymizer Services\n\nMonitored Categories:\n- Social Media (limited access)\n- Streaming Media (bandwidth controlled)\n- File Sharing (scanned for malware)\n- Webmail (DLP policies applied)\n\nAllowed Categories:\n- Business Applications\n- Gaming Industry Resources\n- Technical Documentation\n- Corporate Communications\n```\n\n### **2. Application Control Policies**\n```mermaid\ngraph LR\n    subgraph \"Application Categories\"\n        GAMING[Gaming Apps<br/>Steam, Epic Games]\n        BUSINESS[Business Apps<br/>Office 365, Slack]\n        SECURITY[Security Tools<br/>Antivirus, VPN]\n        NETWORK[Network Apps<br/>SSH, RDP, SNMP]\n        BLOCKED[Blocked Apps<br/>Torrent, P2P]\n    end\n    \n    subgraph \"Control Actions\"\n        ALLOW[Allow<br/>Full Access]\n        LIMIT[Limit<br/>Bandwidth/QoS]\n        MONITOR[Monitor<br/>Usage Logging]\n        BLOCK[Block<br/>Deny Access]\n    end\n    \n    GAMING -->|Gaming Industry| ALLOW\n    BUSINESS -->|Corporate Use| ALLOW\n    SECURITY -->|Security Team| ALLOW\n    NETWORK -->|IT Operations| ALLOW\n    BLOCKED -->|Security Risk| BLOCK\n    \n    LIMIT -->|High Bandwidth| GAMING\n    MONITOR -->|Audit Required| BUSINESS\n    \n    style ALLOW fill:#4CAF50\n    style LIMIT fill:#FF9800\n    style MONITOR fill:#2196F3\n    style BLOCK fill:#F44336\n```\n\n## Network Access Control (NAC)\n\n### **1. Device Authentication**\n```\n802.1X Authentication:\n- Certificate-based (EAP-TLS)\n- Username/password (EAP-PEAP)\n- Machine authentication (EAP-TLS)\n\nMAC Address Bypass:\n- Trusted devices whitelist\n- MAC address filtering\n- Device profiling and classification\n\nGuest Access:\n- Sponsored guest accounts\n- Time-limited access\n- Isolated network segment\n```\n\n### **2. Access Control Matrix**\n\n| User Role | Network Access | VPN Access | Admin Access | Internet Access |\n|-----------|---------------|------------|--------------|-----------------|\n| **Administrator** | Full (all VLANs) | Full | All systems | Unrestricted |\n| **Power User** | Corporate + Guest | Corporate | Limited systems | Business + Gaming |\n| **Standard User** | Corporate + Guest | Corporate | None | Business categories |\n| **Guest User** | Guest only | None | None | Limited web access |\n| **Service Account** | Specific VLANs | API only | System specific | Required services |\n\n## Encryption and Certificate Management\n\n### **1. VPN Encryption Standards**\n```\nSite-to-Site VPN:\n- Encryption: AES-256-GCM\n- Authentication: SHA-256\n- Key Exchange: ECDH P-256\n- Perfect Forward Secrecy: Enabled\n- Certificate: RSA 2048-bit\n\nThird-Party VPN (AWS):\n- Encryption: AES-256-CBC\n- Authentication: SHA-1\n- Key Exchange: DH Group 2\n- IKE Version: IKEv1\n- Pre-shared Key: Complex password\n```\n\n### **2. Certificate Infrastructure**\n```mermaid\ngraph TD\n    subgraph \"Certificate Hierarchy\"\n        ROOT[Root CA<br/>Offline Root]\n        INTERMEDIATE[Intermediate CA<br/>Online Issuing]\n        ENDENTITY[End Entity Certs<br/>Devices/Users]\n    end\n    \n    subgraph \"Certificate Types\"\n        VPN[VPN Certificates<br/>Site-to-Site]\n        DEVICE[Device Certificates<br/>MX Appliances]\n        USER[User Certificates<br/>802.1X Auth]\n        WEB[Web Certificates<br/>HTTPS Services]\n    end\n    \n    subgraph \"Management Process\"\n        ENROLL[Certificate Enrollment<br/>Auto-enrollment]\n        RENEW[Certificate Renewal<br/>Before Expiry]\n        REVOKE[Certificate Revocation<br/>CRL/OCSP]\n        AUDIT[Certificate Audit<br/>Compliance Report]\n    end\n    \n    ROOT --> INTERMEDIATE\n    INTERMEDIATE --> ENDENTITY\n    \n    ENDENTITY --> VPN\n    ENDENTITY --> DEVICE\n    ENDENTITY --> USER\n    ENDENTITY --> WEB\n    \n    VPN --> ENROLL\n    DEVICE --> RENEW\n    USER --> REVOKE\n    WEB --> AUDIT\n    \n    style ROOT fill:#F44336\n    style INTERMEDIATE fill:#FF9800\n    style ENDENTITY fill:#4CAF50\n    style REVOKE fill:#9C27B0\n```\n\n## Security Monitoring and Incident Response\n\n### **1. Security Information and Event Management (SIEM)**\n```\nData Sources:\n- Firewall logs (L3/L4 events)\n- VPN connection logs\n- Intrusion detection alerts\n- Content filtering events\n- Authentication logs\n- Network flow data (NetFlow)\n\nCorrelation Rules:\n- Multiple failed VPN attempts\n- Unusual traffic patterns\n- Geographic anomalies\n- Time-based access violations\n- Device behavior changes\n\nAlert Priorities:\n- Critical: Security breach detected\n- High: Policy violation\n- Medium: Suspicious activity\n- Low: Informational events\n```\n\n### **2. Incident Response Procedure**\n```mermaid\nsequenceDiagram\n    participant MON as Monitoring System\n    analyst SOC as Security Analyst\n    analyst IR as Incident Response Team\n    manager MGR as Security Manager\n    \n    MON->>SOC: Security Alert Generated\n    SOC->>SOC: Initial Triage (5 min)\n    alt False Positive\n        SOC->>MON: Close Alert\n    else Valid Incident\n        SOC->>IR: Escalate Incident\n        IR->>IR: Contain Threat\n        IR->>IR: Investigate Scope\n        IR->>MGR: Notify Management\n        IR->>IR: Eradicate Threat\n        IR->>IR: Recovery Actions\n        IR->>MGR: Incident Report\n        MGR->>IR: Lessons Learned\n    end\n    \n    Note over MON,MGR: Response Time SLA:<br/>Critical: 15 minutes<br/>High: 1 hour<br/>Medium: 4 hours\n```\n\nThis comprehensive security and firewall topology provides multi-layered protection for the AcmetoCasino network infrastructure, ensuring secure operations across all locations and cloud integrations.",
+      "subnets": [
+        "10.0.0.0/16",
+        "10.0.0.0/16",
+        "10.0.0.0/16",
+        "10.0.0.0/16",
+        "10.0.0.0/16",
+        "10.0.0.0/16",
+        "10.8.101.41/32",
+        "10.9.102.21/32",
+        "10.11.101.160/32",
+        "10.12.0.0/16",
+        "10.13.0.0/16",
+        "10.0.0.0/16",
+        "192.168.128.0/24",
+        "192.168.18.0/24",
+        "192.168.21.0/24",
+        "192.168.10.0/24",
+        "192.168.14.0/24",
+        "192.168.20.0/24",
+        "192.168.115.0/24",
+        "172.20.110.0/24",
+        "172.20.118.0/24",
+        "172.20.103.0/24",
+        "172.20.116.0/24",
+        "172.20.114.0/24",
+        "172.20.115.0/24",
+        "10.0.0.0/16",
+        "10.110.0.0/24",
+        "10.110.1.0/24",
+        "10.110.2.0/24",
+        "10.110.3.0/24",
+        "10.110.4.0/24",
+        "10.110.5.0/24",
+        "192.168.128.0/24",
+        "172.20.110.0/24",
+        "10.0.0.0/16",
+        "10.118.0.0/24",
+        "10.118.1.0/24",
+        "10.118.2.0/24",
+        "10.118.3.0/24",
+        "10.118.4.0/24",
+        "192.168.128.0/24",
+        "192.168.18.0/24",
+        "172.20.118.0/24",
+        "10.0.0.0/16",
+        "10.103.0.0/24",
+        "10.103.1.0/24",
+        "10.103.2.0/24",
+        "10.103.3.0/24",
+        "10.103.4.0/24",
+        "192.168.128.0/24",
+        "192.168.21.0/24",
+        "172.20.103.0/24",
+        "192.168.128.0/24",
+        "192.168.128.0/24",
+        "10.12.0.0/16",
+        "10.13.0.0/16",
+        "10.0.0.0/16",
+        "10.13.0.0/16",
+        "10.12.0.0/16",
+        "10.0.0.0/16",
+        "10.0.0.0/8",
+        "172.16.0.0/12",
+        "172.20.0.0/16",
+        "192.168.0.0/16",
+        "192.168.128.0/24",
+        "10.8.0.0/16",
+        "10.9.0.0/16",
+        "10.11.0.0/16",
+        "10.12.0.0/16",
+        "10.13.0.0/16",
+        "10.0.0.0/16",
+        "10.0.0.0/16",
+        "10.0.0.0/16",
+        "10.0.0.0/16",
+        "10.0.0.0/16",
+        "10.0.0.0/16",
+        "10.0.0.0/16",
+        "10.0.0.0/16",
+        "10.0.0.0/16"
+      ],
+      "vpn_topology": "# AcmetoCasino VPN Communication Process & Network Topology\n\n## VPN Communication Process (English Explanation)\n\n### **1. Hub-and-Spoke Architecture**\nThe AcmetoCasino network employs a **hub-and-spoke VPN topology** where:\n\n- **Primary Hubs**: Indiana, Iowa, and Michigan networks serve as the main VPN concentrators\n- **Cloud Hubs**: AWS (N_MERAKI_NETWORK_ID) and IE VMx (N_MERAKI_NETWORK_ID) provide cloud-based VPN termination\n- **Spoke Networks**: All other state networks connect as spokes to these central hubs\n- **Traffic Flow**: All inter-site communication routes through the hubs, ensuring centralized security and management\n\n### **2. VPN Communication Flow**\n```\nInternet Traffic Path:\nExternal User \u2192 Public IP \u2192 MX250 Firewall \u2192 Internal Network (192.168.x.x/10.x.x.x)\n\nVPN Traffic Path:\nSpoke Network \u2192 Encrypted Tunnel \u2192 VPN Hub \u2192 Encrypted Tunnel \u2192 Destination Spoke Network\n\nCloud Integration Path:\nOn-premises Network \u2192 IPSec VPN \u2192 AWS Cloud Services (10.12.x.x, 10.13.x.x ranges)\n```\n\n### **3. Security Implementation**\n- **Encryption**: AES-256 with certificate-based authentication\n- **Firewall Rules**: Default allow policy with syslog monitoring\n- **Third-party VPN**: Additional IPSec tunnels to AWS services using IKEv1\n- **Network Segmentation**: Controlled subnet exposure through VPN (only 10.x.x.x/16 ranges participate in VPN)\n\n## Network Topology Diagram\n\n```mermaid\ngraph TB\n    subgraph \"Cloud Infrastructure\"\n        AWS[N_MERAKI_NETWORK_ID<br/>AWS Cloud<br/>10.11.101.160]\n        IEVMX[N_MERAKI_NETWORK_ID<br/>IE VMx<br/>10.8.101.41]\n        STAGE[N_MERAKI_NETWORK_ID<br/>Staging Cloud<br/>10.9.102.21]\n    end\n    \n    subgraph \"Primary VPN Hubs\"\n        IND[L_MERAKI_NETWORK_ID<br/>Indiana Hub<br/>10.0.0.0/16]\n        IOWA[L_MERAKI_NETWORK_ID<br/>Iowa Hub<br/>10.0.0.0/16]\n        MICH[L_MERAKI_NETWORK_ID<br/>Michigan Hub<br/>10.0.0.0/16]\n    end\n    \n    subgraph \"East Coast Spokes\"\n        NJ[L_MERAKI_NETWORK_ID<br/>New Jersey]\n        PA[L_MERAKI_NETWORK_ID<br/>Pennsylvania]\n        VA[L_MERAKI_NETWORK_ID<br/>Virginia]\n        DEL[L_MERAKI_NETWORK_ID<br/>Delaware]\n    end\n    \n    subgraph \"Midwest Spokes\"\n        IL[L_MERAKI_NETWORK_ID<br/>Illinois]\n        CO[L_MERAKI_NETWORK_ID<br/>Colorado]\n    end\n    \n    subgraph \"South Spokes\"\n        TN[L_MERAKI_NETWORK_ID<br/>Tennessee<br/>10.0.0.0/16]\n        AZ[L_MERAKI_NETWORK_ID<br/>Arizona<br/>10.0.0.0/16]\n        LA[L_MERAKI_NETWORK_ID<br/>Louisiana]\n        WV[L_MERAKI_NETWORK_ID<br/>West Virginia]\n    end\n    \n    subgraph \"Third-Party VPN Peers\"\n        AWS1[203.0.113.2<br/>10.12.0.0/16]\n        AWS2[203.0.113.5<br/>10.13.0.0/16]\n        AWS3[203.0.113.3<br/>10.0.0.0/16]\n        AWS4[203.0.113.4<br/>10.13.0.0/16]\n        AWS5[203.0.113.1<br/>10.12.0.0/16]\n    end\n    \n    %% VPN Connections - Primary Hubs to Cloud\n    IND <---> AWS\n    IND <---> IEVMX\n    IOWA <---> AWS\n    IOWA <---> IEVMX\n    MICH <---> AWS\n    MICH <---> IEVMX\n    \n    %% VPN Connections - Spokes to Hubs\n    NJ --> IND\n    PA --> IND\n    VA --> IND\n    DEL --> IND\n    \n    IL --> IOWA\n    CO --> IOWA\n    \n    TN --> MICH\n    AZ --> MICH\n    LA --> MICH\n    WV --> MICH\n    \n    %% Third-party VPN Connections\n    IND <---> AWS1\n    IND <---> AWS2\n    AWS3 <---> NJ\n    AWS4 <---> PA\n    AWS5 <---> IND\n    \n    style AWS fill:#FF9900\n    style IEVMX fill:#FF6B35\n    style STAGE fill:#1E88E5\n    style IND fill:#4CAF50\n    style IOWA fill:#4CAF50\n    style MICH fill:#4CAF50\n```\n\n## Key Communication Patterns\n\n### **1. Inter-Site Communication**\n- All spoke-to-spoke traffic routes through VPN hubs\n- Encrypted tunnels use AES-256 encryption\n- Certificate-based authentication ensures secure connections\n\n### **2. Internet Access**\n- Each location has independent internet connectivity\n- Public IP ranges: 203.0.113.x, 198.51.100.x, 192.0.2.x, 203.0.113.x, 198.51.100.x\n- Local internet breakout for non-VPN traffic\n\n### **3. Cloud Integration**\n- IPSec VPN tunnels to AWS infrastructure\n- Multiple AWS regions and services connected\n- Cloud networks: 10.8.x.x, 10.9.x.x, 10.11.x.x ranges\n\n### **4. Network Segmentation**\n- VPN participation controlled per subnet\n- Only specific 10.x.x.x/16 ranges use VPN\n- Management networks (192.168.128.0/24) excluded from VPN\n\n## Technical Specifications\n\n- **VPN Protocol**: Meraki Auto VPN with IPSec\n- **Encryption**: AES-256-GCM\n- **Authentication**: Certificate-based (RSA 2048-bit)\n- **Key Exchange**: IKEv2 for site-to-site, IKEv1 for third-party\n- **Failover**: Multiple hub configuration with automatic failover\n- **Monitoring**: Syslog enabled for all VPN firewall rules",
+      "cloud_integration": "# Cloud Integration Topology - AWS and Third-Party VPN Connections\n\n## Cloud Infrastructure Overview\n\n```mermaid\ngraph TB\n    subgraph \"AcmetoCasino On-Premises Networks\"\n        subgraph \"Primary Hubs\"\n            IND[Indiana Hub<br/>L_MERAKI_NETWORK_ID<br/>10.0.0.0/16]\n            IOWA[Iowa Hub<br/>L_MERAKI_NETWORK_ID<br/>10.0.0.0/16]\n            MICH[Michigan Hub<br/>L_MERAKI_NETWORK_ID<br/>10.0.0.0/16]\n        end\n        \n        subgraph \"Spoke Networks\"\n            NJ[New Jersey<br/>L_MERAKI_NETWORK_ID]\n            PA[Pennsylvania<br/>L_MERAKI_NETWORK_ID]\n            TN[Tennessee<br/>L_MERAKI_NETWORK_ID<br/>10.0.0.0/16]\n            AZ[Arizona<br/>L_MERAKI_NETWORK_ID<br/>10.0.0.0/16]\n        end\n    end\n    \n    subgraph \"Meraki Cloud Infrastructure\"\n        MC[Meraki Cloud<br/>Dashboard & Control]\n        MV[Meraki vMX100<br/>Virtual Appliances]\n    end\n    \n    subgraph \"AWS Cloud Infrastructure\"\n        subgraph \"US-East-1 Region\"\n            VPC1[AWS VPC<br/>10.12.0.0/16<br/>203.0.113.2]\n            VPC2[AWS VPC<br/>10.13.0.0/16<br/>203.0.113.5]\n            VPC3[AWS VPC<br/>10.0.0.0/16<br/>203.0.113.3]\n        end\n        \n        subgraph \"EU-West-1 Region\"\n            VPC4[AWS VPC<br/>10.13.0.0/16<br/>203.0.113.4]\n            VPC5[AWS VPC<br/>10.12.0.0/16<br/>203.0.113.1]\n        end\n        \n        subgraph \"AWS Services\"\n            EC2[EC2 Instances]\n            RDS[RDS Databases]\n            S3[S3 Storage]\n            LAMBDA[Lambda Functions]\n        end\n    end\n    \n    subgraph \"IE VMx Cloud\"\n        IEVMX[IE VMx<br/>N_MERAKI_NETWORK_ID<br/>10.8.101.41]\n    end\n    \n    subgraph \"Staging Cloud Cloud\"\n        STAGE[Staging Cloud<br/>N_MERAKI_NETWORK_ID<br/>10.9.102.21]\n    end\n    \n    %% Meraki Cloud Management\n    MC -.->|Management| IND\n    MC -.->|Management| IOWA\n    MC -.->|Management| MICH\n    MC -.->|Management| MV\n    \n    %% vMX Connections\n    MV -->|Virtual VPN| IEVMX\n    MV -->|Virtual VPN| STAGE\n    \n    %% AWS VPN Connections\n    IND <-->|IPSec VPN<br/>IKEv1| VPC1\n    IND <-->|IPSec VPN<br/>IKEv1| VPC2\n    NJ <-->|IPSec VPN<br/>IKEv1| VPC3\n    PA <-->|IPSec VPN<br/>IKEv1| VPC4\n    IND <-->|IPSec VPN<br/>IKEv1| VPC5\n    \n    %% AWS Internal Routing\n    VPC1 --> EC2\n    VPC2 --> RDS\n    VPC3 --> S3\n    VPC4 --> LAMBDA\n    VPC5 --> EC2\n    \n    %% IE VMx Connections\n    IND <-->|Auto VPN| IEVMX\n    IOWA <-->|Auto VPN| IEVMX\n    MICH <-->|Auto VPN| IEVMX\n    \n    %% Staging Cloud Connections\n    IND <-->|Auto VPN| STAGE\n    \n    style VPC1 fill:#FF9900\n    style VPC2 fill:#FF9900\n    style VPC3 fill:#FF9900\n    style VPC4 fill:#FF9900\n    style VPC5 fill:#FF9900\n    style IEVMX fill:#FF6B35\n    style STAGE fill:#1E88E5\n    style MC fill:#9C27B0\n```\n\n## Third-Party VPN Configuration Details\n\n### **AWS VPN Connections**\n\n| Connection | AWS Public IP | AWS Private Subnet | Local Network | IKE Version | Encryption |\n|------------|---------------|-------------------|---------------|-------------|------------|\n| **VPN_CONNECTION_ID** | 203.0.113.2 | 10.12.0.0/16 | Indiana Hub | IKEv1 | AES-256 |\n| **VPN_CONNECTION_ID** | 203.0.113.5 | 10.13.0.0/16 | Indiana Hub | IKEv1 | AES-256 |\n| **VPN_CONNECTION_ID** | 203.0.113.3 | 10.0.0.0/16 | New Jersey | IKEv1 | AES-256 |\n| **VPN_CONNECTION_ID** | 203.0.113.4 | 10.13.0.0/16 | Pennsylvania | IKEv1 | AES-256 |\n| **VPN_CONNECTION_ID** | 203.0.113.1 | 10.12.0.0/16 | Indiana Hub | IKEv1 | AES-256 |\n\n### **VPN Traffic Flow Patterns**\n\n```mermaid\ngraph LR\n    subgraph \"On-Premises to Cloud\"\n        OP[On-Premises<br/>10.0.0.0/16]\n        VPN[IPSec Tunnel<br/>AES-256]\n        AWS[AWS VPC<br/>10.12.0.0/16]\n    end\n    \n    subgraph \"Cloud to Cloud\"\n        AWS1[AWS VPC<br/>10.12.0.0/16]\n        AWSP[AWS Peering]\n        AWS2[AWS VPC<br/>10.13.0.0/16]\n    end\n    \n    subgraph \"Cloud to Internet\"\n        AWS3[AWS VPC<br/>10.0.0.0/16]\n        IGW[Internet Gateway]\n        WEB[External Services]\n    end\n    \n    OP -->|Encrypted Traffic| VPN\n    VPN -->|Decrypted Traffic| AWS\n    \n    AWS1 -->|VPC Peering| AWSP\n    AWSP -->|Direct Routing| AWS2\n    \n    AWS3 -->|NAT Gateway| IGW\n    IGW -->|Public Internet| WEB\n    \n    style VPN fill:#FF6B6B\n    style AWSP fill:#4ECDC4\n    style IGW fill:#45B7D1\n```\n\n## Cloud Integration Architecture\n\n### **1. Multi-Cloud Strategy**\n```\nPrimary Cloud: AWS (US-East-1, EU-West-1)\n- 5 VPC connections across 2 regions\n- Multiple availability zones\n- Auto-scaling capabilities\n\nSecondary Cloud: IE VMx (Virtual MX)\n- Meraki cloud-native integration\n- Virtual appliance deployment\n- Seamless VPN connectivity\n\nDevelopment Cloud: Staging Cloud\n- Staging environment\n- Testing and development\n- Isolated from production\n```\n\n### **2. Hybrid Cloud Connectivity**\n```mermaid\ngraph TD\n    subgraph \"Data Center Extension\"\n        ONPREM[On-Premises<br/>Data Center]\n        VXLAN[VXLAN Tunnel]\n        CLOUD[Cloud VPC<br/>Extension]\n    end\n    \n    subgraph \"Application Migration\"\n        LEGACY[Legacy Application]\n        MIGRATE[Migration Tools]\n        CLOUDAPP[Cloud-Native App]\n    end\n    \n    subgraph \"Disaster Recovery\"\n        PRIMARY[Primary Site]\n        REPLICATE[Data Replication]\n        DR[DR Site in Cloud]\n    end\n    \n    subgraph \"Load Balancing\"\n        TRAFFIC[User Traffic]\n        GSLB[Global Load Balancer]\n        MULTI[Multi-Cloud Distribution]\n    end\n    \n    ONPREM -->|Layer 2 Extension| VXLAN\n    VXLAN -->|Same Subnet| CLOUD\n    \n    LEGACY -->|Lift & Shift| MIGRATE\n    MIGRATE -->|Modernize| CLOUDAPP\n    \n    PRIMARY -->|Real-time Sync| REPLICATE\n    REPLICATE -->|Failover Ready| DR\n    \n    TRAFFIC -->|Geographic Routing| GSLB\n    GSLB -->|Performance Based| MULTI\n    \n    style VXLAN fill:#9C27B0\n    style MIGRATE fill:#FF9800\n    style REPLICATE fill:#4CAF50\n    style GSLB fill:#2196F3\n```\n\n## Security Implementation\n\n### **1. Cloud Security Layers**\n```\nLayer 1: Network Security\n- VPC isolation and segmentation\n- Security groups and NACLs\n- VPN encryption (AES-256)\n\nLayer 2: Identity Management\n- IAM roles and policies\n- Multi-factor authentication\n- Certificate-based VPN auth\n\nLayer 3: Data Protection\n- Encryption at rest (AWS KMS)\n- Encryption in transit (TLS 1.3)\n- Key rotation policies\n\nLayer 4: Monitoring\n- CloudTrail logging\n- VPC Flow logs\n- Meraki dashboard monitoring\n```\n\n### **2. Compliance and Governance**\n```mermaid\ngraph TB\n    subgraph \"Compliance Framework\"\n        PCI[PCI DSS<br/>Gaming Industry]\n        SOX[SOX Compliance<br/>Financial]\n        GDPR[GDPR<br/>Data Protection]\n        SOC[SOC 2<br/>Security Controls]\n    end\n    \n    subgraph \"Implementation\"\n        ENCRYPT[Encryption Standards]\n        ACCESS[Access Controls]\n        AUDIT[Audit Logging]\n        BACKUP[Backup & Recovery]\n    end\n    \n    subgraph \"Monitoring\"\n        SCAN[Vulnerability Scanning]\n        ALERT[Security Alerts]\n        REPORT[Compliance Reports]\n        REVIEW[Regular Reviews]\n    end\n    \n    PCI -->|Requires| ENCRYPT\n    SOX -->|Requires| ACCESS\n    GDPR -->|Requires| AUDIT\n    SOC -->|Requires| BACKUP\n    \n    ENCRYPT -->|Validated by| SCAN\n    ACCESS -->|Monitored by| ALERT\n    AUDIT -->|Reported via| REPORT\n    BACKUP -->|Reviewed in| REVIEW\n    \n    style PCI fill:#F44336\n    style SOX fill:#FF9800\n    style GDPR fill:#4CAF50\n    style SOC fill:#2196F3\n```\n\n## Performance Optimization\n\n### **1. Cloud Performance Metrics**\n```\nLatency Targets:\n- On-premises to AWS: <50ms\n- AWS region to region: <100ms\n- VPN tunnel overhead: <10ms\n\nBandwidth Allocation:\n- VPN hub to cloud: 1Gbps\n- Individual spoke to cloud: 100Mbps\n- Burst capacity: 2x baseline\n\nAvailability Targets:\n- VPN uptime: 99.9%\n- Cloud service uptime: 99.95%\n- Failover time: <30 seconds\n```\n\n### **2. Traffic Engineering**\n```mermaid\ngraph LR\n    subgraph \"Intelligent Routing\"\n        PERF[Performance Monitoring]\n        ANALYZE[Traffic Analysis]\n        OPTIMIZE[Route Optimization]\n    end\n    \n    subgraph \"Dynamic Adjustment\"\n        LOAD[Load Balancing]\n        QOS[QoS Policies]\n        CACHE[Content Caching]\n    end\n    \n    subgraph \"Cost Optimization\"\n        USAGE[Usage Monitoring]\n        RIGHTSIZE[Right-sizing]\n        SCHEDULE[Scheduled Scaling]\n    end\n    \n    PERF -->|Real-time Metrics| ANALYZE\n    ANALYZE -->|Optimization Rules| OPTIMIZE\n    OPTIMIZE -->|Dynamic Routing| LOAD\n    \n    LOAD -->|Traffic Distribution| QOS\n    QOS -->|Edge Caching| CACHE\n    \n    CACHE -->|Usage Patterns| USAGE\n    USAGE -->|Resource Optimization| RIGHTSIZE\n    RIGHTSIZE -->|Auto-scaling| SCHEDULE\n    \n    style PERF fill:#4CAF50\n    style ANALYZE fill:#FF9800\n    style OPTIMIZE fill:#2196F3\n```\n\n## Disaster Recovery and Business Continuity\n\n### **1. Multi-Cloud DR Strategy**\n```\nPrimary Site: On-premises data center\n- Active-active configuration\n- Real-time data replication\n- Automated failover\n\nSecondary Site: AWS Cloud\n- Warm standby environment\n- Database replication\n- Application synchronization\n\nTertiary Site: IE VMx Cloud\n- Cold standby for critical services\n- Minimal resource allocation\n- Manual activation process\n```\n\n### **2. Recovery Procedures**\n```mermaid\nsequenceDiagram\n    participant MON as Monitoring System\n    participant PRIMARY as Primary Site\n    participant SECONDARY as AWS DR Site\n    participant TERTIARY as IE VMx Site\n    \n    MON->>PRIMARY: Health Check\n    alt Primary Site Failure\n        MON->>MON: Detect Failure\n        MON->>SECONDARY: Initiate Failover\n        SECONDARY->>SECONDARY: Activate Resources\n        SECONDARY->>MON: DR Site Active\n        MON->>TERTIARY: Prepare Tertiary\n    else Primary Site Recovery\n        MON->>PRIMARY: Verify Health\n        MON->>SECONDARY: Initiate Failback\n        SECONDARY->>PRIMARY: Sync Data\n        PRIMARY->>MON: Primary Site Active\n    end\n    \n    Note over MON,TERTIARY: Recovery Time Objective: 4 hours<br/>Recovery Point Objective: 1 hour\n```\n\nThis comprehensive cloud integration topology shows how AcmetoCasino leverages multiple cloud providers while maintaining secure, high-performance connectivity through their Meraki VPN infrastructure."
+    },
+    "infrastructure_config": {
+      "vars_shared": {
+        "AMIEncryptionKMSKeyARN": "arn:aws:kms:eu-west-2:AWS_ACCOUNT_ID:alias/ami-encryption",
+        "AWSAccountName": "shared",
+        "IncludeAccountBaselineApp": true,
+        "IncludeAlarmSNSTopic": false,
+        "IncludeBastionAMIBuildScript": false,
+        "IncludeBastionServer": false,
+        "IncludeECSClusterInstanceAMIBuildScript": false,
+        "IncludeEKSClusterInstanceAMIBuildScript": true,
+        "IncludeOpenVPNAMIBuildScript": true,
+        "IncludeOpenVPNServer": false,
+        "IncludeVPCApp": false,
+        "infrastructure-live-account-baseline-app.AMIEncryptionKMSKeyARN": "arn:aws:kms:eu-west-2:AWS_ACCOUNT_ID:alias/ami-encryption"
+      },
+      "vars_boilerplate": {
+        "dependencies": [
+          {
+            "name": "infrastructure-live-repo-root",
+            "output-folder": ".",
+            "template-url": "git@github.com:gruntwork-io/terraform-aws-architecture-catalog.git//blueprints/components/infrastructure-live-repo-root?ref=fix-branch",
+            "var_files": [
+              "{{ outputFolder }}/vars/autogen/common_vars.yml"
+            ]
+          },
+          {
+            "name": "infrastructure-live-logs",
+            "output-folder": ".",
+            "template-url": "git@github.com:gruntwork-io/terraform-aws-architecture-catalog.git//blueprints/components/infrastructure-live-account?ref=fix-branch",
+            "var_files": [
+              "{{ outputFolder }}/vars/autogen/common_vars.yml",
+              "{{ outputFolder }}/vars/autogen/logs_vars.yml"
+            ]
+          },
+          {
+            "name": "infrastructure-live-security",
+            "output-folder": ".",
+            "template-url": "git@github.com:gruntwork-io/terraform-aws-architecture-catalog.git//blueprints/components/infrastructure-live-account?ref=fix-branch",
+            "var_files": [
+              "{{ outputFolder }}/vars/autogen/common_vars.yml",
+              "{{ outputFolder }}/vars/autogen/security_vars.yml"
+            ]
+          },
+          {
+            "name": "infrastructure-live-shared",
+            "output-folder": ".",
+            "template-url": "git@github.com:gruntwork-io/terraform-aws-architecture-catalog.git//blueprints/components/infrastructure-live-account?ref=fix-branch",
+            "var_files": [
+              "{{ outputFolder }}/vars/autogen/common_vars.yml",
+              "{{ outputFolder }}/vars/autogen/shared_vars.yml"
+            ]
+          },
+          {
+            "name": "infrastructure-live-dev",
+            "output-folder": ".",
+            "template-url": "git@github.com:gruntwork-io/terraform-aws-architecture-catalog.git//blueprints/components/infrastructure-live-account?ref=fix-branch",
+            "var_files": [
+              "{{ outputFolder }}/vars/autogen/common_vars.yml",
+              "{{ outputFolder }}/vars/autogen/dev_vars.yml"
+            ]
+          },
+          {
+            "name": "infrastructure-live-stage",
+            "output-folder": ".",
+            "template-url": "git@github.com:gruntwork-io/terraform-aws-architecture-catalog.git//blueprints/components/infrastructure-live-account?ref=fix-branch",
+            "var_files": [
+              "{{ outputFolder }}/vars/autogen/common_vars.yml",
+              "{{ outputFolder }}/vars/autogen/stage_vars.yml"
+            ]
+          },
+          {
+            "name": "infrastructure-live-prod",
+            "output-folder": ".",
+            "template-url": "git@github.com:gruntwork-io/terraform-aws-architecture-catalog.git//blueprints/components/infrastructure-live-account?ref=fix-branch",
+            "var_files": [
+              "{{ outputFolder }}/vars/autogen/common_vars.yml",
+              "{{ outputFolder }}/vars/autogen/prod_vars.yml"
+            ]
+          },
+          {
+            "name": "ecs-deploy-runner-logs",
+            "output-folder": ".",
+            "template-url": "git@github.com:gruntwork-io/terraform-aws-architecture-catalog.git//blueprints/components/ecs-deploy-runner?ref=fix-branch",
+            "var_files": [
+              "{{ outputFolder }}/vars/autogen/common_vars.yml",
+              "{{ outputFolder }}/vars/autogen/logs_vars.yml"
+            ]
+          },
+          {
+            "name": "ecs-deploy-runner-security",
+            "output-folder": ".",
+            "template-url": "git@github.com:gruntwork-io/terraform-aws-architecture-catalog.git//blueprints/components/ecs-deploy-runner?ref=fix-branch",
+            "var_files": [
+              "{{ outputFolder }}/vars/autogen/common_vars.yml",
+              "{{ outputFolder }}/vars/autogen/security_vars.yml"
+            ]
+          },
+          {
+            "name": "ecs-deploy-runner-shared",
+            "output-folder": ".",
+            "template-url": "git@github.com:gruntwork-io/terraform-aws-architecture-catalog.git//blueprints/components/ecs-deploy-runner?ref=fix-branch",
+            "var_files": [
+              "{{ outputFolder }}/vars/autogen/common_vars.yml",
+              "{{ outputFolder }}/vars/autogen/shared_vars.yml"
+            ]
+          },
+          {
+            "name": "ecs-deploy-runner-dev",
+            "output-folder": ".",
+            "template-url": "git@github.com:gruntwork-io/terraform-aws-architecture-catalog.git//blueprints/components/ecs-deploy-runner?ref=fix-branch",
+            "var_files": [
+              "{{ outputFolder }}/vars/autogen/common_vars.yml",
+              "{{ outputFolder }}/vars/autogen/dev_vars.yml"
+            ]
+          },
+          {
+            "name": "ecs-deploy-runner-stage",
+            "output-folder": ".",
+            "template-url": "git@github.com:gruntwork-io/terraform-aws-architecture-catalog.git//blueprints/components/ecs-deploy-runner?ref=fix-branch",
+            "var_files": [
+              "{{ outputFolder }}/vars/autogen/common_vars.yml",
+              "{{ outputFolder }}/vars/autogen/stage_vars.yml"
+            ]
+          },
+          {
+            "name": "ecs-deploy-runner-prod",
+            "output-folder": ".",
+            "template-url": "git@github.com:gruntwork-io/terraform-aws-architecture-catalog.git//blueprints/components/ecs-deploy-runner?ref=fix-branch",
+            "var_files": [
+              "{{ outputFolder }}/vars/autogen/common_vars.yml",
+              "{{ outputFolder }}/vars/autogen/prod_vars.yml"
+            ]
+          },
+          {
+            "name": "openvpn-server-dev",
+            "output-folder": ".",
+            "template-url": "git@github.com:gruntwork-io/terraform-aws-architecture-catalog.git//blueprints/components/openvpn-server?ref=fix-branch",
+            "var_files": [
+              "{{ outputFolder }}/vars/autogen/common_vars.yml",
+              "{{ outputFolder }}/vars/autogen/dev_vars.yml"
+            ]
+          },
+          {
+            "name": "openvpn-server-stage",
+            "output-folder": ".",
+            "template-url": "git@github.com:gruntwork-io/terraform-aws-architecture-catalog.git//blueprints/components/openvpn-server?ref=fix-branch",
+            "var_files": [
+              "{{ outputFolder }}/vars/autogen/common_vars.yml",
+              "{{ outputFolder }}/vars/autogen/stage_vars.yml"
+            ]
+          },
+          {
+            "name": "openvpn-server-prod",
+            "output-folder": ".",
+            "template-url": "git@github.com:gruntwork-io/terraform-aws-architecture-catalog.git//blueprints/components/openvpn-server?ref=fix-branch",
+            "var_files": [
+              "{{ outputFolder }}/vars/autogen/common_vars.yml",
+              "{{ outputFolder }}/vars/autogen/prod_vars.yml"
+            ]
+          },
+          {
+            "name": "openvpn-server-shared",
+            "output-folder": ".",
+            "template-url": "git@github.com:gruntwork-io/terraform-aws-architecture-catalog.git//blueprints/components/openvpn-server?ref=fix-branch",
+            "var_files": [
+              "{{ outputFolder }}/vars/autogen/common_vars.yml",
+              "{{ outputFolder }}/vars/autogen/shared_vars.yml"
+            ]
+          },
+          {
+            "name": "aurora-dev",
+            "output-folder": ".",
+            "template-url": "git@github.com:gruntwork-io/terraform-aws-architecture-catalog.git//blueprints/components/aurora?ref=fix-branch",
+            "var_files": [
+              "{{ outputFolder }}/vars/autogen/common_vars.yml",
+              "{{ outputFolder }}/vars/autogen/dev_vars.yml"
+            ]
+          },
+          {
+            "name": "aurora-stage",
+            "output-folder": ".",
+            "template-url": "git@github.com:gruntwork-io/terraform-aws-architecture-catalog.git//blueprints/components/aurora?ref=fix-branch",
+            "var_files": [
+              "{{ outputFolder }}/vars/autogen/common_vars.yml",
+              "{{ outputFolder }}/vars/autogen/stage_vars.yml"
+            ]
+          },
+          {
+            "name": "aurora-prod",
+            "output-folder": ".",
+            "template-url": "git@github.com:gruntwork-io/terraform-aws-architecture-catalog.git//blueprints/components/aurora?ref=fix-branch",
+            "var_files": [
+              "{{ outputFolder }}/vars/autogen/common_vars.yml",
+              "{{ outputFolder }}/vars/autogen/prod_vars.yml"
+            ]
+          },
+          {
+            "name": "redis-dev",
+            "output-folder": ".",
+            "template-url": "git@github.com:gruntwork-io/terraform-aws-architecture-catalog.git//blueprints/components/redis?ref=fix-branch",
+            "var_files": [
+              "{{ outputFolder }}/vars/autogen/common_vars.yml",
+              "{{ outputFolder }}/vars/autogen/dev_vars.yml"
+            ]
+          },
+          {
+            "name": "redis-stage",
+            "output-folder": ".",
+            "template-url": "git@github.com:gruntwork-io/terraform-aws-architecture-catalog.git//blueprints/components/redis?ref=fix-branch",
+            "var_files": [
+              "{{ outputFolder }}/vars/autogen/common_vars.yml",
+              "{{ outputFolder }}/vars/autogen/stage_vars.yml"
+            ]
+          },
+          {
+            "name": "redis-prod",
+            "output-folder": ".",
+            "template-url": "git@github.com:gruntwork-io/terraform-aws-architecture-catalog.git//blueprints/components/redis?ref=fix-branch",
+            "var_files": [
+              "{{ outputFolder }}/vars/autogen/common_vars.yml",
+              "{{ outputFolder }}/vars/autogen/prod_vars.yml"
+            ]
+          },
+          {
+            "name": "eks-cluster-dev",
+            "output-folder": ".",
+            "template-url": "git@github.com:gruntwork-io/terraform-aws-architecture-catalog.git//blueprints/components/eks-cluster?ref=fix-branch",
+            "var_files": [
+              "{{ outputFolder }}/vars/autogen/common_vars.yml",
+              "{{ outputFolder }}/vars/autogen/dev_vars.yml"
+            ]
+          },
+          {
+            "name": "eks-cluster-stage",
+            "output-folder": ".",
+            "template-url": "git@github.com:gruntwork-io/terraform-aws-architecture-catalog.git//blueprints/components/eks-cluster?ref=fix-branch",
+            "var_files": [
+              "{{ outputFolder }}/vars/autogen/common_vars.yml",
+              "{{ outputFolder }}/vars/autogen/stage_vars.yml"
+            ]
+          },
+          {
+            "name": "eks-cluster-prod",
+            "output-folder": ".",
+            "template-url": "git@github.com:gruntwork-io/terraform-aws-architecture-catalog.git//blueprints/components/eks-cluster?ref=fix-branch",
+            "var_files": [
+              "{{ outputFolder }}/vars/autogen/common_vars.yml",
+              "{{ outputFolder }}/vars/autogen/prod_vars.yml"
+            ]
+          }
+        ],
+        "skip_files": [
+          {
+            "path": "*.yml"
+          }
+        ]
+      },
+      "vars_common": {
+        "AMIUserAccounts": [
+          "stage",
+          "prod",
+          "dev"
+        ],
+        "AWSAccounts": {
+          "dev": "AWS_ACCOUNT_ID",
+          "logs": "AWS_ACCOUNT_ID",
+          "prod": "AWS_ACCOUNT_ID",
+          "security": "AWS_ACCOUNT_ID",
+          "shared": "AWS_ACCOUNT_ID",
+          "stage": "AWS_ACCOUNT_ID"
+        },
+        "AWSDefaultRegion": "eu-west-2",
+        "AWSRegion": "eu-west-2",
+        "AdditionalDockerImageRepos": [
+          "https://github.com/gruntwork-io/terraform-aws-ci.git"
+        ],
+        "AllowedApplyGitRefs": [
+          "main"
+        ],
+        "AppVPCCIDRBlock": "",
+        "AppVPCCIDRMap": {
+          "dev": "10.2.0.0/16",
+          "prod": "10.6.0.0/16",
+          "shared": "10.0.0.0/16",
+          "stage": "10.4.0.0/16"
+        },
+        "AuroraEngine": "aurora-postgresql",
+        "AutoDeployRoleNames": [
+          "allow-auto-deploy-from-other-accounts"
+        ],
+        "CACertFields": {
+          "ca_country": "GB",
+          "ca_email": "sre@acmetocasino.com",
+          "ca_locality": "London",
+          "ca_org": "Infra",
+          "ca_org_unit": "SRE",
+          "ca_state": "London"
+        },
+        "CIServer": "circleci",
+        "CacheEngine": "redis",
+        "CloudTrailKMSKeyARN": "arn:aws:kms:eu-west-2:AWS_ACCOUNT_ID:alias/cloudtrail-acmetocasino",
+        "CompanyName": "acmetocasino",
+        "CompanyVCSPlatform": "github",
+        "DeployRunnerImageTag": "v0.29.14",
+        "DockerImageBuildPATSecretsManagerARN": "arn:aws:secretsmanager:eu-west-2:AWS_ACCOUNT_ID:secret:githubPAT-EXAMPLE",
+        "ECSDeployRunnerRegion": "eu-west-2",
+        "EncryptBoot": true,
+        "GitHubPATSecretsManagerARN": "arn:aws:secretsmanager:eu-west-2:AWS_ACCOUNT_ID:secret:githubPAT-EXAMPLE",
+        "GitSSHPrivateKeySecretsManagerARN": "arn:aws:secretsmanager:eu-west-2:AWS_ACCOUNT_ID:secret:MachineUserSSHPrivateKey-EXAMPLE",
+        "IAMUsers": {
+          "ccristo": {
+            "create_access_keys": false,
+            "create_login_profile": true,
+            "groups": [
+              "_all-accounts",
+              "full-access",
+              "ssh-grunt-sudo-users"
+            ],
+            "pgp_key": "keybase:ccristo"
+          },
+          "ci-machine-user": {
+            "create_access_keys": false,
+            "create_login_profile": false,
+            "groups": [
+              "_account.stage-auto-deploy",
+              "_account.prod-auto-deploy",
+              "_account.logs-auto-deploy",
+              "_account.security-auto-deploy",
+              "_account.shared-auto-deploy",
+              "_account.dev-auto-deploy"
+            ]
+          },
+          "durgell": {
+            "create_access_keys": false,
+            "create_login_profile": true,
+            "groups": [
+              "_all-accounts",
+              "full-access",
+              "ssh-grunt-sudo-users"
+            ],
+            "pgp_key": "keybase:durgwhg"
+          },
+          "fagianda": {
+            "create_access_keys": false,
+            "create_login_profile": true,
+            "groups": [
+              "_all-accounts",
+              "full-access",
+              "ssh-grunt-sudo-users"
+            ],
+            "pgp_key": "keybase:fagianda"
+          },
+          "jcarrillo": {
+            "create_access_keys": false,
+            "create_login_profile": true,
+            "groups": [
+              "_all-accounts",
+              "full-access",
+              "ssh-grunt-sudo-users"
+            ],
+            "pgp_key": "keybase:jcarrillo_whg"
+          },
+          "mgiovannini": {
+            "create_access_keys": false,
+            "create_login_profile": true,
+            "groups": [
+              "_all-accounts",
+              "full-access",
+              "ssh-grunt-sudo-users"
+            ],
+            "pgp_key": "keybase:mgiovannini"
+          }
+        },
+        "IPAllowList": [
+          "0.0.0.0/0"
+        ],
+        "IncludeASGCluster": false,
+        "IncludeAurora": true,
+        "IncludeBastion": false,
+        "IncludeECSCluster": false,
+        "IncludeEKSCluster": true,
+        "IncludeElasticache": true,
+        "IncludeOpenVPN": true,
+        "IncludeRDS": false,
+        "InfraLiveRepoSSHURL": "git@github.com:acmetocasino/infrastructure-live.git",
+        "InfraLiveRepoURL": "https://github.com/acmetocasino/infrastructure-live.git",
+        "KanikoImageTag": "v0.29.14",
+        "MachineUserGitEmail": "sre-team@acmetocasino.com",
+        "MachineUserGitUsername": "whg-automation",
+        "MgmtVPCCIDRBlock": "",
+        "MgmtVPCCIDRMap": {
+          "dev": "172.31.80.0/20",
+          "logs": "172.31.80.0/20",
+          "prod": "172.31.80.0/20",
+          "security": "172.31.80.0/20",
+          "shared": "172.31.80.0/20",
+          "stage": "172.31.80.0/20"
+        },
+        "PrimaryIAMUsername": "ccristo",
+        "ResourceNamePrefix": "acmetocasino",
+        "SharedSecretsKMSKeyARN": "arn:aws:kms:eu-west-2:AWS_ACCOUNT_ID:alias/shared-secrets"
+      },
+      "vars_dev": {
+        "AMIEncryptionKMSKeyARN": "arn:aws:kms:eu-west-2:AWS_ACCOUNT_ID:alias/ami-encryption",
+        "AWSAccountName": "dev",
+        "AccountDomainName": "dev2.eu.acmetocasino.com",
+        "DBSecretsManagerArn": "arn:aws:secretsmanager:eu-west-2:AWS_ACCOUNT_ID:secret:RDSDBConfig-EXAMPLE",
+        "IncludeAccountBaselineApp": true,
+        "eks-sample-app-backend.TLSSecretsManagerArn": "arn:aws:secretsmanager:eu-west-2:AWS_ACCOUNT_ID:secret:SampleAppBackEndCA-EXAMPLE",
+        "eks-sample-app-frontend.TLSSecretsManagerArn": "arn:aws:secretsmanager:eu-west-2:AWS_ACCOUNT_ID:secret:SampleAppFrontEndCA-EXAMPLE"
+      },
+      "vars_security": {
+        "AWSAccountName": "security",
+        "IncludeAccountBaselineSecurity": true
+      },
+      "vars_logs": {
+        "AWSAccountName": "logs",
+        "IncludeAccountBaselineApp": true
+      },
+      "vars_stage": {
+        "AMIEncryptionKMSKeyARN": "arn:aws:kms:eu-west-2:AWS_ACCOUNT_ID:alias/ami-encryption",
+        "AWSAccountName": "stage",
+        "AccountDomainName": "stage2.eu.acmetocasino.com",
+        "DBSecretsManagerArn": "arn:aws:secretsmanager:eu-west-2:AWS_ACCOUNT_ID:secret:RDSDBConfig-EXAMPLE",
+        "IncludeAccountBaselineApp": true,
+        "eks-sample-app-backend.TLSSecretsManagerArn": "arn:aws:secretsmanager:eu-west-2:AWS_ACCOUNT_ID:secret:SampleAppBackEndCA-EXAMPLE",
+        "eks-sample-app-frontend.TLSSecretsManagerArn": "arn:aws:secretsmanager:eu-west-2:AWS_ACCOUNT_ID:secret:SampleAppFrontEndCA-EXAMPLE"
+      },
+      "vars_prod": {
+        "AMIEncryptionKMSKeyARN": "arn:aws:kms:eu-west-2:AWS_ACCOUNT_ID:alias/ami-encryption",
+        "AWSAccountName": "prod",
+        "AccountDomainName": "prod2.eu.acmetocasino.com",
+        "DBSecretsManagerArn": "arn:aws:secretsmanager:eu-west-2:AWS_ACCOUNT_ID:secret:RDSDBConfig-EXAMPLE",
+        "IncludeAccountBaselineApp": true,
+        "eks-sample-app-backend.TLSSecretsManagerArn": "arn:aws:secretsmanager:eu-west-2:AWS_ACCOUNT_ID:secret:SampleAppBackEndCA-EXAMPLE",
+        "eks-sample-app-frontend.TLSSecretsManagerArn": "arn:aws:secretsmanager:eu-west-2:AWS_ACCOUNT_ID:secret:SampleAppFrontEndCA-EXAMPLE"
+      },
+      "ansible_group_il_c8_machines": {
+        "server_net": "10.0.0.0/16",
+        "ipmi_net": "172.20.112.0/24",
+        "vpn_net": "192.168.112.0/24",
+        "dd_site_tags": {
+          "env": "acme-prod",
+          "environment": "PROD",
+          "environment_name": "LIVE",
+          "brand": "STAGE",
+          "infra": "C8",
+          "country": "US",
+          "state": "IL",
+          "vendor": "POGO",
+          "jurisdiction": "us-il"
+        },
+        "dd_checks": {
+          "raidcheck": {
+            "init_config": null,
+            "instances": [
+              {}
+            ]
+          },
+          "ipmicheck": {
+            "init_config": null,
+            "instances": [
+              {}
+            ]
+          },
+          "journald": {
+            "logs": [
+              {
+                "type": "journald",
+                "path": "/var/log/journal/",
+                "include_units": [
+                  "ipmievd.service",
+                  "ipmiseld.service",
+                  "docker.service",
+                  "sshd.service"
+                ]
+              }
+            ]
+          },
+          "docker": {
+            "init_config": null,
+            "instances": [
+              {
+                "url": "unix://var/run/docker.sock",
+                "new_tag_names": true
+              }
+            ]
+          }
+        }
+      },
+      "ansible_group_wv_c8_machines": {
+        "server_net": "10.0.0.0/16",
+        "ipmi_net": "172.20.119.0/24",
+        "vpn_net": "192.168.119.0/24",
+        "dd_site_tags": {
+          "env": "acme-prod",
+          "environment": "PROD",
+          "environment_name": "LIVE",
+          "brand": "STAGE",
+          "infra": "C8",
+          "country": "US",
+          "state": "WV",
+          "vendor": "HP",
+          "jurisdiction": "us-wv"
+        },
+        "dd_checks": {
+          "raidcheck": {
+            "init_config": null,
+            "instances": [
+              {}
+            ]
+          },
+          "ipmicheck": {
+            "init_config": null,
+            "instances": [
+              {}
+            ]
+          },
+          "journald": {
+            "logs": [
+              {
+                "type": "journald",
+                "path": "/var/log/journal/",
+                "include_units": [
+                  "ipmievd.service",
+                  "ipmiseld.service",
+                  "docker.service",
+                  "sshd.service"
+                ]
+              }
+            ]
+          },
+          "docker": {
+            "init_config": null,
+            "instances": [
+              {
+                "url": "unix://var/run/docker.sock",
+                "new_tag_names": true
+              }
+            ]
+          }
+        }
+      },
+      "ansible_group_ks_c8_machines": {
+        "dd_site_tags": {
+          "env": "acme-prod",
+          "environment": "PROD",
+          "environment_name": "LIVE",
+          "brand": "STAGE",
+          "infra": "C8",
+          "country": "US",
+          "state": "KS",
+          "vendor": "CISCO",
+          "jurisdiction": "us-ks"
+        },
+        "dd_checks": {
+          "raidcheck": {
+            "init_config": null,
+            "instances": [
+              {}
+            ]
+          },
+          "ipmicheck": {
+            "init_config": null,
+            "instances": [
+              {}
+            ]
+          },
+          "journald": {
+            "logs": [
+              {
+                "type": "journald",
+                "path": "/var/log/journal/",
+                "include_units": [
+                  "ipmievd.service",
+                  "ipmiseld.service",
+                  "docker.service",
+                  "sshd.service"
+                ]
+              }
+            ]
+          },
+          "docker": {
+            "init_config": null,
+            "instances": [
+              {
+                "url": "unix://var/run/docker.sock",
+                "new_tag_names": true
+              }
+            ]
+          }
+        }
+      },
+      "ansible_group_de_c8_machines": {
+        "server_net": "10.0.0.0/16",
+        "ipmi_net": "172.20.114.0/24",
+        "vpn_net": "192.168.114.0/24",
+        "dd_site_tags": {
+          "env": "acme-stage",
+          "environment": "STAGE",
+          "environment_name": "acme-perftest2",
+          "brand": "STAGE",
+          "infra": "C8",
+          "country": "US",
+          "state": "DE",
+          "vendor": "HPE",
+          "jurisdiction": "us-de"
+        },
+        "dd_checks": {
+          "raidcheck": {
+            "init_config": null,
+            "instances": [
+              {}
+            ]
+          },
+          "ipmicheck": {
+            "init_config": null,
+            "instances": [
+              {}
+            ]
+          },
+          "journald": {
+            "logs": [
+              {
+                "type": "journald",
+                "path": "/var/log/journal/",
+                "include_units": [
+                  "ipmievd.service",
+                  "ipmiseld.service",
+                  "docker.service",
+                  "sshd.service"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "ansible_group_az_c8_machines": {
+        "server_net": "10.0.0.0/16",
+        "ipmi_net": "172.20.116.0/24",
+        "vpn_net": "192.168.116.0/24",
+        "dd_site_tags": {
+          "env": "acme-prod",
+          "environment": "PROD",
+          "environment_name": "LIVE",
+          "brand": "STAGE",
+          "infra": "C8",
+          "country": "US",
+          "state": "AZ",
+          "vendor": "POGO",
+          "jurisdiction": "us-az"
+        },
+        "dd_checks": {
+          "raidcheck": {
+            "init_config": null,
+            "instances": [
+              {}
+            ]
+          },
+          "ipmicheck": {
+            "init_config": null,
+            "instances": [
+              {}
+            ]
+          },
+          "journald": {
+            "logs": [
+              {
+                "type": "journald",
+                "path": "/var/log/journal/",
+                "include_units": [
+                  "ipmievd.service",
+                  "ipmiseld.service",
+                  "docker.service",
+                  "sshd.service"
+                ]
+              }
+            ]
+          },
+          "docker": {
+            "init_config": null,
+            "instances": [
+              {
+                "url": "unix://var/run/docker.sock",
+                "new_tag_names": true
+              }
+            ]
+          }
+        }
+      },
+      "ansible_group_wy_c8_machines": {
+        "server_net": "10.120.0.0/16",
+        "ipmi_net": "172.20.120.0/24",
+        "vpn_net": "10.0.120.0/24",
+        "dd_site_tags": {
+          "env": "acme-prod",
+          "environment": "PROD",
+          "environment_name": "LIVE",
+          "brand": "STAGE",
+          "infra": "C8",
+          "country": "US",
+          "state": "WY",
+          "vendor": "POGO",
+          "jurisdiction": "us-wy"
+        },
+        "dd_checks": {
+          "raidcheck": {
+            "init_config": null,
+            "instances": [
+              {}
+            ]
+          },
+          "ipmicheck": {
+            "init_config": null,
+            "instances": [
+              {}
+            ]
+          },
+          "journald": {
+            "logs": [
+              {
+                "type": "journald",
+                "path": "/var/log/journal/",
+                "include_units": [
+                  "ipmievd.service",
+                  "ipmiseld.service",
+                  "docker.service",
+                  "sshd.service"
+                ]
+              }
+            ]
+          },
+          "docker": {
+            "init_config": null,
+            "instances": [
+              {
+                "url": "unix://var/run/docker.sock",
+                "new_tag_names": true
+              }
+            ]
+          }
+        }
+      },
+      "ansible_group_mi_c8_machines": {
+        "server_net": "10.0.0.0/16",
+        "ipmi_net": "172.20.103.0/24",
+        "vpn_net": "192.168.103.0/24",
+        "dd_site_tags": {
+          "env": "acme-prod",
+          "environment": "PROD",
+          "environment_name": "LIVE",
+          "brand": "STAGE",
+          "infra": "C8",
+          "country": "US",
+          "state": "MI",
+          "vendor": "POGO",
+          "jurisdiction": "us-mi"
+        },
+        "dd_checks": {
+          "raidcheck": {
+            "init_config": null,
+            "instances": [
+              {}
+            ]
+          },
+          "ipmicheck": {
+            "init_config": null,
+            "instances": [
+              {}
+            ]
+          },
+          "journald": {
+            "logs": [
+              {
+                "type": "journald",
+                "path": "/var/log/journal/",
+                "include_units": [
+                  "ipmievd.service",
+                  "ipmiseld.service",
+                  "docker.service",
+                  "sshd.service"
+                ]
+              }
+            ]
+          },
+          "docker": {
+            "init_config": null,
+            "instances": [
+              {
+                "url": "unix://var/run/docker.sock",
+                "new_tag_names": true
+              }
+            ]
+          }
+        }
+      },
+      "ansible_group_co_c8_machines": {
+        "server_net": "10.0.0.0/16",
+        "ipmi_net": "172.20.111.0/24",
+        "vpn_net": "192.168.111.0/24",
+        "dd_site_tags": {
+          "env": "acme-prod",
+          "environment": "PROD",
+          "environment_name": "LIVE",
+          "brand": "STAGE",
+          "infra": "C8",
+          "country": "US",
+          "state": "CO",
+          "vendor": "POGO",
+          "jurisdiction": "us-co"
+        },
+        "dd_checks": {
+          "raidcheck": {
+            "init_config": null,
+            "instances": [
+              {}
+            ]
+          },
+          "ipmicheck": {
+            "init_config": null,
+            "instances": [
+              {}
+            ]
+          },
+          "journald": {
+            "logs": [
+              {
+                "type": "journald",
+                "path": "/var/log/journal/",
+                "include_units": [
+                  "ipmievd.service",
+                  "ipmiseld.service",
+                  "docker.service",
+                  "sshd.service"
+                ]
+              }
+            ]
+          },
+          "docker": {
+            "init_config": null,
+            "instances": [
+              {
+                "url": "unix://var/run/docker.sock",
+                "new_tag_names": true
+              }
+            ]
+          }
+        }
+      },
+      "ansible_group_ia_c8_machines": {
+        "server_net": "10.0.0.0/16",
+        "ipmi_net": "172.20.118.0/24",
+        "vpn_net": "192.168.118.0/24",
+        "dd_site_tags": {
+          "env": "acme-prod",
+          "environment": "PROD",
+          "environment_name": "LIVE",
+          "brand": "STAGE",
+          "infra": "C8",
+          "country": "US",
+          "state": "IA",
+          "vendor": "HP",
+          "jurisdiction": "us-ia"
+        },
+        "dd_checks": {
+          "raidcheck": {
+            "init_config": null,
+            "instances": [
+              {}
+            ]
+          },
+          "ipmicheck": {
+            "init_config": null,
+            "instances": [
+              {}
+            ]
+          },
+          "journald": {
+            "logs": [
+              {
+                "type": "journald",
+                "path": "/var/log/journal/",
+                "include_units": [
+                  "ipmievd.service",
+                  "ipmiseld.service",
+                  "docker.service",
+                  "sshd.service"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "ansible_group_la_c8_machines": {
+        "server_net": "10.0.0.0/16",
+        "ipmi_net": "172.20.114.0/24",
+        "vpn_net": "192.168.114.0/24",
+        "dd_site_tags": {
+          "env": "acme-prod",
+          "environment": "PROD",
+          "environment_name": "LIVE",
+          "brand": "STAGE",
+          "infra": "C8",
+          "country": "US",
+          "state": "LA",
+          "vendor": "POGO",
+          "jurisdiction": "us-la"
+        },
+        "dd_checks": {
+          "raidcheck": {
+            "init_config": null,
+            "instances": [
+              {}
+            ]
+          },
+          "ipmicheck": {
+            "init_config": null,
+            "instances": [
+              {}
+            ]
+          },
+          "journald": {
+            "logs": [
+              {
+                "type": "journald",
+                "path": "/var/log/journal/",
+                "include_units": [
+                  "ipmievd.service",
+                  "ipmiseld.service",
+                  "docker.service",
+                  "sshd.service"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "ansible_group_va_c8_machines": {
+        "server_net": "10.0.0.0/16",
+        "ipmi_net": "172.20.113.0/24",
+        "vpn_net": "192.168.113.0/24",
+        "dd_site_tags": {
+          "env": "acme-prod",
+          "environment": "PROD",
+          "environment_name": "LIVE",
+          "brand": "STAGE",
+          "infra": "C8",
+          "country": "US",
+          "state": "VA",
+          "vendor": "POGO",
+          "jurisdiction": "us-va"
+        },
+        "dd_checks": {
+          "raidcheck": {
+            "init_config": null,
+            "instances": [
+              {}
+            ]
+          },
+          "ipmicheck": {
+            "init_config": null,
+            "instances": [
+              {}
+            ]
+          },
+          "journald": {
+            "logs": [
+              {
+                "type": "journald",
+                "path": "/var/log/journal/",
+                "include_units": [
+                  "ipmievd.service",
+                  "ipmiseld.service",
+                  "docker.service",
+                  "sshd.service"
+                ]
+              }
+            ]
+          },
+          "docker": {
+            "init_config": null,
+            "instances": [
+              {
+                "url": "unix://var/run/docker.sock",
+                "new_tag_names": true
+              }
+            ]
+          }
+        }
+      },
+      "ansible_group_in_c8_machines": {
+        "server_net": "10.0.0.0/16",
+        "ipmi_net": "172.20.110.0/24",
+        "vpn_net": "192.168.110.0/24",
+        "dd_site_tags": {
+          "env": "acme-prod",
+          "environment": "PROD",
+          "environment_name": "LIVE",
+          "brand": "STAGE",
+          "infra": "C8",
+          "country": "US",
+          "state": "IN",
+          "vendor": "POGO",
+          "jurisdiction": "us-in"
+        },
+        "dd_checks": {
+          "raidcheck": {
+            "init_config": null,
+            "instances": [
+              {}
+            ]
+          },
+          "ipmicheck": {
+            "init_config": null,
+            "instances": [
+              {}
+            ]
+          },
+          "journald": {
+            "logs": [
+              {
+                "type": "journald",
+                "path": "/var/log/journal/",
+                "include_units": [
+                  "ipmievd.service",
+                  "ipmiseld.service",
+                  "docker.service",
+                  "sshd.service"
+                ]
+              }
+            ]
+          },
+          "docker": {
+            "init_config": null,
+            "instances": [
+              {
+                "url": "unix://var/run/docker.sock",
+                "new_tag_names": true
+              }
+            ]
+          }
+        }
+      },
+      "ansible_group_nj_c8_machines": {
+        "server_net": "10.201.0.0/16",
+        "ipmi_net": "172.20.201.0/24",
+        "vpn_net": "192.168.201.0/24",
+        "dd_site_tags": {
+          "env": "acme-prod",
+          "environment": "PROD",
+          "environment_name": "LIVE",
+          "brand": "STAGE",
+          "infra": "C8",
+          "country": "US",
+          "state": "NJ",
+          "vendor": "POGO",
+          "jurisdiction": "us-nj"
+        },
+        "dd_checks": {
+          "raidcheck": {
+            "init_config": null,
+            "instances": [
+              {}
+            ]
+          },
+          "ipmicheck": {
+            "init_config": null,
+            "instances": [
+              {}
+            ]
+          },
+          "journald": {
+            "logs": [
+              {
+                "type": "journald",
+                "path": "/var/log/journal/",
+                "include_units": [
+                  "ipmievd.service",
+                  "ipmiseld.service",
+                  "docker.service",
+                  "sshd.service"
+                ]
+              }
+            ]
+          },
+          "docker": {
+            "init_config": null,
+            "instances": [
+              {
+                "url": "unix://var/run/docker.sock",
+                "new_tag_names": true
+              }
+            ]
+          }
+        }
+      },
+      "ansible_group_pa_c8_machines": {
+        "server_net": "10.0.0.0/16",
+        "ipmi_net": "172.20.100.0/24",
+        "vpn_net": "192.168.100.0/24",
+        "dd_site_tags": {
+          "env": "acme-prod",
+          "environment": "PROD",
+          "environment_name": "LIVE",
+          "brand": "STAGE",
+          "infra": "C8",
+          "country": "US",
+          "state": "PA",
+          "vendor": "POGO",
+          "jurisdiction": "us-pa"
+        },
+        "dd_checks": {
+          "raidcheck": {
+            "init_config": null,
+            "instances": [
+              {}
+            ]
+          },
+          "ipmicheck": {
+            "init_config": null,
+            "instances": [
+              {}
+            ]
+          },
+          "journald": {
+            "logs": [
+              {
+                "type": "journald",
+                "path": "/var/log/journal/",
+                "include_units": [
+                  "ipmievd.service",
+                  "ipmiseld.service",
+                  "docker.service",
+                  "sshd.service"
+                ]
+              }
+            ]
+          },
+          "docker": {
+            "init_config": null,
+            "instances": [
+              {
+                "url": "unix://var/run/docker.sock",
+                "new_tag_names": true
+              }
+            ]
+          }
+        }
+      },
+      "terraform_path": "../infrastructure/infra-terraform",
+      "load_testing_compose": {
+        "version": "3",
+        "services": {
+          "master": {
+            "image": "AWS_ACCOUNT_ID.dkr.ecr.eu-west-1.amazonaws.com/load-testing:latest",
+            "build": ".",
+            "volumes": [
+              "./locusts:/locusts"
+            ],
+            "ports": [
+              "8089:8089",
+              "5557:5557",
+              "5558:5558"
+            ],
+            "environment": [
+              "TARGET_URL",
+              "LOCUSTFILE_PATH=./locusts/locustfile.py",
+              "LOCUST_MODE=master",
+              "KAMBI_OFFERING_URL=${KAMBI_OFFERING_URL}",
+              "KAMBI_PLAYER_URL=${KAMBI_PLAYER_URL}",
+              "KAMBI_OFFERING_ID=${KAMBI_OFFERING_ID}",
+              "WH_BASE_URL=${WH_BASE_URL}",
+              "LOG_DIR=./",
+              "BET_OFFER_ID=${BET_OFFER_ID}",
+              "USE_PREREG=${USE_PREREG}"
+            ],
+            "ulimits": {
+              "nproc": 65535,
+              "nofile": {
+                "soft": 20000,
+                "hard": 40000
+              }
+            },
+            "command": "locust --master --csv=locust --headless -u $USERS -r $HATCH_RATE --run-time $RUN_TIME --host=$TARGET_URL --loglevel $LOG_LEVEL $LOCUST_USER"
+          },
+          "worker": {
+            "build": ".",
+            "volumes": [
+              "./locusts:/locusts"
+            ],
+            "environment": [
+              "TARGET_URL",
+              "LOCUSTFILE_PATH=./locusts/locustfile.py",
+              "LOCUST_MODE=worker",
+              "LOCUST_MASTER_HOST=${LOCUST_MASTER_HOST}",
+              "KAMBI_OFFERING_URL=${KAMBI_OFFERING_URL}",
+              "KAMBI_PLAYER_URL=${KAMBI_PLAYER_URL}",
+              "KAMBI_OFFERING_ID=${KAMBI_OFFERING_ID}",
+              "WH_BASE_URL=${WH_BASE_URL}",
+              "LOG_DIR=./",
+              "BET_OFFER_ID=${BET_OFFER_ID}",
+              "USE_PREREG=${USE_PREREG}"
+            ],
+            "ulimits": {
+              "nproc": 65535,
+              "nofile": {
+                "soft": 20000,
+                "hard": 40000
+              }
+            },
+            "command": "locust --headless --worker --master-host master --host=$TARGET_URL $LOCUST_USER"
+          }
+        }
+      }
+    }
+  }
+}

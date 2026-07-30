@@ -1,0 +1,16 @@
+# /etc/systemd/system/iprep-update.timer
+[Unit]
+Description=Run Suricata IP Reputation Update every 4 hours
+Documentation=https://wiki.internal/iprep-pipeline
+
+[Timer]
+# Run every 4 hours, starting from boot
+OnBootSec=5min
+OnUnitActiveSec=4h
+# Randomize start time within a 30-minute window to avoid thundering herd
+RandomizedDelaySec=1800
+AccuracySec=1min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,65 @@
+# Dockerfile — Production
+# Multi-stage: builder installs deps, final image has no build tools
+# Used by CI/CD (Chapter 23) — never by developers for inner-loop work
+
+FROM python:3.14-slim-bookworm AS builder
+
+WORKDIR /build
+
+# Install build dependencies — these do NOT end up in the final image
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy only requirements first — Docker layer cache optimization
+COPY requirements.txt .
+RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
+
+# ─── Final stage ────────────────────────────────────────────────────────────────
+FROM python:3.14-slim-bookworm AS final
+
+# Non-root user — mandatory for PCI-DSS compliance
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+
+WORKDIR /app
+
+# Runtime dependencies only — no gcc, no build tools
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq5 \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy installed packages from builder
+COPY --from=builder /install /usr/local
+
+# Copy application source — immutable, no volume mount
+COPY --chown=appuser:appuser . .
+
+# Remove anything that should not be in the prod image
+RUN rm -rf \
+    tests/ \
+    .pytest_cache/ \
+    Dockerfile.dev \
+    docker-compose*.yml \
+    .env* \
+    scripts/
+
+USER appuser
+
+# Healthcheck — used by Kubernetes liveness probe
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD curl -sf http://localhost:${PORT:-8000}/health || exit 1
+
+EXPOSE 8000
+
+# No --reload. Gunicorn with uvicorn workers for production concurrency.
+CMD ["gunicorn", "app:app", \
+     "--worker-class", "uvicorn.workers.UvicornWorker", \
+     "--workers", "4", \
+     "--bind", "0.0.0.0:8000", \
+     "--timeout", "30", \
+     "--graceful-timeout", "30", \
+     "--keep-alive", "5", \
+     "--access-logfile", "-", \
+     "--error-logfile", "-"]

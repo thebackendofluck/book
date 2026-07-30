@@ -1,0 +1,271 @@
+# Companion code for "The Backend of Luck" - Chapter 23, DevSecOps for iGaming.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# OPA / Kyverno policy rules for gambling workloads
+#
+# This file is consumed by two systems:
+#   1. OPA (Open Policy Agent) via the GLI-GSF compliance gate in CI/CD
+#   2. Kyverno as a Kubernetes admission controller (policy CRD)
+#
+# All rules enforce GLI-GSF (Gaming Laboratories International — Gaming
+# Security Framework) and iGaming-specific PCI DSS requirements on top of
+# standard container security baselines.
+#
+# Reference: Chapter 23 — DevSecOps for iGaming / Compliance as Code
+
+# ---------------------------------------------------------------------------
+# Package declaration (OPA Rego context)
+# ---------------------------------------------------------------------------
+package: igaming.compliance
+
+# ---------------------------------------------------------------------------
+# OGIS-1: Critical Control Program signature verification
+# ---------------------------------------------------------------------------
+# Every deployment of a Critical Control Program (game engine, RNG service,
+# wallet service) must carry a verified GPG or Sigstore signature.
+#
+# OPA Rego equivalent:
+#   deny[msg] {
+#       input.deployment.critical_control_program == true
+#       not input.deployment.signature_verified
+#       msg := sprintf("OGIS-1: %s deployed without signature verification",
+#                      [input.deployment.name])
+#   }
+rules:
+  - id: OGIS-1
+    name: critical-control-program-signature
+    description: >
+      Critical Control Programs (game engine, RNG, wallet) must be deployed
+      with a verified cryptographic signature per GLI-GSF OGIS-1.
+    severity: CRITICAL
+    enforcement: block
+    conditions:
+      - field: deployment.critical_control_program
+        operator: equals
+        value: true
+      - field: deployment.signature_verified
+        operator: equals
+        value: false
+    message: "OGIS-1 violation: {deployment.name} deployed without signature verification"
+    remediation: >
+      Sign the container image with cosign or GPG before deployment.
+      See scripts/chapter-23/supply-chain-security/ for the signing pipeline.
+
+  # -------------------------------------------------------------------------
+  # OGIS-2: Least-privilege access control
+  # -------------------------------------------------------------------------
+  # No game service container may run as root (UID 0) or with privileged mode.
+  - id: OGIS-2
+    name: no-root-containers
+    description: >
+      Gambling workload containers must not run as root. Enforces the
+      principle of least privilege per GLI-GSF OGIS-2.
+    severity: CRITICAL
+    enforcement: block
+    conditions:
+      - field: container.security_context.run_as_root
+        operator: equals
+        value: true
+      - field: container.labels.app-tier
+        operator: in
+        value:
+          - game-engine
+          - rng
+          - wallet
+          - payment
+    message: "OGIS-2 violation: {container.name} runs as root in a gambling-tier service"
+    remediation: >
+      Set securityContext.runAsNonRoot: true and runAsUser: >= 1000
+      in the Kubernetes pod spec.
+
+  # -------------------------------------------------------------------------
+  # OGIS-3: Server-side game logic enforcement
+  # -------------------------------------------------------------------------
+  # Game outcome calculation must execute server-side only.  No container
+  # labelled as a game engine may set CLIENT_SIDE_LOGIC=true.
+  - id: OGIS-3
+    name: server-side-game-logic
+    description: >
+      Game logic must execute server-side only per GLI-GSF OGIS-3.
+      Client-side outcome calculation is a certification disqualifier.
+    severity: CRITICAL
+    enforcement: block
+    conditions:
+      - field: container.labels.app-type
+        operator: equals
+        value: game-engine
+      - field: container.env.CLIENT_SIDE_LOGIC
+        operator: equals
+        value: "true"
+    message: "OGIS-3 violation: game logic must execute server-side only"
+    remediation: >
+      Remove CLIENT_SIDE_LOGIC from the game engine container environment.
+      Game outcome state must reside entirely in the server-side RNG service.
+
+  # -------------------------------------------------------------------------
+  # OGIS-5: DDoS protection readiness
+  # -------------------------------------------------------------------------
+  # Public-facing gambling services must declare DDoS protection annotations
+  # confirming they sit behind a WAF/CDN layer.
+  - id: OGIS-5
+    name: ddos-protection-required
+    description: >
+      Public-facing services must be protected by a WAF/CDN per GLI-GSF OGIS-5.
+      Services missing the protection annotation will be blocked from deployment.
+    severity: HIGH
+    enforcement: block
+    conditions:
+      - field: deployment.labels.exposure
+        operator: equals
+        value: public
+      - field: deployment.annotations.igaming.acmetocasino.com/ddos-protected
+        operator: not_exists
+    message: "OGIS-5 violation: public service {deployment.name} missing DDoS protection annotation"
+    remediation: >
+      Add annotation: igaming.acmetocasino.com/ddos-protected: "cloudflare"
+      or "aws-shield" to confirm WAF/CDN protection is in place.
+
+  # -------------------------------------------------------------------------
+  # GLI-GSF-1: Encryption at rest for player data
+  # -------------------------------------------------------------------------
+  - id: GLI-GSF-1
+    name: player-data-encryption-at-rest
+    description: >
+      Databases containing player data must have encryption at rest enabled
+      per GLI-GSF-1 and PCI DSS Requirement 3.4.
+    severity: CRITICAL
+    enforcement: block
+    conditions:
+      - field: database.contains_player_data
+        operator: equals
+        value: true
+      - field: database.encryption_at_rest_enabled
+        operator: equals
+        value: false
+    message: "GLI-GSF-1 violation: {database.name} stores player data without encryption at rest"
+    remediation: >
+      Enable AES-256 encryption at rest (RDS storage encryption, LUKS on bare-metal).
+      HSM-backed keys are required for databases containing payment card data.
+
+  # -------------------------------------------------------------------------
+  # GLI-GSF-2: Audit logging completeness
+  # -------------------------------------------------------------------------
+  - id: GLI-GSF-2
+    name: audit-logging-required
+    description: >
+      All regulated workloads must emit structured audit logs with 5-year
+      retention per GLI-GSF-1 record retention requirements.
+    severity: HIGH
+    enforcement: warn
+    conditions:
+      - field: deployment.labels.regulated
+        operator: equals
+        value: "true"
+      - field: deployment.env.AUDIT_LOG_ENABLED
+        operator: not_equals
+        value: "true"
+    message: "GLI-GSF-2 warning: {deployment.name} has audit logging disabled"
+    remediation: >
+      Set AUDIT_LOG_ENABLED=true and configure the audit log sink to the
+      compliance datastore (S3 bucket with Object Lock, 5-year retention).
+
+  # -------------------------------------------------------------------------
+  # PCI DSS Req 6.3: Vulnerability scanning in CI/CD
+  # -------------------------------------------------------------------------
+  - id: PCI-DSS-6.3
+    name: vulnerability-scan-required
+    description: >
+      All container images must have passed a Trivy/Grype vulnerability scan
+      within the last 7 days before deployment to a PCI-scope environment.
+    severity: HIGH
+    enforcement: block
+    conditions:
+      - field: deployment.labels.pci-scope
+        operator: equals
+        value: "true"
+      - field: container.image.last_scan_days_ago
+        operator: greater_than
+        value: 7
+    message: >
+      PCI DSS 6.3 violation: {container.image} has not been scanned within
+      7 days (last scan: {container.image.last_scanned})
+    remediation: >
+      Trigger a fresh Trivy scan via the CI pipeline and ensure the scan
+      result is recorded in the image registry metadata.
+
+  # -------------------------------------------------------------------------
+  # PCI DSS Req 8.3: MFA for privileged access
+  # -------------------------------------------------------------------------
+  - id: PCI-DSS-8.3
+    name: mfa-for-privileged-access
+    description: >
+      Administrative access to PCI-scope systems must use multi-factor
+      authentication per PCI DSS Requirement 8.3.
+    severity: HIGH
+    enforcement: warn
+    conditions:
+      - field: access.target_system.pci_scope
+        operator: equals
+        value: true
+      - field: access.mfa_verified
+        operator: equals
+        value: false
+    message: "PCI DSS 8.3 violation: privileged access to {access.target_system.name} without MFA"
+    remediation: >
+      Enforce MFA via the SSO/IdP (Okta, AWS IAM Identity Center) for all
+      SSH and API access to PCI-scope hosts.
+
+  # -------------------------------------------------------------------------
+  # iGaming-specific: RNG service isolation
+  # -------------------------------------------------------------------------
+  - id: IGAMING-RNG-1
+    name: rng-network-isolation
+    description: >
+      The RNG service must not have outbound internet access. Outbound
+      connections must be limited to HSM endpoints and internal platform
+      services only.
+    severity: CRITICAL
+    enforcement: block
+    conditions:
+      - field: container.labels.app-type
+        operator: equals
+        value: rng
+      - field: container.network_policy.allow_internet_egress
+        operator: equals
+        value: true
+    message: "IGAMING-RNG-1 violation: RNG service has unrestricted outbound internet access"
+    remediation: >
+      Apply a Kubernetes NetworkPolicy that limits RNG pod egress to:
+      - HSM service (port 8443)
+      - Vault (port 8200)
+      - Internal service mesh only
+      Block all public internet egress.
+
+  # -------------------------------------------------------------------------
+  # iGaming-specific: Responsible gaming enforcement
+  # -------------------------------------------------------------------------
+  - id: IGAMING-RG-1
+    name: responsible-gaming-controls-required
+    description: >
+      Any service in the player account management tier must integrate with
+      the responsible gaming (RG) limit enforcement service.
+    severity: HIGH
+    enforcement: warn
+    conditions:
+      - field: deployment.labels.app-tier
+        operator: equals
+        value: player-account
+      - field: deployment.env.RG_SERVICE_URL
+        operator: not_exists
+    message: "IGAMING-RG-1: {deployment.name} missing RG service integration (RG_SERVICE_URL not set)"
+    remediation: >
+      Set RG_SERVICE_URL to the responsible gaming service endpoint.
+      All bet placement and deposit calls must check RG limits before
+      processing.

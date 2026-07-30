@@ -1,0 +1,290 @@
+# Companion code for "The Backend of Luck" - Chapter 33, Operational Playbooks.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# Docker Compose - Hardware Monitoring Stack - Chapter 23: Operational Playbooks
+#
+# Complete containerized hardware monitoring pipeline with:
+#   - hardware-agent: Privileged container running the bash/Python monitoring scripts
+#   - telegraf: Data collection agent forwarding to InfluxDB and Elasticsearch
+#   - elasticsearch: Log storage (single-node, port 9200)
+#   - influxdb: Time-series metrics (port 8086, igaming bucket)
+#   - prometheus: Metrics aggregation and alerting (port 9090)
+#   - pushgateway: Custom metrics endpoint (port 9091)
+#   - alertmanager: Alert routing (port 9093)
+#   - grafana: Dashboards (port 3000)
+#   - ml-predictor: Failure prediction service connected to pushgateway
+#
+# Part of the iGaming Platform Engineering book.
+
+version: '3.8'
+
+services:
+  # Hardware monitoring agent
+  hardware-agent:
+    build: ./docker/hardware-agent
+    container_name: hardware_monitor_agent
+    privileged: true
+    volumes:
+      - /dev:/dev:ro
+      - /proc:/proc:ro
+      - /sys:/sys:ro
+      - ./data:/app/data
+    environment:
+      - COLLECTION_INTERVAL=300
+      - ELASTICSEARCH_HOST=elasticsearch:9200
+      - INFLUXDB_HOST=influxdb:8086
+      - PROMETHEUS_PUSHGATEWAY=pushgateway:9091
+    networks:
+      - monitoring
+    restart: unless-stopped
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+
+  # Telegraf data collector
+  telegraf:
+    image: telegraf:1.24
+    container_name: telegraf_collector
+    volumes:
+      - ./config/telegraf.conf:/etc/telegraf/telegraf.conf:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - INFLUXDB_HOST=influxdb
+      - ELASTICSEARCH_HOST=elasticsearch
+    depends_on:
+      - influxdb
+      - elasticsearch
+    networks:
+      - monitoring
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+
+  # Elasticsearch for log storage
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.5.0
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    ports:
+      - "127.0.0.1:9200:9200"
+      - "127.0.0.1:9300:9300"
+    networks:
+      - monitoring
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "1.0"
+
+  # InfluxDB for time-series metrics
+  influxdb:
+    image: influxdb:2.4
+    container_name: influxdb
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=admin
+      - DOCKER_INFLUXDB_INIT_PASSWORD=${INFLUXDB_PASSWORD:?INFLUXDB_PASSWORD must be set}
+      - DOCKER_INFLUXDB_INIT_ORG=igaming
+      - DOCKER_INFLUXDB_INIT_BUCKET=hardware_metrics
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${INFLUXDB_ADMIN_TOKEN:?INFLUXDB_ADMIN_TOKEN must be set}
+    volumes:
+      - influxdb_data:/var/lib/influxdb2
+      - influxdb_config:/etc/influxdb2
+    ports:
+      - "127.0.0.1:8086:8086"
+    networks:
+      - monitoring
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "influx", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+
+  # Prometheus for metrics aggregation
+  prometheus:
+    image: prom/prometheus:v2.54.0
+    container_name: prometheus
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    ports:
+      - "127.0.0.1:9090:9090"
+    networks:
+      - monitoring
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9090/-/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 384M
+          cpus: "0.5"
+
+  # Pushgateway for custom metrics
+  pushgateway:
+    image: prom/pushgateway:v1.9.0
+    container_name: pushgateway
+    ports:
+      - "127.0.0.1:9091:9091"
+    networks:
+      - monitoring
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9091/-/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.25"
+
+  # AlertManager for alert routing
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: alertmanager
+    volumes:
+      - ./config/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+    ports:
+      - "127.0.0.1:9093:9093"
+    networks:
+      - monitoring
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9093/-/healthy"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.25"
+
+  # Grafana for dashboards
+  grafana:
+    image: grafana/grafana:11.4.0
+    container_name: grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:?GRAFANA_PASSWORD must be set}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./config/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      - prometheus
+      - influxdb
+    networks:
+      - monitoring
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+
+  # ML prediction service
+  ml-predictor:
+    build: ./docker/ml-predictor
+    container_name: ml_predictor
+    volumes:
+      - ./models:/app/models:ro
+      - ./data:/app/data:ro
+    environment:
+      - PROMETHEUS_PUSHGATEWAY=pushgateway:9091
+      - MODEL_PATH=/app/models/hardware_failure_model.pkl
+    depends_on:
+      - pushgateway
+      - hardware-agent
+    networks:
+      - monitoring
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+
+volumes:
+  elasticsearch_data:
+  influxdb_data:
+  influxdb_config:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  monitoring:
+    driver: bridge

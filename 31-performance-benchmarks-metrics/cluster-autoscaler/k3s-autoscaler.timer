@@ -1,0 +1,15 @@
+[Unit]
+Description=K3s Cluster Node Autoscaler Timer
+Documentation=https://k3s.io
+
+[Timer]
+# Run every 30 seconds
+OnBootSec=60
+OnUnitActiveSec=30s
+AccuracySec=5s
+
+# Do not run missed events on startup
+Persistent=false
+
+[Install]
+WantedBy=timers.target

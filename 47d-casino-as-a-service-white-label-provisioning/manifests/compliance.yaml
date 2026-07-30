@@ -1,0 +1,53 @@
+# Companion code for "The Backend of Luck" - Chapter 47d, Casino as a Service.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: BUSL-1.1
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# Per-tenant compliance config the security+compliance gate (caasctl verify) asserts on:
+#   - ConfigMap caas-<slug>-reporting  -> jurisdiction reporting flag (gate check 13/14)
+#   - ConfigMap caas-<slug>-audit      -> rng_log_enabled (tamper-evident audit + RNG log)
+#   - Secret    caas-<slug>-kyc        -> KYC/AML provider handle
+# Template — rendered into rendered/<slug>/compliance.yaml by render_manifests.sh, which
+# substitutes the correct reporting key for the tenant jurisdiction.
+# Placeholders: __SLUG__ __JURISDICTION__ __REPORTING_KEY__
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: caas-__SLUG__-reporting
+  namespace: caas-__SLUG__
+  labels:
+    caas.tenant: "__SLUG__"
+    caas.jurisdiction: "__JURISDICTION__"
+data:
+  # Key name is jurisdiction-specific (sigap_enabled | mga_reporting_enabled |
+  # ukgc_reporting_enabled | sandbox_reporting_enabled) — set by render_manifests.sh.
+  __REPORTING_KEY__: "true"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: caas-__SLUG__-audit
+  namespace: caas-__SLUG__
+  labels:
+    caas.tenant: "__SLUG__"
+data:
+  rng_log_enabled: "true"
+  audit_tamper_evident: "true"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: caas-__SLUG__-kyc
+  namespace: caas-__SLUG__
+  labels:
+    caas.tenant: "__SLUG__"
+type: Opaque
+stringData:
+  # Real provider token is injected from OpenBao (caas/__SLUG__/kyc_provider) at sync time;
+  # this placeholder only declares the provider handle the gate checks for presence.
+  provider: "sumsub"

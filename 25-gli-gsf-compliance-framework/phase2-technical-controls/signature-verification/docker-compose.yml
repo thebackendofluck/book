@@ -1,0 +1,142 @@
+# Companion code for "The Backend of Luck" - Chapter 25, GLI-GSF Compliance Framework.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# docker-compose.yml - OGIS-1 Signature Verification Service
+#
+# Deploys the Critical Control Program (CCP) verification daemon as a
+# containerized service with:
+#   - 24-hour automated verification cycle
+#   - Log forwarding to MinIO (5-year retention)
+#   - PagerDuty alerting on signature mismatches
+#   - SIEM integration via syslog
+#   - Health check endpoint
+#
+# OGIS-1 Requirements Addressed:
+#   - Automated signature generation and verification
+#   - Verification on startup, every 24 hours, and on-demand
+#   - NTP-synchronized audit logging
+#   - Export in CSV, JSON, XML formats
+#   - Alert on mismatch with <30 minute response SLA
+#
+# Usage:
+#   # Set environment variables
+#   export PAGERDUTY_ROUTING_KEY="your-key"
+#   export MINIO_ROOT_PASSWORD="your-password"
+#
+#   # Start the service
+#   docker-compose up -d
+#
+#   # Register CCPs (exec into container)
+#   docker exec gsf-ccp-verify python3 verify_ccp.py register \
+#     --name rng-engine --path /opt/ccp/rng-engine --version 2.1.0
+#
+#   # Check status
+#   docker exec gsf-ccp-verify python3 verify_ccp.py status
+
+version: "3.8"
+
+services:
+  # =========================================================================
+  # CCP Verification Daemon
+  # Runs 24-hour signature verification cycle per OGIS-1
+  # =========================================================================
+  ccp-verify:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: gsf/ccp-verify:${VERSION:-1.0.0}
+    container_name: gsf-ccp-verify
+    hostname: ccp-verify
+    command: ["python3", "verify_ccp.py", "daemon", "--interval", "86400"]
+    environment:
+      CCP_CONFIG_DIR: /etc/gsf/ccp
+      CCP_LOG_DIR: /var/log/gsf
+      PAGERDUTY_ROUTING_KEY: "${PAGERDUTY_ROUTING_KEY:-}"
+      ALERT_EMAIL: "${ALERT_EMAIL:-gis-officer@acmetocasino.com}"
+      SIEM_ENDPOINT: "http://wazuh:514"
+      TZ: UTC
+    volumes:
+      # CCP binaries to verify (mount your actual game binaries here)
+      - ccp-binaries:/opt/ccp:ro
+      # Persistent config (CCP registry)
+      - ccp-config:/etc/gsf/ccp
+      # Verification logs (forwarded to MinIO by log-shipper)
+      - ccp-logs:/var/log/gsf
+    networks:
+      - gsf-retention
+      - gsf-monitoring
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python3", "verify_ccp.py", "status"]
+      interval: 60s
+      timeout: 30s
+      retries: 3
+    labels:
+      com.gsf.component: "ccp-verification"
+      com.gsf.reference: "OGIS-1"
+      com.gsf.criticality: "critical"
+
+  # =========================================================================
+  # Log Shipper
+  # Forwards verification logs to MinIO for 5-year retention
+  # =========================================================================
+  log-shipper:
+    image: minio/mc:RELEASE.2025-01-17T23-25-50Z
+    container_name: gsf-ccp-log-shipper
+    depends_on:
+      - ccp-verify
+    entrypoint: /bin/sh
+    command: >
+      -c "
+      echo 'Waiting for MinIO...'
+      until mc alias set gsf http://minio:9000 gsf-admin $${MINIO_ROOT_PASSWORD} 2>/dev/null; do
+        sleep 5
+      done
+      echo 'Connected to MinIO. Starting log shipping...'
+
+      while true; do
+        # Ship verification logs every hour
+        if [ -f /var/log/gsf/signature-verification.log ]; then
+          TIMESTAMP=$$(date -u +%Y/%m/%d/%H)
+          mc cp /var/log/gsf/signature-verification.log \
+            gsf/ogis1-signature-logs/$${TIMESTAMP}/verification.jsonl
+          echo \"Shipped logs to ogis1-signature-logs/$${TIMESTAMP}/\"
+        fi
+        sleep 3600
+      done
+      "
+    environment:
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}"
+    volumes:
+      - ccp-logs:/var/log/gsf:ro
+    networks:
+      - gsf-retention
+    restart: unless-stopped
+    labels:
+      com.gsf.component: "ccp-log-shipping"
+      com.gsf.reference: "OGIS-1, GLI-GSF-1 Section 2.3.10"
+
+volumes:
+  ccp-binaries:
+    driver: local
+    labels:
+      com.gsf.component: "ccp-binaries"
+      com.gsf.note: "Mount actual CCP binaries here"
+  ccp-config:
+    driver: local
+  ccp-logs:
+    driver: local
+
+networks:
+  gsf-retention:
+    external: true
+    name: gsf-retention
+  gsf-monitoring:
+    driver: bridge

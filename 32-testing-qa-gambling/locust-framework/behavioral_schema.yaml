@@ -1,0 +1,132 @@
+# Companion code for "The Backend of Luck" - Chapter 32, Testing and QA in Gambling.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# Behavioral Schema: Aggressive Bettor Profile
+#
+# Defines the action graph and probabilistic transitions for a
+# high-frequency bettor during load testing. Each event specifies:
+#   - profile: parameters governing wait times, wager distributions, etc.
+#   - transitions: probability distribution over next actions (must sum to 1.0)
+#
+# The synthetic user engine (Replicant) walks this graph using Markov-chain
+# transitions to produce realistic session sequences.
+#
+# Derived from a production schema for a US-regulated sportsbook platform.
+
+type: aggressive
+
+events:
+  register:
+    profile:
+      average_wait: 20
+    transitions:
+      login: 1.0
+
+  login:
+    profile:
+      average_wait: 1
+    transitions:
+      get_profile: 1.0
+
+  get_profile:
+    profile:
+      average_wait: 0
+    transitions:
+      get_config: 1.0
+
+  get_config:
+    profile:
+      average_wait: 0
+    transitions:
+      geo_validate: 1.0
+
+  geo_validate:
+    profile:
+      average_wait: 0
+    transitions:
+      homepage_landing: 1.0
+
+  homepage_landing:
+    profile:
+      average_wait: 3
+    transitions:
+      deposit_funds: 1.0
+
+  get_homepage:
+    profile:
+      average_wait: 3
+    transitions:
+      deposit_funds: 1.0
+
+  deposit_funds:
+    profile:
+      currency: USD
+      average_wait: 10
+      average: 10000
+      variance: 20
+    transitions:
+      place_bet: 0.89
+      logout: 0.10
+      deposit_funds: 0.01
+
+  place_bet:
+    profile:
+      average_wait: 120
+      # Sport selection probabilities
+      sports:
+        basketball: 0.75
+        ice_hockey: 0.15
+        ufc_mma: 0.10
+      # Bet type probabilities
+      bet_types:
+        moneyline: 0.50
+        over/under: 0.30
+        spread: 0.10
+        prop: 0.05
+        future: 0.05
+      # Straight bet parameters
+      straight:
+        average_odds: 155
+        variance_odds: 30
+        average_wager: 500
+        variance_wager: 2
+      # Betslip configuration
+      betslip:
+        average_odds: 210
+        average_size: 4
+      # Parlay parameters
+      parlay:
+        rate: 0
+        probability: 0.4
+        total_legs: 12
+        average_total_odds: 1000
+        average_wager: 600
+        variance_wager: 20
+    transitions:
+      place_bet: 0.30
+      logout: 0.20
+      deposit_funds: 0.10
+      coupon_history: 0.40
+
+  coupon_history:
+    profile:
+      average_wait: 5
+    transitions:
+      place_bet: 0.20
+      coupon_history: 0.05
+      logout: 0.20
+      get_homepage: 0.45
+      deposit_funds: 0.10
+
+  logout:
+    profile:
+      average_wait: 0
+    transitions:
+      logout: 1.0

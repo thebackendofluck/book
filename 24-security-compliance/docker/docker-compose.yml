@@ -1,0 +1,302 @@
+# Companion code for "The Backend of Luck" - Chapter 24, Security and Compliance.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# =============================================================================
+# Chapter 29: Security and Compliance - Docker Compose
+# =============================================================================
+# Complete security monitoring stack for iGaming platforms
+#
+# Services:
+# - IDS/IPS with Redis backend
+# - Network encryption monitor
+# - CIS Docker scanner
+# - Prometheus + Grafana monitoring
+# - Security log aggregation
+#
+# Usage:
+#   docker-compose up -d
+#   docker-compose logs -f ids
+# =============================================================================
+
+services:
+  # ===========================================================================
+  # Redis - Alert and State Storage
+  # ===========================================================================
+  redis:
+    image: redis:8-alpine
+    container_name: security-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:?REDIS_PASSWORD must be set}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - security-net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 768M
+
+  # ===========================================================================
+  # IDS/IPS - Intrusion Detection System
+  # ===========================================================================
+  ids:
+    build:
+      context: .
+      dockerfile: Dockerfile.ids
+    container_name: gambling-ids
+    restart: unless-stopped
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
+      - REDIS_DB=0
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - SLACK_WEBHOOK=${SLACK_WEBHOOK:-}
+      - RATE_LIMIT_REQUESTS=1000
+      - RATE_LIMIT_WINDOW=60
+    ports:
+      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:9091:9090"
+    volumes:
+      - ./config/ids:/app/config:ro
+      - ids_logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - security-net
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+    read_only: true
+    tmpfs:
+      - /tmp:size=100M
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  # ===========================================================================
+  # Network Encryption Monitor
+  # ===========================================================================
+  network-monitor:
+    build:
+      context: .
+      dockerfile: Dockerfile.monitor
+    container_name: network-monitor
+    restart: unless-stopped
+    environment:
+      - INTERFACE=eth0
+      - CAPTURE_FILTER=tcp port 80 or tcp port 443
+      - ENCRYPTION_THRESHOLD=95
+      - REPORT_SCHEDULE=daily
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      - ALERT_RECIPIENTS=${ALERT_RECIPIENTS:-security@company.com}
+    ports:
+      - "127.0.0.1:5000:5000"
+      - "127.0.0.1:9092:9090"
+    volumes:
+      - ./config/monitor:/app/config:ro
+      - monitor_data:/app/data
+      - monitor_logs:/var/log/monitor
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - security-net
+    # Note: Network monitoring may require elevated privileges
+    # Uncomment if packet capture is needed:
+    # cap_add:
+    #   - NET_RAW
+    #   - NET_ADMIN
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+  # ===========================================================================
+  # CIS Docker Scanner - Scheduled Audits
+  # ===========================================================================
+  cis-scanner:
+    build:
+      context: .
+      dockerfile: Dockerfile.scanner
+    container_name: cis-scanner
+    restart: unless-stopped
+    environment:
+      - SCAN_SCHEDULE=0 2 * * *
+      - REPORT_DIR=/reports
+      - SLACK_WEBHOOK=${SLACK_WEBHOOK:-}
+    volumes:
+      - ./config/scanner:/app/config:ro
+      - scanner_reports:/reports
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - security-net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+    security_opt:
+      - no-new-privileges:true
+
+  # ===========================================================================
+  # Prometheus - Metrics Collection
+  # ===========================================================================
+  prometheus:
+    image: prom/prometheus:v2.47.0
+    container_name: security-prometheus
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-lifecycle'
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./config/prometheus:/etc/prometheus:ro
+      - prometheus_data:/prometheus
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - security-net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 1G
+    user: "65534:65534"
+
+  # ===========================================================================
+  # Grafana - Security Dashboards
+  # ===========================================================================
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: security-grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:?GRAFANA_USER must be set}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:?GRAFANA_PASSWORD must be set}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=${GRAFANA_ROOT_URL:-http://localhost:3000}
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-piechart-panel
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./config/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      - prometheus
+    networks:
+      - security-net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+    user: "472:472"
+
+  # ===========================================================================
+  # Alertmanager - Alert Routing
+  # ===========================================================================
+  alertmanager:
+    image: prom/alertmanager:v0.26.0
+    container_name: security-alertmanager
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+    ports:
+      - "127.0.0.1:9093:9093"
+    volumes:
+      - ./config/alertmanager:/etc/alertmanager:ro
+      - alertmanager_data:/alertmanager
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9093/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - security-net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+    user: "65534:65534"
+
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  security-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.29.0.0/24
+
+# =============================================================================
+# Volumes
+# =============================================================================
+volumes:
+  redis_data:
+    driver: local
+  ids_logs:
+    driver: local
+  monitor_data:
+    driver: local
+  monitor_logs:
+    driver: local
+  scanner_reports:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+  alertmanager_data:
+    driver: local

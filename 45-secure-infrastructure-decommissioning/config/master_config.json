@@ -1,0 +1,56 @@
+{
+  "_comment": "Master orchestrator configuration for the Secure Data Destruction System (SDDS). Tune timeouts here when a phase exceeds its limit. Chapter 45: Secure Infrastructure Decommissioning.",
+  "phases": {
+    "documentation_analysis": {
+      "timeout": 300,
+      "required": true,
+      "description": "Parse infrastructure documentation and build destruction inventory"
+    },
+    "security_device_preparation": {
+      "timeout": 600,
+      "required": true,
+      "description": "Export YubiHSM audit logs and prepare YubiKey revocation lists"
+    },
+    "authentication_isolation": {
+      "timeout": 300,
+      "required": true,
+      "description": "Revoke all authentication credentials and SSO tokens"
+    },
+    "parallel_infrastructure_destruction": {
+      "timeout": 1800,
+      "required": true,
+      "description": "Simultaneously destroy AWS resources, storage, and compute (ThreadPoolExecutor)"
+    },
+    "network_destruction": {
+      "timeout": 900,
+      "required": true,
+      "description": "Factory-reset Meraki networks and MikroTik RouterOS devices"
+    },
+    "verification": {
+      "timeout": 600,
+      "required": true,
+      "description": "Verify all destruction completed; generate final audit report"
+    },
+    "self_destruct": {
+      "timeout": 300,
+      "required": true,
+      "description": "Wipe the SEN500 orchestrator node itself (final phase)"
+    }
+  },
+  "verification_required": true,
+  "dry_run": false,
+  "max_workers": 4,
+  "phase_timeout_default": 1800,
+  "max_retries": 3,
+  "retry_delay_seconds": 30,
+  "audit_log_file": "/var/log/sdds_audit.log",
+  "emergency_stop_file": "/tmp/emergency_stop",
+  "checkpoint_file": "/tmp/sdds_checkpoint.json",
+  "report_output_dir": "/var/lib/sdds/reports",
+  "notifications": {
+    "slack_webhook_env": "SDDS_SLACK_WEBHOOK",
+    "pagerduty_key_env": "SDDS_PAGERDUTY_KEY",
+    "notify_on_phase_complete": true,
+    "notify_on_failure": true
+  }
+}

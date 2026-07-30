@@ -1,0 +1,113 @@
+# Companion code for "The Backend of Luck" - Chapter 33, Operational Playbooks.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# Prometheus Alert Rules - Hardware Monitoring Stack - Chapter 23: Operational Playbooks
+#
+# Defines hardware failure and performance alerting rules for the hardware.alerts group.
+# Each rule evaluates every 15 seconds (inherited from prometheus.yml evaluation_interval).
+#
+# Rule summary:
+#   HardwareHighRisk       - risk_score >= 70 for 5m           → severity: critical
+#   HardwareMediumRisk     - risk_score 40-69 for 15m          → severity: warning
+#   DiskWearLevelCritical  - wear_level > 90% for 5m           → severity: critical
+#   ServerHighCPU          - cpu_usage > 90% for 10m           → severity: warning
+#   NetworkErrorsHigh      - >1000 errors in 5m window         → severity: warning
+#   MLFailurePrediction    - failure_probability > 0.8 for 5m  → severity: critical
+#   AgentDown              - hardware-agents job down for 5m   → severity: critical
+#   DataCollectionLag      - last_collection > 600s ago        → severity: warning
+#
+# Labels on rules (component_type, component_id, risk_level) are forwarded to
+# AlertManager for route matching and included in notification messages.
+#
+# Part of the iGaming Platform Engineering book.
+
+groups:
+  - name: hardware.alerts
+    rules:
+    - alert: HardwareHighRisk
+      expr: hardware_risk_score{component_type=~".+"} >= 70
+      for: 5m
+      labels:
+        severity: critical
+        component_type: "{{ $labels.component_type }}"
+        component_id: "{{ $labels.component_id }}"
+      annotations:
+        summary: "High risk hardware component detected"
+        description: "Component {{ $labels.component_type }}/{{ $labels.component_id }} has risk score {{ $value }}"
+
+    - alert: HardwareMediumRisk
+      expr: hardware_risk_score{component_type=~".+"} >= 40 AND hardware_risk_score < 70
+      for: 15m
+      labels:
+        severity: warning
+        component_type: "{{ $labels.component_type }}"
+        component_id: "{{ $labels.component_id }}"
+      annotations:
+        summary: "Medium risk hardware component detected"
+        description: "Component {{ $labels.component_type }}/{{ $labels.component_id }} has risk score {{ $value }}"
+
+    - alert: DiskWearLevelCritical
+      expr: hardware_wear_level{component_type="disk"} > 90
+      for: 5m
+      labels:
+        severity: critical
+        component_type: disk
+      annotations:
+        summary: "Critical disk wear level detected"
+        description: "Disk {{ $labels.component_id }} wear level is {{ $value }}%"
+
+    - alert: ServerHighCPU
+      expr: hardware_cpu_usage{component_type="server"} > 90
+      for: 10m
+      labels:
+        severity: warning
+        component_type: server
+      annotations:
+        summary: "Server high CPU usage"
+        description: "Server {{ $labels.component_id }} CPU usage is {{ $value }}%"
+
+    - alert: NetworkErrorsHigh
+      expr: increase(hardware_network_errors[5m]) > 1000
+      for: 5m
+      labels:
+        severity: warning
+        component_type: network
+      annotations:
+        summary: "High network error rate detected"
+        description: "Network interface {{ $labels.component_id }} has {{ $value }} errors in 5 minutes"
+
+    - alert: MLFailurePrediction
+      expr: ml_failure_probability > 0.8
+      for: 5m
+      labels:
+        severity: critical
+        component_type: "{{ $labels.component_type }}"
+        risk_level: critical
+      annotations:
+        summary: "ML predicts imminent hardware failure"
+        description: "Component {{ $labels.component_type }}/{{ $labels.component_id }} has {{ $value | humanizePercentage }} failure probability"
+
+    - alert: AgentDown
+      expr: up{job="hardware-agents"} == 0
+      for: 5m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Hardware monitoring agent is down"
+        description: "Hardware monitoring agent {{ $labels.instance }} is not responding"
+
+    - alert: DataCollectionLag
+      expr: (time() - hardware_last_collection_timestamp) > 600
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Hardware data collection lagging"
+        description: "Last data collection was {{ $value }} seconds ago"

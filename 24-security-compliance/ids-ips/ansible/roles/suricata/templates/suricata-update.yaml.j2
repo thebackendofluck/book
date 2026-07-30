@@ -1,0 +1,61 @@
+# suricata-update.yaml — Managed by Ansible
+# Generated for: {{ inventory_hostname }}
+# Generated: {{ ansible_date_time.iso8601 }}
+#
+# Reference: https://suricata-update.readthedocs.io/en/latest/
+
+# ── Suricata binary and config paths ─────────────────────────────────────────
+suricata: /usr/bin/suricata
+suricata-conf: {{ suricata_config_dir }}/suricata.yaml
+output: {{ suricata_rules_dir }}/suricata.rules
+
+# ── Rule data directory ───────────────────────────────────────────────────────
+data-dir: /var/lib/suricata
+
+# ── Reload after update ───────────────────────────────────────────────────────
+# Do NOT auto-reload here; the Ansible playbook handles SIGUSR2 after
+# validating the configuration.  Set to true for standalone cron use.
+reload: false
+reload-command: kill -USR2 $(cat {{ suricata_run_dir }}/suricata.pid)
+
+# ── Source configuration ──────────────────────────────────────────────────────
+sources:
+{% if et_open_enabled %}
+  - et/open
+{% endif %}
+{% if et_pro_enabled and et_pro_oinkcode != "" %}
+  - et/pro
+{% endif %}
+{% for src in extra_rule_sources %}
+  - {{ src.name }}
+{% endfor %}
+
+# ── Enable / Disable specific rules (supplement disable-categories.yaml) ─────
+# disable-conf is a YAML list of rules to disable by SID.
+# Example: disable ET INFO rules that are too noisy for production.
+disable-conf: /etc/suricata/update.d/disable-categories.yaml
+
+# ── Enable custom rule files ──────────────────────────────────────────────────
+# These files are managed by Ansible and placed in {{ suricata_rules_dir }}.
+local-rules:
+{% for rule_file in suricata_custom_rule_files %}
+  - {{ suricata_rules_dir }}/{{ rule_file }}
+{% endfor %}
+
+# ── Update frequency ──────────────────────────────────────────────────────────
+# Not enforced here; cron in monitoring.yml fires at 03:00 daily.
+# The check-interval below prevents hammering ET servers if suricata-update
+# is invoked manually multiple times in a short window.
+check-interval: 3600    # minimum seconds between actual downloads
+
+# ── No-merge (keep sources separate for debugging) ───────────────────────────
+no-merge: false
+
+# ── Logging ───────────────────────────────────────────────────────────────────
+verbose: false
+quiet: false
+
+# ── Proxy (if required) ───────────────────────────────────────────────────────
+{% if http_proxy != "" %}
+http-proxy: "{{ http_proxy }}"
+{% endif %}

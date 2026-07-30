@@ -1,0 +1,89 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 24, Security and Compliance.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# Production Inventory — Suricata IDS/IPS Sensors
+# iGaming Platform Network Zones
+#
+# Each sensor host is assigned:
+#   - ansible_host:         management IP for SSH
+#   - monitored_interface:  NIC that captures traffic (may differ from mgmt NIC)
+#   - sensor_zone:          logical network zone (used in alerts and dashboards)
+#   - numa_node:            NUMA node where the capture NIC is attached (0 or 1)
+#   - worker_count:         number of Suricata worker threads
+
+all:
+  children:
+    suricata_sensors:
+      hosts:
+
+        # ── DMZ Sensor ─────────────────────────────────────────────────────────
+        # Sits in front of the load balancers, sees all inbound Internet traffic.
+        # High throughput — allocate generous AF_PACKET rings and worker threads.
+        ids-dmz-01.prod.igaming.internal:
+          ansible_host: 10.0.0.11
+          monitored_interface: ens3f0
+          sensor_zone: dmz
+          numa_node: 0
+          worker_count: 8
+
+        ids-dmz-02.prod.igaming.internal:
+          ansible_host: 10.0.0.12
+          monitored_interface: ens3f0
+          sensor_zone: dmz
+          numa_node: 0
+          worker_count: 8
+
+        # ── Application Tier Sensor ────────────────────────────────────────────
+        # East-west traffic between app servers; also catches internal threats.
+        ids-app-01.prod.igaming.internal:
+          ansible_host: 10.0.1.11
+          monitored_interface: ens4f0
+          sensor_zone: app
+          numa_node: 0
+          worker_count: 4
+
+        ids-app-02.prod.igaming.internal:
+          ansible_host: 10.0.1.12
+          monitored_interface: ens4f0
+          sensor_zone: app
+          numa_node: 0
+          worker_count: 4
+
+        # ── Database Tier Sensor ───────────────────────────────────────────────
+        # Monitors DB access patterns; detects exfiltration and privilege abuse.
+        ids-db-01.prod.igaming.internal:
+          ansible_host: 10.0.2.11
+          monitored_interface: ens5f0
+          sensor_zone: db
+          numa_node: 1
+          worker_count: 2
+
+        # ── Payment Gateway Sensor ─────────────────────────────────────────────
+        # PCI-DSS scope — full payload logging DISABLED; metadata-only EVE.
+        # Must be treated as a PCI asset for access control and key management.
+        ids-payment-01.prod.igaming.internal:
+          ansible_host: 10.0.3.11
+          monitored_interface: ens6f0
+          sensor_zone: payment
+          numa_node: 0
+          worker_count: 2
+          # Override: never log raw payloads in the payment zone
+          suricata_eve_payload_printable: false
+          suricata_eve_payload: false
+
+      vars:
+        ansible_user: ansible
+        ansible_ssh_private_key_file: ~/.ssh/ansible_prod_ed25519
+        ansible_become: true
+        ansible_become_method: sudo
+        # Production sensors run in IPS mode after 30-day burn-in validation
+        suricata_mode: ids
+        environment_name: production

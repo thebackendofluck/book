@@ -1,0 +1,122 @@
+# Companion code for "The Backend of Luck" - Chapter 33, Operational Playbooks.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# AlertManager Configuration - Hardware Monitoring Stack - Chapter 23: Operational Playbooks
+#
+# Multi-channel alert routing for hardware monitoring events. Alerts are
+# grouped by alertname, cluster, and service. Routes are matched in order:
+#
+#   critical severity  → critical-alerts (email + Slack #critical-alerts + PagerDuty)
+#   warning severity   → warning-alerts  (email + Slack #warnings)
+#   component_type=server → infrastructure-team (email + Slack #infrastructure)
+#   risk_level=critical → executive-alerts (email + Slack + WhatsApp webhook)
+#   default            → ops@igaming.com email
+#
+# Global SMTP is configured for gmail:587 with TLS. The WhatsApp integration
+# posts to the Flask webhook at http://whatsapp-webhook:8080/alert, which
+# forwards alerts to configured recipients via Twilio.
+#
+# This file is rendered at deploy time. Replace ${SLACK_WEBHOOK_URL},
+# ${SMTP_PASSWORD}, ${PAGERDUTY_KEY}, ${WEBHOOK_PASSWORD} via your
+# config-management layer (envsubst, Helm template, Kustomize secret
+# generator, or sealed-secrets) before passing to alertmanager. Never
+# commit the literal values.
+#
+# Part of the iGaming Platform Engineering book.
+
+global:
+  smtp_smarthost: 'smtp.gmail.com:587'
+  smtp_from: '${SMTP_FROM_ADDRESS}'
+  smtp_auth_username: '${SMTP_FROM_ADDRESS}'
+  smtp_auth_password: '${SMTP_PASSWORD}'
+
+templates:
+  - '/etc/alertmanager/templates/*.tmpl'
+
+route:
+  group_by: ['alertname', 'cluster', 'service']
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: 1h
+  receiver: 'default'
+  routes:
+  - match:
+      severity: critical
+    receiver: 'critical-alerts'
+  - match:
+      severity: warning
+    receiver: 'warning-alerts'
+  - match:
+      component_type: server
+    receiver: 'infrastructure-team'
+  - match:
+      risk_level: critical
+    receiver: 'executive-alerts'
+
+receivers:
+- name: 'default'
+  email_configs:
+  - to: 'ops@igaming.com'
+    subject: '{{ .GroupLabels.alertname }} - {{ .Status }}'
+    body: |
+      {{ range .Alerts }}
+      Alert: {{ .Annotations.summary }}
+      Description: {{ .Annotations.description }}
+      Severity: {{ .Labels.severity }}
+      Component: {{ .Labels.component_type }}/{{ .Labels.component_id }}
+      Risk Level: {{ .Labels.risk_level }}
+      {{ end }}
+
+- name: 'critical-alerts'
+  email_configs:
+  - to: 'critical@igaming.com'
+  slack_configs:
+  - api_url: '${SLACK_WEBHOOK_URL}'
+    channel: '#critical-alerts'
+    title: 'CRITICAL: {{ .GroupLabels.alertname }}'
+    text: |
+      {{ range .Alerts }}
+      *Alert:* {{ .Annotations.summary }}
+      *Description:* {{ .Annotations.description }}
+      *Component:* {{ .Labels.component_type }}/{{ .Labels.component_id }}
+      *Risk Score:* {{ .Labels.risk_score }}
+      {{ end }}
+  pagerduty_configs:
+  - service_key: '${PAGERDUTY_KEY}'
+    description: '{{ .GroupLabels.alertname }} - {{ .Status }}'
+
+- name: 'warning-alerts'
+  email_configs:
+  - to: 'warnings@igaming.com'
+  slack_configs:
+  - api_url: '${SLACK_WEBHOOK_URL}'
+    channel: '#warnings'
+    title: 'WARNING: {{ .GroupLabels.alertname }}'
+
+- name: 'infrastructure-team'
+  email_configs:
+  - to: 'infra@igaming.com'
+  slack_configs:
+  - api_url: '${SLACK_WEBHOOK_URL}'
+    channel: '#infrastructure'
+
+- name: 'executive-alerts'
+  email_configs:
+  - to: 'executives@igaming.com'
+  slack_configs:
+  - api_url: '${SLACK_WEBHOOK_URL}'
+    channel: '#executive-alerts'
+    title: 'EXECUTIVE ALERT: {{ .GroupLabels.alertname }}'
+  webhook_configs:
+  - url: 'http://whatsapp-webhook:8080/alert'
+    http_config:
+      basic_auth:
+        username: 'whatsapp'
+        password: '${WEBHOOK_PASSWORD}'

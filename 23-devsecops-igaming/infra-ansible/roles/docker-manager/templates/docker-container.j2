@@ -1,0 +1,9 @@
+/var/lib/docker/containers/*/*.log {
+  {{rotate}}
+  {{frequency}}
+  size=30M
+  compress
+  missingok
+  delaycompress
+  copytruncate
+}

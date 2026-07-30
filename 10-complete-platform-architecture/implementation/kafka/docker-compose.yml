@@ -1,0 +1,309 @@
+# Companion code for "The Backend of Luck" - Chapter 10, Complete Platform Architecture.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# Chapter 42 - Complete Platform Architecture
+# Kafka Development Cluster for iGambling Platform
+#
+# Features:
+#   - 3-broker Kafka cluster (KRaft mode, no ZooKeeper)
+#   - Schema Registry for Avro/Protobuf schemas
+#   - Kafka Connect for CDC (Debezium)
+#   - Kafka UI for topic management
+#   - AKHQ as alternative UI
+#
+# Usage:
+#   docker-compose up -d
+#   docker-compose exec kafka-1 kafka-topics.sh --list --bootstrap-server kafka-1:9092
+#   python topic-strategy.py --apply --bootstrap-servers localhost:29092
+#
+# Access:
+#   Kafka brokers: localhost:29092, localhost:29093, localhost:29094
+#   Schema Registry: http://localhost:8081
+#   Kafka UI: http://localhost:8080
+#   Kafka Connect: http://localhost:8083
+
+version: "3.8"
+
+x-kafka-common: &kafka-common
+  image: confluentinc/cp-kafka:7.6.0
+  environment: &kafka-env
+    KAFKA_KRAFT_CLUSTER_ID: "casino-platform-dev-001"
+    CLUSTER_ID: "casino-platform-dev-001"
+    KAFKA_PROCESS_ROLES: "broker,controller"
+    KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka-1:9093,2@kafka-2:9093,3@kafka-3:9093"
+    KAFKA_INTER_BROKER_LISTENER_NAME: "INTERNAL"
+    KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+    KAFKA_LOG_DIRS: "/var/lib/kafka/data"
+    KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+    KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+    KAFKA_MIN_INSYNC_REPLICAS: 2
+    KAFKA_NUM_PARTITIONS: 6
+    KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+    KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+    KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+    KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    KAFKA_MESSAGE_MAX_BYTES: 1048576
+    KAFKA_REPLICA_FETCH_MAX_BYTES: 1048576
+    KAFKA_LOG_RETENTION_MS: 604800000  # 7 days for dev
+    KAFKA_LOG_RETENTION_CHECK_INTERVAL_MS: 300000
+    KAFKA_LOG_SEGMENT_BYTES: 1073741824
+    KAFKA_COMPRESSION_TYPE: "lz4"
+    KAFKA_JMX_PORT: 9101
+    KAFKA_JMX_HOSTNAME: "localhost"
+    KAFKA_METRIC_REPORTERS: "io.confluent.metrics.reporter.ConfluentMetricsReporter"
+    CONFLUENT_METRICS_REPORTER_BOOTSTRAP_SERVERS: "kafka-1:9092,kafka-2:9092,kafka-3:9092"
+    CONFLUENT_METRICS_ENABLE: "false"
+  networks:
+    - casino-kafka
+
+services:
+  # ─── Kafka Broker 1 ─────────────────────────────────────────
+  kafka-1:
+    <<: *kafka-common
+    container_name: casino-kafka-1
+    hostname: kafka-1
+    ports:
+      - "29092:29092"
+      - "9101:9101"
+    environment:
+      <<: *kafka-env
+      KAFKA_NODE_ID: 1
+      KAFKA_LISTENERS: "INTERNAL://kafka-1:9092,CONTROLLER://kafka-1:9093,EXTERNAL://0.0.0.0:29092"
+      KAFKA_ADVERTISED_LISTENERS: "INTERNAL://kafka-1:9092,EXTERNAL://localhost:29092"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT"
+    volumes:
+      - kafka-1-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "kafka-1:9092"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # ─── Kafka Broker 2 ─────────────────────────────────────────
+  kafka-2:
+    <<: *kafka-common
+    container_name: casino-kafka-2
+    hostname: kafka-2
+    ports:
+      - "29093:29093"
+      - "9102:9101"
+    environment:
+      <<: *kafka-env
+      KAFKA_NODE_ID: 2
+      KAFKA_LISTENERS: "INTERNAL://kafka-2:9092,CONTROLLER://kafka-2:9093,EXTERNAL://0.0.0.0:29093"
+      KAFKA_ADVERTISED_LISTENERS: "INTERNAL://kafka-2:9092,EXTERNAL://localhost:29093"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT"
+    volumes:
+      - kafka-2-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "kafka-2:9092"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # ─── Kafka Broker 3 ─────────────────────────────────────────
+  kafka-3:
+    <<: *kafka-common
+    container_name: casino-kafka-3
+    hostname: kafka-3
+    ports:
+      - "29094:29094"
+      - "9103:9101"
+    environment:
+      <<: *kafka-env
+      KAFKA_NODE_ID: 3
+      KAFKA_LISTENERS: "INTERNAL://kafka-3:9092,CONTROLLER://kafka-3:9093,EXTERNAL://0.0.0.0:29094"
+      KAFKA_ADVERTISED_LISTENERS: "INTERNAL://kafka-3:9092,EXTERNAL://localhost:29094"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT"
+    volumes:
+      - kafka-3-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "kafka-3:9092"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # ─── Schema Registry ────────────────────────────────────────
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.6.0
+    container_name: casino-schema-registry
+    hostname: schema-registry
+    depends_on:
+      kafka-1:
+        condition: service_healthy
+      kafka-2:
+        condition: service_healthy
+      kafka-3:
+        condition: service_healthy
+    ports:
+      - "8081:8081"
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: "kafka-1:9092,kafka-2:9092,kafka-3:9092"
+      SCHEMA_REGISTRY_LISTENERS: "http://0.0.0.0:8081"
+      SCHEMA_REGISTRY_SCHEMA_COMPATIBILITY_LEVEL: "BACKWARD"
+      SCHEMA_REGISTRY_AVRO_COMPATIBILITY_LEVEL: "BACKWARD"
+    networks:
+      - casino-kafka
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/subjects"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # ─── Kafka Connect (Debezium CDC) ───────────────────────────
+  kafka-connect:
+    image: confluentinc/cp-kafka-connect:7.6.0
+    container_name: casino-kafka-connect
+    hostname: kafka-connect
+    depends_on:
+      kafka-1:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+    ports:
+      - "8083:8083"
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: "kafka-1:9092,kafka-2:9092,kafka-3:9092"
+      CONNECT_REST_ADVERTISED_HOST_NAME: "kafka-connect"
+      CONNECT_REST_PORT: 8083
+      CONNECT_GROUP_ID: "casino-connect-cluster"
+      CONNECT_CONFIG_STORAGE_TOPIC: "_connect-configs"
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 3
+      CONNECT_OFFSET_STORAGE_TOPIC: "_connect-offsets"
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 3
+      CONNECT_STATUS_STORAGE_TOPIC: "_connect-status"
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 3
+      CONNECT_KEY_CONVERTER: "io.confluent.connect.avro.AvroConverter"
+      CONNECT_KEY_CONVERTER_SCHEMA_REGISTRY_URL: "http://schema-registry:8081"
+      CONNECT_VALUE_CONVERTER: "io.confluent.connect.avro.AvroConverter"
+      CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: "http://schema-registry:8081"
+      CONNECT_PLUGIN_PATH: "/usr/share/java,/usr/share/confluent-hub-components"
+    command:
+      - bash
+      - -c
+      - |
+        confluent-hub install --no-prompt debezium/debezium-connector-postgresql:2.5.0
+        confluent-hub install --no-prompt confluentinc/kafka-connect-jdbc:10.7.4
+        /etc/confluent/docker/run
+    volumes:
+      - kafka-connect-plugins:/usr/share/confluent-hub-components
+    networks:
+      - casino-kafka
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083/connectors"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  # ─── Kafka UI ───────────────────────────────────────────────
+  kafka-ui:
+    image: provectuslabs/kafka-ui:v0.7.1
+    container_name: casino-kafka-ui
+    depends_on:
+      kafka-1:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: "casino-platform-dev"
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: "kafka-1:9092,kafka-2:9092,kafka-3:9092"
+      KAFKA_CLUSTERS_0_SCHEMAREGISTRY: "http://schema-registry:8081"
+      KAFKA_CLUSTERS_0_KAFKACONNECT_0_NAME: "casino-connect"
+      KAFKA_CLUSTERS_0_KAFKACONNECT_0_ADDRESS: "http://kafka-connect:8083"
+      DYNAMIC_CONFIG_ENABLED: "true"
+    networks:
+      - casino-kafka
+
+  # ─── Topic Initialization ───────────────────────────────────
+  topic-init:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: casino-topic-init
+    depends_on:
+      kafka-1:
+        condition: service_healthy
+      kafka-2:
+        condition: service_healthy
+      kafka-3:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        echo "Waiting for Kafka cluster to be fully ready..."
+        sleep 10
+
+        echo "Creating payment domain topics..."
+        kafka-topics.sh --create --if-not-exists --bootstrap-server kafka-1:9092 \
+          --topic payment.deposits.initiated --partitions 24 --replication-factor 3 \
+          --config retention.ms=157680000000 --config min.insync.replicas=2
+
+        kafka-topics.sh --create --if-not-exists --bootstrap-server kafka-1:9092 \
+          --topic payment.deposits.completed --partitions 24 --replication-factor 3 \
+          --config retention.ms=157680000000 --config min.insync.replicas=2
+
+        kafka-topics.sh --create --if-not-exists --bootstrap-server kafka-1:9092 \
+          --topic payment.wallet.balance-changes --partitions 32 --replication-factor 3 \
+          --config retention.ms=31536000000 --config cleanup.policy=compact --config min.insync.replicas=2
+
+        echo "Creating game engine topics..."
+        kafka-topics.sh --create --if-not-exists --bootstrap-server kafka-1:9092 \
+          --topic games.rounds.started --partitions 48 --replication-factor 3 \
+          --config retention.ms=2592000000 --config min.insync.replicas=2
+
+        kafka-topics.sh --create --if-not-exists --bootstrap-server kafka-1:9092 \
+          --topic games.bets.placed --partitions 48 --replication-factor 3 \
+          --config retention.ms=31536000000 --config min.insync.replicas=2
+
+        kafka-topics.sh --create --if-not-exists --bootstrap-server kafka-1:9092 \
+          --topic games.rng.results --partitions 24 --replication-factor 3 \
+          --config retention.ms=157680000000 --config min.insync.replicas=2
+
+        echo "Creating compliance topics..."
+        kafka-topics.sh --create --if-not-exists --bootstrap-server kafka-1:9092 \
+          --topic compliance.audit.trail --partitions 16 --replication-factor 3 \
+          --config retention.ms=157680000000 --config min.insync.replicas=2
+
+        kafka-topics.sh --create --if-not-exists --bootstrap-server kafka-1:9092 \
+          --topic compliance.aml.alerts --partitions 8 --replication-factor 3 \
+          --config retention.ms=157680000000 --config min.insync.replicas=2
+
+        echo "Creating platform topics..."
+        kafka-topics.sh --create --if-not-exists --bootstrap-server kafka-1:9092 \
+          --topic platform.saga.commands --partitions 16 --replication-factor 3 \
+          --config retention.ms=604800000 --config min.insync.replicas=2
+
+        kafka-topics.sh --create --if-not-exists --bootstrap-server kafka-1:9092 \
+          --topic platform.saga.replies --partitions 16 --replication-factor 3 \
+          --config retention.ms=604800000 --config min.insync.replicas=2
+
+        kafka-topics.sh --create --if-not-exists --bootstrap-server kafka-1:9092 \
+          --topic platform.dlq --partitions 8 --replication-factor 3 \
+          --config retention.ms=2592000000 --config min.insync.replicas=2
+
+        echo "All topics created. Listing..."
+        kafka-topics.sh --list --bootstrap-server kafka-1:9092
+    networks:
+      - casino-kafka
+
+volumes:
+  kafka-1-data:
+    driver: local
+  kafka-2-data:
+    driver: local
+  kafka-3-data:
+    driver: local
+  kafka-connect-plugins:
+    driver: local
+
+networks:
+  casino-kafka:
+    name: casino-kafka-network
+    driver: bridge

@@ -1,0 +1,257 @@
+# Companion code for "The Backend of Luck" - Chapter 25, GLI-GSF Compliance Framework.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# docker-compose.yml - Five-Year Record Retention Infrastructure
+#
+# GLI-GSF-1 requires all audit logs, incident reports, access reviews,
+# assessment results, and policy documents to be retained for a minimum
+# of five (5) years. Records must be exportable in CSV, JSON, and XML.
+#
+# This stack deploys:
+#   - MinIO: S3-compatible object storage with lifecycle policies
+#   - MinIO Console: Web UI for bucket management
+#   - mc (MinIO Client): Initialization container for bucket/policy setup
+#
+# Architecture:
+#   Wazuh/SIEM --> Filebeat/Fluentd --> MinIO (hot) --> MinIO (warm/archive)
+#   Evidence Collector --> MinIO (evidence bucket)
+#   Signature Verification --> MinIO (ogis-1-logs bucket)
+#
+# Usage:
+#   docker-compose up -d
+#   # Wait for initialization, then access:
+#   #   MinIO Console: http://localhost:9001
+#   #   MinIO API:     http://localhost:9000
+#
+# Production Notes:
+#   - Replace default credentials with secrets management (Vault, AWS SSM)
+#   - Enable TLS with proper certificates
+#   - Configure replication for disaster recovery
+#   - Use dedicated storage volumes with RAID/EBS
+#   - Set up monitoring alerts for storage capacity
+
+version: "3.8"
+
+services:
+  # =========================================================================
+  # MinIO Object Storage
+  # S3-compatible storage with lifecycle management for 5-year retention
+  # =========================================================================
+  minio:
+    image: minio/minio:RELEASE.2025-01-20T14-49-07Z
+    container_name: gsf-retention-minio
+    hostname: minio
+    command: server /data --console-address ":9001"
+    ports:
+      - "127.0.0.1:9000:9000"    # S3 API
+      - "127.0.0.1:9001:9001"    # Web Console
+    environment:
+      # IMPORTANT: Change these in production. Use secrets management.
+      MINIO_ROOT_USER: gsf-admin
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set}"
+      # Enable versioning and object locking for compliance
+      MINIO_STORAGE_CLASS_STANDARD: "EC:2"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+    labels:
+      com.gsf.component: "record-retention"
+      com.gsf.reference: "GLI-GSF-1 Section 2.3.10"
+    networks:
+      - gsf-retention
+
+  # =========================================================================
+  # MinIO Client - Bucket Initialization
+  # Creates buckets with lifecycle policies for GLI-GSF retention
+  # =========================================================================
+  minio-init:
+    image: minio/mc:RELEASE.2025-01-17T23-25-50Z
+    container_name: gsf-retention-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: /bin/sh
+    command: >
+      -c "
+      echo '=== GLI-GSF Record Retention: Initializing Buckets ==='
+
+      # Configure MinIO alias
+      mc alias set gsf http://minio:9000 gsf-admin $${MINIO_ROOT_PASSWORD}
+
+      # ---------------------------------------------------------------
+      # Bucket 1: Audit Logs (SIEM, access logs, system logs)
+      # GLI-GSF-1 Section 2.3.10 - 5-year retention
+      # ---------------------------------------------------------------
+      mc mb --ignore-existing gsf/audit-logs
+      mc version enable gsf/audit-logs
+      mc ilm rule add gsf/audit-logs \
+        --expire-days 1826 \
+        --transition-days 365 --storage-class WARM \
+        --noncurrent-expire-days 1826
+      echo 'Created: audit-logs (5-year retention, 1-year to WARM)'
+
+      # ---------------------------------------------------------------
+      # Bucket 2: OGIS-1 Signature Verification Logs
+      # Must be exportable in CSV, JSON, XML per OGIS-1
+      # ---------------------------------------------------------------
+      mc mb --ignore-existing gsf/ogis1-signature-logs
+      mc version enable gsf/ogis1-signature-logs
+      mc ilm rule add gsf/ogis1-signature-logs \
+        --expire-days 1826 \
+        --noncurrent-expire-days 1826
+      echo 'Created: ogis1-signature-logs (5-year retention)'
+
+      # ---------------------------------------------------------------
+      # Bucket 3: Incident Reports
+      # GLI-GSF-1 Section 2.3.9 - incident documentation
+      # ---------------------------------------------------------------
+      mc mb --ignore-existing gsf/incident-reports
+      mc version enable gsf/incident-reports
+      mc ilm rule add gsf/incident-reports \
+        --expire-days 1826 \
+        --noncurrent-expire-days 1826
+      echo 'Created: incident-reports (5-year retention)'
+
+      # ---------------------------------------------------------------
+      # Bucket 4: Assessment Results (GTS reports, vuln scans)
+      # GLI-GSF-2 - assessment evidence
+      # ---------------------------------------------------------------
+      mc mb --ignore-existing gsf/assessment-results
+      mc version enable gsf/assessment-results
+      mc ilm rule add gsf/assessment-results \
+        --expire-days 1826 \
+        --noncurrent-expire-days 1826
+      echo 'Created: assessment-results (5-year retention)'
+
+      # ---------------------------------------------------------------
+      # Bucket 5: Access Reviews (RBAC reviews, MFA audits)
+      # OGIS-2 quarterly access reviews
+      # ---------------------------------------------------------------
+      mc mb --ignore-existing gsf/access-reviews
+      mc version enable gsf/access-reviews
+      mc ilm rule add gsf/access-reviews \
+        --expire-days 1826 \
+        --noncurrent-expire-days 1826
+      echo 'Created: access-reviews (5-year retention)'
+
+      # ---------------------------------------------------------------
+      # Bucket 6: Policy Documents (GIS policy, scope, procedures)
+      # GLI-GSF-1 Section 2.2 - policy versioning
+      # ---------------------------------------------------------------
+      mc mb --ignore-existing gsf/policy-documents
+      mc version enable gsf/policy-documents
+      mc ilm rule add gsf/policy-documents \
+        --expire-days 1826 \
+        --noncurrent-expire-days 1826
+      echo 'Created: policy-documents (5-year retention)'
+
+      # ---------------------------------------------------------------
+      # Bucket 7: GIS Forum Meeting Minutes
+      # GLI-GSF-1 - minimum 6 meetings/year
+      # ---------------------------------------------------------------
+      mc mb --ignore-existing gsf/forum-minutes
+      mc version enable gsf/forum-minutes
+      mc ilm rule add gsf/forum-minutes \
+        --expire-days 1826 \
+        --noncurrent-expire-days 1826
+      echo 'Created: forum-minutes (5-year retention)'
+
+      # ---------------------------------------------------------------
+      # Bucket 8: Vendor Risk Assessments (GLI-GSF-3)
+      # ---------------------------------------------------------------
+      mc mb --ignore-existing gsf/vendor-assessments
+      mc version enable gsf/vendor-assessments
+      mc ilm rule add gsf/vendor-assessments \
+        --expire-days 1826 \
+        --noncurrent-expire-days 1826
+      echo 'Created: vendor-assessments (5-year retention)'
+
+      # ---------------------------------------------------------------
+      # Bucket 9: Evidence Packages (ISF assessment evidence)
+      # ---------------------------------------------------------------
+      mc mb --ignore-existing gsf/evidence-packages
+      mc version enable gsf/evidence-packages
+      mc ilm rule add gsf/evidence-packages \
+        --expire-days 1826 \
+        --noncurrent-expire-days 1826
+      echo 'Created: evidence-packages (5-year retention)'
+
+      # ---------------------------------------------------------------
+      # Create read-only policy for regulatory/ISF access
+      # GLI-GSF requires regulator access to verification logs
+      # ---------------------------------------------------------------
+      cat > /tmp/regulator-readonly.json <<'POLICY'
+      {
+        \"Version\": \"2012-10-17\",
+        \"Statement\": [
+          {
+            \"Effect\": \"Allow\",
+            \"Action\": [\"s3:GetObject\", \"s3:ListBucket\"],
+            \"Resource\": [
+              \"arn:aws:s3:::audit-logs/*\",
+              \"arn:aws:s3:::audit-logs\",
+              \"arn:aws:s3:::ogis1-signature-logs/*\",
+              \"arn:aws:s3:::ogis1-signature-logs\",
+              \"arn:aws:s3:::assessment-results/*\",
+              \"arn:aws:s3:::assessment-results\",
+              \"arn:aws:s3:::evidence-packages/*\",
+              \"arn:aws:s3:::evidence-packages\"
+            ]
+          }
+        ]
+      }
+      POLICY
+      mc admin policy create gsf regulator-readonly /tmp/regulator-readonly.json
+      echo 'Created: regulator-readonly policy'
+
+      # Create ISF user with read-only access
+      mc admin user add gsf isf-auditor $${ISF_AUDITOR_PASSWORD:?set ISF_AUDITOR_PASSWORD}
+      mc admin policy attach gsf regulator-readonly --user isf-auditor
+      echo 'Created: isf-auditor user with regulator-readonly policy'
+
+      echo ''
+      echo '=== Initialization Complete ==='
+      echo 'Buckets created: 9'
+      echo 'Retention policy: 5 years (1826 days)'
+      echo 'Versioning: enabled on all buckets'
+      echo 'ISF auditor access: configured'
+      echo ''
+      echo 'MinIO Console: http://localhost:9001'
+      echo 'S3 API:        http://localhost:9000'
+      "
+    environment:
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set}"
+      ISF_AUDITOR_PASSWORD: "${ISF_AUDITOR_PASSWORD:?ISF_AUDITOR_PASSWORD must be set}"
+    networks:
+      - gsf-retention
+
+volumes:
+  minio-data:
+    driver: local
+    labels:
+      com.gsf.component: "record-retention"
+      com.gsf.retention-years: "5"
+
+networks:
+  gsf-retention:
+    driver: bridge
+    name: gsf-retention

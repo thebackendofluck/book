@@ -1,0 +1,342 @@
+# Companion code for "The Backend of Luck" - Chapter 23, DevSecOps for iGaming.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# =============================================================================
+# Falco Rules for iGaming Container Runtime Security
+# =============================================================================
+# Custom Falco rules tailored for online gambling platform workloads.
+# Detects suspicious behavior in payment, game engine, RNG, KYC, and
+# anti-fraud containers.
+#
+# Deploy with: falco -r /etc/falco/igaming-rules.yaml
+# Or mount as ConfigMap in Kubernetes Falco DaemonSet.
+#
+# Rule severity levels:
+#   EMERGENCY - Immediate incident response required
+#   ALERT     - Security team notification within minutes
+#   CRITICAL  - High-priority investigation required
+#   ERROR     - Potential security event
+#   WARNING   - Suspicious activity worth logging
+#   NOTICE    - Informational security event
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Macros: iGaming namespace and container identification
+# ---------------------------------------------------------------------------
+- macro: igaming_payment_container
+  condition: >
+    (k8s.ns.name = "payment-system" or
+     k8s.ns.name = "wallet-service" or
+     container.name contains "payment" or
+     container.name contains "wallet" or
+     container.name contains "cashier" or
+     container.name contains "payout")
+
+- macro: igaming_game_container
+  condition: >
+    (k8s.ns.name = "game-engine" or
+     container.name contains "game-engine" or
+     container.name contains "slot" or
+     container.name contains "live-dealer" or
+     container.name contains "sportsbook")
+
+- macro: igaming_rng_container
+  condition: >
+    (k8s.ns.name = "rng-service" or
+     container.name contains "rng" or
+     container.name contains "random")
+
+- macro: igaming_kyc_container
+  condition: >
+    (k8s.ns.name = "kyc-system" or
+     container.name contains "kyc" or
+     container.name contains "identity" or
+     container.name contains "verification")
+
+- macro: igaming_antifraud_container
+  condition: >
+    (k8s.ns.name = "anti-fraud" or
+     container.name contains "fraud" or
+     container.name contains "risk-engine")
+
+- macro: igaming_critical_container
+  condition: >
+    (igaming_payment_container or
+     igaming_game_container or
+     igaming_rng_container or
+     igaming_kyc_container or
+     igaming_antifraud_container)
+
+# Allowed processes per service type
+- list: payment_allowed_processes
+  items: [node, java, python3, dotnet, nginx, envoy, vault-agent]
+
+- list: game_allowed_processes
+  items: [node, java, python3, dotnet, unity-server, unreal-server, nginx, envoy]
+
+- list: rng_allowed_processes
+  items: [java, python3, dotnet, openssl]
+
+# ---------------------------------------------------------------------------
+# Rule 1: Shell spawned in payment container
+# ---------------------------------------------------------------------------
+- rule: Shell Spawned in Payment Container
+  desc: >
+    Detect any shell being spawned inside payment processing containers.
+    In production, no interactive shells should ever run in CDE containers.
+  condition: >
+    spawned_process and
+    shell_procs and
+    igaming_payment_container and
+    container and
+    not proc.pname in (crond, systemd)
+  output: >
+    CRITICAL: Shell spawned in payment container
+    (user=%user.name command=%proc.cmdline container=%container.name
+     pod=%k8s.pod.name namespace=%k8s.ns.name image=%container.image.repository)
+  priority: ALERT
+  tags: [igaming, payment, pci-dss, shell]
+
+# ---------------------------------------------------------------------------
+# Rule 2: Unauthorized process in RNG container
+# ---------------------------------------------------------------------------
+- rule: Unauthorized Process in RNG Container
+  desc: >
+    Only whitelisted processes should run in RNG containers.
+    Any unexpected process could indicate tampering with random number generation.
+  condition: >
+    spawned_process and
+    igaming_rng_container and
+    container and
+    not proc.name in (rng_allowed_processes) and
+    not proc.name in (pause, tini, dumb-init)
+  output: >
+    EMERGENCY: Unauthorized process in RNG container — possible tampering
+    (process=%proc.name user=%user.name command=%proc.cmdline
+     container=%container.name pod=%k8s.pod.name image=%container.image.repository)
+  priority: EMERGENCY
+  tags: [igaming, rng, integrity, gli-33]
+
+# ---------------------------------------------------------------------------
+# Rule 3: File write in RNG container
+# ---------------------------------------------------------------------------
+- rule: Write to RNG Container Filesystem
+  desc: >
+    RNG containers should have read-only filesystems.
+    Any write operation could indicate seed manipulation.
+  condition: >
+    open_write and
+    igaming_rng_container and
+    container and
+    not fd.name startswith /tmp and
+    not fd.name startswith /proc and
+    not fd.name startswith /dev/null
+  output: >
+    EMERGENCY: File write in RNG container — potential seed manipulation
+    (file=%fd.name process=%proc.name user=%user.name
+     container=%container.name pod=%k8s.pod.name)
+  priority: EMERGENCY
+  tags: [igaming, rng, integrity, write, gli-33]
+
+# ---------------------------------------------------------------------------
+# Rule 4: Crypto mining detection
+# ---------------------------------------------------------------------------
+- rule: Cryptocurrency Mining in iGaming Container
+  desc: >
+    Detect cryptocurrency mining processes in any iGaming container.
+    Cryptojacking in gambling infrastructure is a significant compliance risk.
+  condition: >
+    spawned_process and
+    container and
+    igaming_critical_container and
+    (proc.name in (xmrig, cpuminer, minergate, minerd, cgminer, bfgminer, ethminer, nbminer) or
+     proc.cmdline contains "stratum+tcp" or
+     proc.cmdline contains "stratum+ssl" or
+     proc.cmdline contains "cryptonight" or
+     proc.cmdline contains "randomx" or
+     proc.cmdline contains "-algo=")
+  output: >
+    EMERGENCY: Cryptocurrency mining detected in iGaming container
+    (process=%proc.name cmdline=%proc.cmdline container=%container.name
+     pod=%k8s.pod.name namespace=%k8s.ns.name image=%container.image.repository)
+  priority: EMERGENCY
+  tags: [igaming, cryptomining, malware]
+
+# ---------------------------------------------------------------------------
+# Rule 5: Database credential file access
+# ---------------------------------------------------------------------------
+- rule: Database Credential Access in iGaming Container
+  desc: >
+    Detect reading of database credential files or environment variables
+    containing connection strings in gambling platform containers.
+  condition: >
+    open_read and
+    container and
+    igaming_critical_container and
+    (fd.name contains "database.yml" or
+     fd.name contains "db-credentials" or
+     fd.name contains ".pgpass" or
+     fd.name contains ".my.cnf" or
+     fd.name contains "connection-string") and
+    not proc.name in (node, java, python3, dotnet)
+  output: >
+    ALERT: Unexpected process reading database credentials
+    (file=%fd.name process=%proc.name user=%user.name
+     container=%container.name pod=%k8s.pod.name)
+  priority: ALERT
+  tags: [igaming, credentials, data-access]
+
+# ---------------------------------------------------------------------------
+# Rule 6: Network tool usage in production containers
+# ---------------------------------------------------------------------------
+- rule: Network Reconnaissance in iGaming Container
+  desc: >
+    Detect usage of network scanning/reconnaissance tools inside
+    gambling platform containers.
+  condition: >
+    spawned_process and
+    container and
+    igaming_critical_container and
+    proc.name in (nmap, masscan, netcat, nc, ncat, socat, tcpdump, wireshark,
+                  tshark, ettercap, arpspoof, dig, nslookup, host, traceroute)
+  output: >
+    CRITICAL: Network reconnaissance tool used in iGaming container
+    (tool=%proc.name cmdline=%proc.cmdline user=%user.name
+     container=%container.name pod=%k8s.pod.name namespace=%k8s.ns.name)
+  priority: CRITICAL
+  tags: [igaming, recon, network, lateral-movement]
+
+# ---------------------------------------------------------------------------
+# Rule 7: Sensitive file access — player data
+# ---------------------------------------------------------------------------
+- rule: Player Data File Export
+  desc: >
+    Detect bulk data export operations that could indicate player data
+    exfiltration. Covers CSV/JSON/SQL dump generation.
+  condition: >
+    spawned_process and
+    container and
+    igaming_critical_container and
+    (proc.cmdline contains "mysqldump" or
+     proc.cmdline contains "pg_dump" or
+     proc.cmdline contains "mongodump" or
+     proc.cmdline contains "mongoexport" or
+     (proc.cmdline contains "SELECT" and proc.cmdline contains "player") or
+     proc.cmdline contains "--export" or
+     proc.cmdline contains "csv_export")
+  output: >
+    ALERT: Potential player data export detected
+    (command=%proc.cmdline user=%user.name container=%container.name
+     pod=%k8s.pod.name namespace=%k8s.ns.name)
+  priority: ALERT
+  tags: [igaming, data-exfiltration, gdpr, player-data]
+
+# ---------------------------------------------------------------------------
+# Rule 8: Privilege escalation attempt
+# ---------------------------------------------------------------------------
+- rule: Privilege Escalation in iGaming Container
+  desc: >
+    Detect privilege escalation attempts (sudo, su, setuid) in any
+    iGaming container. Production containers should never need root.
+  condition: >
+    spawned_process and
+    container and
+    igaming_critical_container and
+    (proc.name in (sudo, su, doas) or
+     proc.cmdline contains "chmod +s" or
+     proc.cmdline contains "chmod u+s" or
+     proc.cmdline contains "chown root")
+  output: >
+    CRITICAL: Privilege escalation attempt in iGaming container
+    (command=%proc.cmdline user=%user.name container=%container.name
+     pod=%k8s.pod.name namespace=%k8s.ns.name)
+  priority: CRITICAL
+  tags: [igaming, privilege-escalation, container-escape]
+
+# ---------------------------------------------------------------------------
+# Rule 9: Outbound connection from RNG container
+# ---------------------------------------------------------------------------
+- rule: Unexpected Outbound Connection from RNG
+  desc: >
+    RNG containers should only communicate with internal services.
+    External connections could indicate RNG result exfiltration.
+  condition: >
+    outbound and
+    igaming_rng_container and
+    container and
+    not fd.sip.name in (kubernetes, kube-dns) and
+    not fd.sport in (53, 443) and
+    fd.typechar = "4"
+  output: >
+    EMERGENCY: Unexpected outbound connection from RNG container
+    (destination=%fd.sip:%fd.sport process=%proc.name
+     container=%container.name pod=%k8s.pod.name)
+  priority: EMERGENCY
+  tags: [igaming, rng, exfiltration, network]
+
+# ---------------------------------------------------------------------------
+# Rule 10: Package manager in production container
+# ---------------------------------------------------------------------------
+- rule: Package Manager in Production iGaming Container
+  desc: >
+    Detect package manager usage in production containers.
+    Production images should be immutable.
+  condition: >
+    spawned_process and
+    container and
+    igaming_critical_container and
+    proc.name in (apt, apt-get, yum, dnf, apk, pip, pip3, npm, yarn, gem, composer)
+  output: >
+    CRITICAL: Package manager executed in production iGaming container
+    (command=%proc.cmdline container=%container.name
+     pod=%k8s.pod.name namespace=%k8s.ns.name image=%container.image.repository)
+  priority: CRITICAL
+  tags: [igaming, supply-chain, immutable-infrastructure]
+
+# ---------------------------------------------------------------------------
+# Rule 11: Bonus abuse — rapid API calls pattern
+# ---------------------------------------------------------------------------
+- rule: Rapid Bonus Claims from Single Container
+  desc: >
+    Detect potential bonus abuse automation by monitoring rapid successive
+    process spawning in bonus-engine containers.
+  condition: >
+    spawned_process and
+    container and
+    container.name contains "bonus" and
+    proc.cmdline contains "claim" and
+    evt.count > 100
+  output: >
+    WARNING: Rapid bonus claim activity detected
+    (command=%proc.cmdline rate=%evt.count container=%container.name
+     pod=%k8s.pod.name)
+  priority: WARNING
+  tags: [igaming, bonus-abuse, anti-fraud]
+
+# ---------------------------------------------------------------------------
+# Rule 12: Kubernetes API access from game containers
+# ---------------------------------------------------------------------------
+- rule: Kubernetes API Access from Game Container
+  desc: >
+    Game containers should not access the Kubernetes API.
+    This could indicate container escape or lateral movement.
+  condition: >
+    outbound and
+    igaming_game_container and
+    container and
+    (fd.sip.name = "kubernetes" or
+     fd.sport = 6443 or
+     fd.sport = 443 and fd.sip.name contains "kubernetes")
+  output: >
+    CRITICAL: Game container accessing Kubernetes API
+    (destination=%fd.sip:%fd.sport process=%proc.name
+     container=%container.name pod=%k8s.pod.name)
+  priority: CRITICAL
+  tags: [igaming, container-escape, kubernetes, lateral-movement]

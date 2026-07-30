@@ -1,0 +1,160 @@
+<!-- Post-Incident Review (PIR) Template for iGaming Operations -->
+<!-- Placeholders: {{INCIDENT_KEY}}, {{TITLE}}, {{SEVERITY}}, {{STARTED_AT}},
+     {{DETECTED_AT}}, {{RESOLVED_AT}}, {{DURATION_MINUTES}}, {{ROOT_CAUSE}},
+     {{IMPACT}}, {{JURISDICTION}}, {{PLAYER_IMPACT}}, {{AFFECTED_GAMES}},
+     {{REGULATORY_NOTIFICATION}} -->
+
+<ac:structured-macro ac:name="info">
+    <ac:rich-text-body>
+        <p><strong>Post-Incident Review</strong> — This document follows the PIR process
+        defined in the Operational Playbooks (Chapter 33). Complete all sections within
+        48 hours of incident resolution.</p>
+    </ac:rich-text-body>
+</ac:structured-macro>
+
+<h2>Incident Summary</h2>
+<table>
+    <tbody>
+        <tr><th style="width:200px">Incident ID</th><td>{{INCIDENT_KEY}}</td></tr>
+        <tr><th>Title</th><td>{{TITLE}}</td></tr>
+        <tr><th>Severity</th><td>{{SEVERITY}}</td></tr>
+        <tr><th>Jurisdiction</th><td>{{JURISDICTION}}</td></tr>
+        <tr><th>Started</th><td>{{STARTED_AT}}</td></tr>
+        <tr><th>Detected</th><td>{{DETECTED_AT}}</td></tr>
+        <tr><th>Resolved</th><td>{{RESOLVED_AT}}</td></tr>
+        <tr><th>Total Duration</th><td>{{DURATION_MINUTES}} minutes</td></tr>
+        <tr><th>Affected Games</th><td>{{AFFECTED_GAMES}}</td></tr>
+        <tr><th>Player Impact</th><td>{{PLAYER_IMPACT}} players</td></tr>
+        <tr><th>Regulatory Notification</th><td>{{REGULATORY_NOTIFICATION}}</td></tr>
+    </tbody>
+</table>
+
+<h2>Impact Assessment</h2>
+<p>{{IMPACT}}</p>
+
+<h3>Financial Impact</h3>
+<table>
+    <tbody>
+        <tr><th style="width:200px">Revenue Impact</th><td><em>To be calculated...</em></td></tr>
+        <tr><th>Player Compensation</th><td><em>To be determined...</em></td></tr>
+        <tr><th>Regulatory Fines Risk</th><td><em>To be assessed...</em></td></tr>
+    </tbody>
+</table>
+
+<h2>Timeline</h2>
+<table>
+    <thead>
+        <tr>
+            <th style="width:150px">Time (UTC)</th>
+            <th style="width:400px">Event</th>
+            <th>Actor</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr><td></td><td><em>Add timeline entries from incident log...</em></td><td></td></tr>
+    </tbody>
+</table>
+
+<h2>Root Cause Analysis</h2>
+
+<h3>Root Cause</h3>
+<p>{{ROOT_CAUSE}}</p>
+
+<h3>Contributing Factors</h3>
+<ul>
+    <li><em>Factor 1: To be identified...</em></li>
+    <li><em>Factor 2: To be identified...</em></li>
+</ul>
+
+<h3>5 Whys Analysis</h3>
+<table>
+    <tbody>
+        <tr><th style="width:80px">Why 1</th><td><em>Why did the incident occur?</em></td></tr>
+        <tr><th>Why 2</th><td><em>Why did that happen?</em></td></tr>
+        <tr><th>Why 3</th><td><em>Why did that happen?</em></td></tr>
+        <tr><th>Why 4</th><td><em>Why did that happen?</em></td></tr>
+        <tr><th>Why 5</th><td><em>Root cause identified</em></td></tr>
+    </tbody>
+</table>
+
+<h2>Detection</h2>
+<table>
+    <tbody>
+        <tr><th style="width:200px">How was it detected?</th><td><em>Monitoring alert / Customer report / Manual check</em></td></tr>
+        <tr><th>Time to detect</th><td><em>X minutes from start to detection</em></td></tr>
+        <tr><th>Could it be detected faster?</th><td><em>Yes/No — explain...</em></td></tr>
+    </tbody>
+</table>
+
+<h2>Response</h2>
+<table>
+    <tbody>
+        <tr><th style="width:200px">Incident Commander</th><td><em>Name</em></td></tr>
+        <tr><th>First Responder</th><td><em>Name</em></td></tr>
+        <tr><th>Communication Lead</th><td><em>Name</em></td></tr>
+        <tr><th>Time to mitigate</th><td><em>X minutes from detection to mitigation</em></td></tr>
+    </tbody>
+</table>
+
+<h2>Action Items</h2>
+<table>
+    <thead>
+        <tr>
+            <th style="width:40px">#</th>
+            <th>Action</th>
+            <th style="width:150px">Owner</th>
+            <th style="width:120px">Due Date</th>
+            <th style="width:100px">Priority</th>
+            <th style="width:100px">Status</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>1</td>
+            <td><em>Immediate fix description...</em></td>
+            <td><em>Owner</em></td>
+            <td><em>YYYY-MM-DD</em></td>
+            <td>High</td>
+            <td>Open</td>
+        </tr>
+        <tr>
+            <td>2</td>
+            <td><em>Prevention measure...</em></td>
+            <td><em>Owner</em></td>
+            <td><em>YYYY-MM-DD</em></td>
+            <td>Medium</td>
+            <td>Open</td>
+        </tr>
+    </tbody>
+</table>
+
+<h2>Lessons Learned</h2>
+
+<h3>What went well?</h3>
+<ul>
+    <li><em>To be discussed in PIR meeting...</em></li>
+</ul>
+
+<h3>What could be improved?</h3>
+<ul>
+    <li><em>To be discussed in PIR meeting...</em></li>
+</ul>
+
+<h3>Where did we get lucky?</h3>
+<ul>
+    <li><em>To be discussed in PIR meeting...</em></li>
+</ul>
+
+<h2>Regulatory Compliance</h2>
+<table>
+    <tbody>
+        <tr><th style="width:200px">Regulator notified?</th><td>{{REGULATORY_NOTIFICATION}}</td></tr>
+        <tr><th>Notification timestamp</th><td><em>If yes, when was the regulator notified?</em></td></tr>
+        <tr><th>Player communication</th><td><em>Were affected players notified?</em></td></tr>
+        <tr><th>Data breach?</th><td><em>Was any player data exposed?</em></td></tr>
+    </tbody>
+</table>
+
+<hr/>
+<p><em>PIR Meeting Date: TBD | Attendees: TBD</em></p>
+<p><em>This page was auto-generated and should be completed within 48 hours of incident resolution.</em></p>

@@ -1,0 +1,142 @@
+{
+  "name": "[book-cap24m §10] Fraud Alert Enrichment",
+  "active": false,
+  "tags": [{"name": "book-cap24m"}, {"name": "fraud-ops"}],
+  "settings": {"executionOrder": "v1", "errorWorkflow": ""},
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Fraud Alert Enrichment (cap 24m §10.1)\n\n**Trigger:** Webhook from fraud model (Chapter 19).\n**Enrichment:** KYC profile (24d), 30d ledger, device fingerprint, 3 sanctions lists.\n**Output:** Slack package + open case (33b).\n\n**Credentials needed (created on first run):**\n- Postgres (CNPG via tunnel) — host=127.0.0.1, port=25432, sslmode=verify-ca, certs in /etc/casino/db-mtls/\n- Slack OAuth2 — webhook URL or bot token\n- HTTP Basic for sanctions APIs\n\nKeep workflow INACTIVE until creds wired.",
+        "height": 280,
+        "width": 360,
+        "color": 7
+      },
+      "id": "note-1",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [0, -200]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "fraud-alert",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "wh-1",
+      "name": "Webhook: fraud-alert",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 80],
+      "webhookId": "fraud-alert-cap24m"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT player_id, kyc_status, kyc_level, last_kyc_at, country, risk_score FROM players WHERE player_id = $1",
+        "options": {"queryReplacement": "={{ $json.body.player_id }}"}
+      },
+      "id": "pg-1",
+      "name": "Fetch KYC Profile",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [480, 80],
+      "credentials": {"postgres": {"id": "PLACEHOLDER", "name": "casino-cnpg-tunnel"}}
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT type, amount, currency, created_at FROM wallet_events WHERE player_id = $1 AND created_at > NOW() - INTERVAL '30 days' ORDER BY created_at DESC LIMIT 200",
+        "options": {"queryReplacement": "={{ $json.body.player_id }}"}
+      },
+      "id": "pg-2",
+      "name": "Fetch 30d Ledger",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [480, 240],
+      "credentials": {"postgres": {"id": "PLACEHOLDER", "name": "casino-cnpg-tunnel"}}
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT device_id, ip, ua, country, first_seen, last_seen FROM device_fingerprints WHERE player_id = $1 ORDER BY last_seen DESC",
+        "options": {"queryReplacement": "={{ $json.body.player_id }}"}
+      },
+      "id": "pg-3",
+      "name": "Fetch Device Fingerprints",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [480, 400],
+      "credentials": {"postgres": {"id": "PLACEHOLDER", "name": "casino-cnpg-tunnel"}}
+    },
+    {
+      "parameters": {
+        "url": "https://api.example-sanctions.com/check",
+        "sendQuery": true,
+        "queryParameters": {"parameters": [{"name": "name", "value": "={{ $node['Fetch KYC Profile'].json.full_name }}"}]},
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {"timeout": 8000}
+      },
+      "id": "http-sanc",
+      "name": "Sanctions Check (3x parallel)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [720, 240]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Assemble evidence package per cap 24m §10.1\nconst alert = $node['Webhook: fraud-alert'].json.body;\nconst kyc = $node['Fetch KYC Profile'].json;\nconst ledger = $node['Fetch 30d Ledger'].json;\nconst devices = $node['Fetch Device Fingerprints'].json;\nconst sanctions = $node['Sanctions Check (3x parallel)'].json;\nreturn [{\n  json: {\n    alert_id: alert.alert_id,\n    player_id: alert.player_id,\n    severity: alert.severity,\n    triggered_at: alert.triggered_at,\n    kyc: kyc,\n    ledger_30d_summary: {\n      events: ledger.length || 0,\n      total_deposits: ledger.filter(e => e.type === 'DEPOSIT').reduce((s, e) => s + Number(e.amount), 0),\n      total_withdrawals: ledger.filter(e => e.type === 'WITHDRAWAL').reduce((s, e) => s + Number(e.amount), 0),\n    },\n    device_count: devices.length || 0,\n    sanctions_hits: sanctions.matches || [],\n    composite_risk_score: (alert.score || 0) + (sanctions.matches?.length ? 50 : 0),\n  }\n}];"
+      },
+      "id": "code-1",
+      "name": "Assemble Evidence Package",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [960, 240]
+    },
+    {
+      "parameters": {
+        "channel": "#fraud-ops",
+        "text": "=:rotating_light: *Fraud Alert {{ $json.alert_id }}* — player `{{ $json.player_id }}`, severity *{{ $json.severity }}*\n• KYC level: {{ $json.kyc.kyc_level }} (last {{ $json.kyc.last_kyc_at }})\n• 30d net: deposits ${{ $json.ledger_30d_summary.total_deposits }} / withdrawals ${{ $json.ledger_30d_summary.total_withdrawals }}\n• Devices: {{ $json.device_count }}\n• Sanctions hits: {{ $json.sanctions_hits.length }}\n• Composite risk: *{{ $json.composite_risk_score }}*\n<https://case-manager.example.internal/cases/new?source=fraud&alert={{ $json.alert_id }}|Open Case →>",
+        "otherOptions": {}
+      },
+      "id": "slack-1",
+      "name": "Post to #fraud-ops Slack",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [1200, 240],
+      "credentials": {"slackApi": {"id": "PLACEHOLDER", "name": "fraud-ops-slack"}}
+    },
+    {
+      "parameters": {
+        "url": "https://case-manager.example.internal/api/v2/cases",
+        "method": "POST",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {"name": "type", "value": "fraud_alert"},
+            {"name": "severity", "value": "={{ $json.severity }}"},
+            {"name": "player_id", "value": "={{ $json.player_id }}"},
+            {"name": "evidence", "value": "={{ JSON.stringify($json) }}"}
+          ]
+        },
+        "options": {"timeout": 8000}
+      },
+      "id": "case-1",
+      "name": "Open Case (cap 33b)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1440, 240]
+    }
+  ],
+  "connections": {
+    "Webhook: fraud-alert": {"main": [[{"node": "Fetch KYC Profile", "type": "main", "index": 0}, {"node": "Fetch 30d Ledger", "type": "main", "index": 0}, {"node": "Fetch Device Fingerprints", "type": "main", "index": 0}]]},
+    "Fetch KYC Profile": {"main": [[{"node": "Sanctions Check (3x parallel)", "type": "main", "index": 0}]]},
+    "Sanctions Check (3x parallel)": {"main": [[{"node": "Assemble Evidence Package", "type": "main", "index": 0}]]},
+    "Fetch 30d Ledger": {"main": [[{"node": "Assemble Evidence Package", "type": "main", "index": 0}]]},
+    "Fetch Device Fingerprints": {"main": [[{"node": "Assemble Evidence Package", "type": "main", "index": 0}]]},
+    "Assemble Evidence Package": {"main": [[{"node": "Post to #fraud-ops Slack", "type": "main", "index": 0}]]},
+    "Post to #fraud-ops Slack": {"main": [[{"node": "Open Case (cap 33b)", "type": "main", "index": 0}]]}
+  }
+}

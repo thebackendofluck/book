@@ -1,0 +1,64 @@
+# Companion code for "The Backend of Luck" - Chapter 14, Mobile-First Architecture for iGaming.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# Chapter 7: Mobile-First Architecture for iGaming
+# Fastlane Blue-Green Deployment Configuration
+#
+# Implements a blue-green deployment strategy for iOS casino apps:
+# - Builds and uploads to TestFlight (blue environment)
+# - Monitors crash rates for 24 hours post-deploy
+# - Automatically promotes to App Store if crash rate < 1%
+# - Rolls back to previous version if threshold is exceeded
+#
+# Reference: Chapter 7 - Blue-Green Deployment for Mobile Apps section
+
+default_platform(:ios)
+
+platform :ios do
+  desc "Deploy to TestFlight with blue-green strategy"
+  lane :deploy_testflight do
+    # Increment build number
+    increment_build_number
+
+    # Build app
+    build_app(
+      scheme: "CasinoApp",
+      configuration: "Release",
+      export_method: "app-store"
+    )
+
+    # Upload to TestFlight (blue environment)
+    upload_to_testflight(
+      skip_waiting_for_build_processing: false,
+      notify_external_testers: true,
+      groups: ["Beta Testers"],
+      changelog: generate_changelog
+    )
+
+    # Monitor crash rates for 24 hours
+    monitor_crash_rates(
+      duration: 86400, # 24 hours
+      threshold: 0.01  # 1% crash rate threshold
+    )
+
+    # If stable, promote to production
+    if crash_rate_acceptable?
+      upload_to_app_store(
+        force: true,
+        skip_metadata: false,
+        skip_screenshots: false
+      )
+    else
+      # Rollback to previous version
+      rollback_to_previous_version
+      notify_team("Deployment failed - crash rate too high")
+    end
+  end
+end

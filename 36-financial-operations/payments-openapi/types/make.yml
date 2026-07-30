@@ -1,0 +1,196 @@
+# Companion code for "The Backend of Luck" - Chapter 36, Financial Operations.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+openapi: 3.0.0
+servers:
+  - description: Development
+    url: 'https://new-payments-service.acmetocasino-stage.com'
+  - description: Production
+    url: https://payments.acmetocasino.com
+info:
+  version: '0.0.1'
+  title: Make a generic payment
+paths:
+  /methods/make:
+    post:
+      summary: Deposit money into a user account
+      responses:
+        '200':
+          description: Succesfull
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MakeSuccessResponse'
+        '400':
+          description: A error occured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MakeErrorResponse'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MakeRequest'
+components:
+  schemas:
+    AdyenSecuredForm:
+      description: "On first card deposit all values are required, on subsequent deposits only encryptedSecurityCode is send."
+      properties:
+        encryptedSecurityCode:
+          type: string
+        encryptedCardNumber:
+          type: string
+        encryptedExpiryMonth:
+          type: string
+        encryptedExpiryYear:
+          type: string
+    NewPaymentCardData:
+      allOf:
+        - $ref: '#/components/schemas/AdyenSecuredForm'
+        - type: object
+          properties:
+            cardHolderName:
+              type: string
+    FormValue:
+      required:
+        - policyTermsAgreed
+        - bonusGroupId
+        - amount
+      properties:
+        policyTermsAgreed:
+          type: string
+        bonusGroupId:
+          type: string
+        amount:
+          type: number
+    ExistingPaymentMethod:
+      type: object
+      required:
+        - method
+        - ref
+        - label
+        - isRedirectMethod
+        - cardEndingWith
+        - variant
+      properties:
+        method:
+          type: string
+        ref:
+          type: string
+        label:
+          type: string
+        isRedirectMethod:
+          enum:
+            - 'true'
+            - 'false'
+        cardEndingWith:
+          type: string
+        expiryMonth:
+          type: string
+        expiryYear:
+          type: string
+        variant:
+          type: string
+    NewPaymentMethod:
+      type: object
+      required:
+        - method
+        - ref
+        - label
+        - isRedirectMethod
+        - cardEndingWith
+        - variant
+      properties:
+        method:
+          type: string
+        label:
+          type: string
+        description:
+          type: string
+        isRedirectMethod:
+          enum:
+            - 'true'
+            - 'false'
+    MakeRequest:
+      allOf:
+        - $ref: '#/components/schemas/NewPaymentCardData'
+        - $ref: '#/components/schemas/FormValue'
+        - type: object
+          properties:
+            sessionid:
+              type: string
+            mobile:
+              type: boolean
+            issuer:
+              type: object
+            ip:
+              type: string
+        - oneOf:
+          - $ref: '#/components/schemas/ExistingPaymentMethod'
+          - allOf:
+              - $ref: '#/components/schemas/NewPaymentCardData'
+              - type: object
+                properties:
+                  method:
+                    type: string
+    MakeSuccessResponse:
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+            - 'SUCCESS'
+            - 'FAILED'
+            - 'PENDING'
+            - 'VERIFY'
+            - 'UKGC_CREDIT_CARD_NOT_ALLOWED'
+        redirectUrl:
+          type: string
+        redirectType:
+          type: string
+          enum:
+            - 'iframe'
+            - 'fullPage'
+        payment_id:
+          type: number
+        redirectionMethod:
+          type: string
+          enum:
+            - 'GET'
+            - 'POST'
+        params:
+          type: array
+          items:
+            type: object
+            required:
+              - key
+              - value
+            properties:
+              key:
+                type: string
+              value:
+                type: string
+    MakeErrorResponse:
+      type: object
+      description: Most of the error code can be found at the platform codebase GatewayMessager.scala
+      properties:
+        type:
+          type: string
+          enum:
+            - 'error'
+        code:
+          type: number
+        message:
+          type: string
+      example:
+        type: 'error'
+        code: 400
+        message: 'General error. Please contact support.'

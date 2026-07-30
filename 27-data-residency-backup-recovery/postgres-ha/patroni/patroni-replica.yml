@@ -1,0 +1,122 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 27, Data Residency and Backup/Recovery.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# Patroni configuration — pg-replica node
+# Variables with ${VAR} are expanded by the container environment.
+
+scope: pg-ha-cluster
+namespace: /patroni/
+name: pg-replica
+
+restapi:
+  listen: 0.0.0.0:8008
+  connect_address: pg-replica:8008
+  authentication:
+    username: patroni
+    password: ${PATRONI_RESTAPI_PASSWORD}   # injected from the secrets manager; never hardcode
+
+etcd3:
+  hosts: etcd:2379
+  protocol: http
+
+bootstrap:
+  dcs:
+    ttl: 30
+    loop_wait: 10
+    retry_timeout: 10
+    maximum_lag_on_failover: 1048576      # 1 MB
+    master_start_timeout: 300
+    synchronous_mode: true
+    synchronous_mode_strict: false
+    postgresql:
+      use_pg_rewind: true
+      use_slots: true
+      parameters:
+        max_connections: 200
+        shared_buffers: 512MB
+        effective_cache_size: 2GB
+        maintenance_work_mem: 128MB
+        checkpoint_completion_target: 0.9
+        wal_buffers: 64MB
+        default_statistics_target: 100
+        random_page_cost: 1.1
+        effective_io_concurrency: 200
+        work_mem: 16MB
+        min_wal_size: 1GB
+        max_wal_size: 4GB
+        max_worker_processes: 8
+        max_parallel_workers_per_gather: 4
+        max_parallel_workers: 8
+        max_parallel_maintenance_workers: 4
+        wal_level: replica
+        hot_standby: "on"
+        wal_log_hints: "on"
+        max_wal_senders: 10
+        max_replication_slots: 10
+        wal_keep_size: 1GB
+        archive_mode: "on"
+        archive_command: "cp %p /wal-archive/%f"
+        archive_cleanup_command: "pg_archivecleanup /wal-archive %r"
+        restore_command: "cp /wal-archive/%f %p"
+        log_destination: stderr
+        logging_collector: "off"
+        log_min_duration_statement: 1000
+        log_checkpoints: "on"
+        log_connections: "on"
+        log_lock_waits: "on"
+        log_temp_files: 0
+        log_autovacuum_min_duration: 0
+        log_replication_commands: "on"
+        lock_timeout: 5000
+        statement_timeout: 30000
+        idle_in_transaction_session_timeout: 60000
+
+  initdb:
+    - encoding: UTF8
+    - data-checksums
+
+  pg_hba:
+    - host replication replicator 0.0.0.0/0 md5
+    - host all all 0.0.0.0/0 md5
+    - local all all trust
+
+postgresql:
+  listen: 0.0.0.0:5432
+  connect_address: pg-replica:5432
+  data_dir: /var/lib/postgresql/data
+  bin_dir: /usr/lib/postgresql/16/bin
+  config_dir: /var/lib/postgresql/data
+  pgpass: /tmp/pgpass
+
+  authentication:
+    replication:
+      username: replicator
+      password: ${PATRONI_REPLICATION_PASSWORD}
+    superuser:
+      username: postgres
+      password: ${PATRONI_PASSWORD}
+    rewind:
+      username: rewind_user
+      password: rewind_2024
+
+  parameters:
+    unix_socket_directories: /var/run/postgresql
+
+  pg_hba:
+    - host replication replicator 0.0.0.0/0 md5
+    - host all all 0.0.0.0/0 md5
+    - local all all trust
+
+tags:
+  nofailover: false
+  noloadbalance: false
+  clonefrom: false
+  nosync: false

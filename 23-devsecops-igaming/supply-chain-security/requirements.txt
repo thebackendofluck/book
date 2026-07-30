@@ -1,0 +1,4 @@
+# Supply Chain Security Scanner - Python Dependencies
+# Used by dependency-scanner.py and sbom-pipeline.sh
+#
+# Install: pip install -r requirements.txt

@@ -1,0 +1,97 @@
+# Companion code for "The Backend of Luck" - Chapter 24h, Mutual TLS Between Kubernetes Services for iGaming Platforms.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# File: manifests/player-service/deployment.yaml
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: player-service
+  namespace: player-service
+  labels:
+    app: player-service
+    version: "1.0.0"
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: player-service
+  template:
+    metadata:
+      labels:
+        app: player-service
+    spec:
+      serviceAccountName: player-service
+      automountServiceAccountToken: false  # Explicit false unless needed
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: player-service
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          image: registry.casino.internal/player-service:1.0.0
+          ports:
+            - name: https
+              containerPort: 8443
+              protocol: TCP
+          env:
+            - name: TLS_CERT_FILE
+              value: /tls/tls.crt
+            - name: TLS_KEY_FILE
+              value: /tls/tls.key
+            - name: TLS_CA_BUNDLE
+              value: /ca/ca-bundle.crt
+            - name: TLS_CLIENT_AUTH
+              value: "require"
+          volumeMounts:
+            - name: tls-certs
+              mountPath: /tls
+              readOnly: true
+            - name: ca-bundle
+              mountPath: /ca
+              readOnly: true
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8443
+              scheme: HTTPS
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8443
+              scheme: HTTPS
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      volumes:
+        - name: tls-certs
+          secret:
+            secretName: player-service-tls
+            defaultMode: 0400
+        - name: ca-bundle
+          configMap:
+            name: casino-internal-ca-bundle
+            defaultMode: 0444

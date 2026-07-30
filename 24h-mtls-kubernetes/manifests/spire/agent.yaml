@@ -1,0 +1,128 @@
+# Companion code for "The Backend of Luck" - Chapter 24h, Mutual TLS Between Kubernetes Services for iGaming Platforms.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# File: manifests/spire/agent.yaml (abbreviated)
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: spire-agent
+  namespace: spire
+spec:
+  selector:
+    matchLabels:
+      app: spire-agent
+  template:
+    metadata:
+      labels:
+        app: spire-agent
+    spec:
+      # Exception, not an oversight. The SPIRE agent attests workloads by reading
+      # /proc/<pid> of the calling process to map a UDS connection back to a pod,
+      # so it needs the host PID namespace; and it must reach the SPIRE server
+      # before CNI is necessarily up on the node, so it uses the host network.
+      hostPID: true
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      serviceAccountName: spire-agent
+      # No runAsNonRoot here for the same reason: reading other containers' /proc
+      # entries for workload attestation requires uid 0. Everything that can still
+      # be locked down is, below: no privilege escalation, all capabilities
+      # dropped, read-only root filesystem, RuntimeDefault seccomp. Do not copy
+      # the hostPID/root part into an ordinary application DaemonSet.
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: spire-agent
+          image: ghcr.io/spiffe/spire-agent:1.15.2
+          args:
+            - -config
+            - /run/spire/config/agent.conf
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: spire-config
+              mountPath: /run/spire/config
+              readOnly: true
+            - name: spire-agent-socket
+              mountPath: /run/spire/sockets
+            - name: spire-bundle
+              mountPath: /run/spire/bundle
+              readOnly: true
+            # agent.conf sets data_dir here. With a read-only root filesystem the
+            # agent still needs somewhere to cache its SVIDs, so give it an
+            # emptyDir rather than unlocking the whole filesystem. Losing the
+            # cache on restart is fine: the agent re-attests to the server.
+            - name: spire-agent-data
+              mountPath: /run/spire/agent/data
+      volumes:
+        - name: spire-config
+          configMap:
+            name: spire-agent-config
+        - name: spire-agent-socket
+          hostPath:
+            path: /run/spire/sockets
+            type: DirectoryOrCreate
+        - name: spire-bundle
+          configMap:
+            name: spire-bundle
+        - name: spire-agent-data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spire-agent-config
+  namespace: spire
+data:
+  agent.conf: |
+    agent {
+      data_dir = "/run/spire/agent/data"
+      log_level = "INFO"
+      server_address = "spire-server.spire.svc.cluster.local"
+      server_port = "8081"
+      trust_domain = "casino.internal"
+      # Socket path shared with workload pods via hostPath mount
+      socket_path = "/run/spire/sockets/agent.sock"
+    }
+
+    plugins {
+      NodeAttestor "k8s_psat" {
+        plugin_data {
+          cluster = "ops-host"
+        }
+      }
+
+      KeyManager "memory" {
+        plugin_data {}
+      }
+
+      WorkloadAttestor "k8s" {
+        plugin_data {
+          skip_kubelet_verification = false
+          # Verify the kubelet's serving certificate against the cluster CA
+          # instead of trusting any responder on the node. The service
+          # account token's CA file is auto-mounted into every pod and is
+          # signed by the same cluster CA that issues kubelet certs.
+          kubelet_ca_path = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+        }
+      }
+    }

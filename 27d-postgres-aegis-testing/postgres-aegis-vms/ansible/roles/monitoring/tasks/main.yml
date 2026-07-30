@@ -1,0 +1,85 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 27d, PostgreSQL Aegis.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# monitoring — node_exporter + postgres_exporter, scraped by the book's
+# existing Prometheus. Falco / Wazuh rules are out of scope here (chapter 24).
+
+- name: Install node_exporter via apt
+  ansible.builtin.apt:
+    name: prometheus-node-exporter
+    state: present
+    update_cache: true
+
+- name: Ensure node_exporter listens on {{ node_exporter_port }}
+  ansible.builtin.lineinfile:
+    path: /etc/default/prometheus-node-exporter
+    regexp: '^ARGS='
+    line: 'ARGS="--web.listen-address=0.0.0.0:{{ node_exporter_port }}"'
+    create: true
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart node_exporter
+
+- name: Install postgres_exporter binary
+  ansible.builtin.get_url:
+    url: "https://github.com/prometheus-community/postgres_exporter/releases/download/v0.15.0/postgres_exporter-0.15.0.linux-amd64.tar.gz"
+    dest: /tmp/postgres_exporter.tar.gz
+    mode: "0644"
+
+- name: Extract postgres_exporter
+  ansible.builtin.unarchive:
+    src: /tmp/postgres_exporter.tar.gz
+    dest: /usr/local/bin/
+    remote_src: true
+    extra_opts:
+      - --strip-components=1
+      - "--wildcards"
+      - "*/postgres_exporter"
+
+- name: postgres_exporter service
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/postgres-exporter.service
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Prometheus Postgres exporter
+      Requires=network-online.target patroni.service
+      After=patroni.service
+      [Service]
+      Type=simple
+      EnvironmentFile=/etc/postgres-exporter.env
+      ExecStart=/usr/local/bin/postgres_exporter --web.listen-address=0.0.0.0:{{ postgres_exporter_port }}
+      Restart=on-failure
+      [Install]
+      WantedBy=multi-user.target
+  notify: Reload systemd
+
+- name: postgres_exporter env (DSN via Vault Agent-rendered file)
+  ansible.builtin.template:
+    src: postgres-exporter.env.j2
+    dest: /etc/postgres-exporter.env
+    owner: root
+    group: postgres
+    mode: "0640"
+  notify: Restart postgres_exporter
+
+- name: Enable exporters
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+    daemon_reload: true
+  loop:
+    - prometheus-node-exporter
+    - postgres-exporter

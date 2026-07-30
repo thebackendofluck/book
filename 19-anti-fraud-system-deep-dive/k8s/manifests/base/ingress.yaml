@@ -1,0 +1,68 @@
+# Companion code for "The Backend of Luck" - Chapter 19, Anti-Fraud System Deep Dive.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# -----------------------------------------------------------------------------
+# INGRESS - Traefik
+# -----------------------------------------------------------------------------
+# Host: fraud.example.com   (replace with your fraud-detection FQDN)
+# TLS:  fraud-internal-issuer (self-signed CA) until DNS-01 / public IP is wired,
+#       then flip annotation to letsencrypt-prod.
+#
+# The primary backend is `alerting` (8083) because that service exposes the
+# fraud-detection REST API / dashboard. Other services are reachable on
+# sub-paths for direct API access.
+# -----------------------------------------------------------------------------
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: fraud-detection-ingress
+  namespace: fraud-detection
+  annotations:
+    cert-manager.io/cluster-issuer: "fraud-internal-issuer"
+    traefik.ingress.kubernetes.io/router.entrypoints: "websecure"
+    traefik.ingress.kubernetes.io/router.tls: "true"
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - fraud.example.com
+      secretName: fraud-tls
+  rules:
+    - host: fraud.example.com
+      http:
+        paths:
+          - path: /api/ingestion
+            pathType: Prefix
+            backend:
+              service:
+                name: data-ingestion
+                port:
+                  number: 80
+          - path: /api/features
+            pathType: Prefix
+            backend:
+              service:
+                name: feature-engineering
+                port:
+                  number: 80
+          - path: /api/models
+            pathType: Prefix
+            backend:
+              service:
+                name: model-serving
+                port:
+                  number: 80
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: alerting
+                port:
+                  number: 80

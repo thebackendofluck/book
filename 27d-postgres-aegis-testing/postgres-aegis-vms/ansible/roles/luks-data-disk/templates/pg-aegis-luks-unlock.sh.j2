@@ -1,0 +1,31 @@
+#!/bin/sh
+# /usr/local/sbin/pg-aegis-luks-unlock.sh
+# Rendered by Ansible role luks-data-disk for {{ inventory_hostname }}.
+# Mirrors /opt/backup/scripts/pg-tde-open.sh on lab-server.
+
+set -eu
+
+LUKS_DEV="{{ luks_device }}"
+MAPPER="{{ luks_mapper_name }}"
+AGENT_HCL="/opt/vault-agent/postgres-aegis/agent-luks.hcl"
+KEYFILE="/dev/shm/luks-{{ inventory_hostname }}.key"
+
+log() { logger -t pg-aegis-luks -- "$*"; printf '[pg-aegis-luks] %s\n' "$*"; }
+cleanup() { [ -e "$KEYFILE" ] && shred -u "$KEYFILE" 2>/dev/null || true; }
+trap cleanup EXIT
+
+if [ -b "/dev/mapper/${MAPPER}" ]; then
+    log "${MAPPER} already open"
+    exit 0
+fi
+
+log "rendering LUKS key via Vault Agent"
+/usr/bin/bao agent -config="$AGENT_HCL" >/tmp/vault-agent-luks.log 2>&1 || {
+    log "Vault Agent failed; see /tmp/vault-agent-luks.log"
+    exit 2
+}
+[ -s "$KEYFILE" ] || { log "key not rendered"; exit 3; }
+
+cryptsetup --batch-mode open --keyfile-size 64 --key-file "$KEYFILE" \
+    "$LUKS_DEV" "$MAPPER"
+log "${MAPPER} unlocked"

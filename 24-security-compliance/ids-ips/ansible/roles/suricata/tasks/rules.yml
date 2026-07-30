@@ -1,0 +1,177 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 24, Security and Compliance.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# roles/suricata/tasks/rules.yml
+# Manage Suricata rule sources with suricata-update.
+# Rules are updated without restarting the process — SIGUSR2 triggers a hot reload.
+
+# =============================================================================
+# SURICATA-UPDATE CONFIGURATION
+# =============================================================================
+
+- name: "Ensure suricata-update configuration directory exists"
+  ansible.builtin.file:
+    path: /etc/suricata/update.d
+    state: directory
+    owner: "{{ suricata_user }}"
+    group: "{{ suricata_group }}"
+    mode: "0750"
+  tags: [rules]
+
+- name: "Deploy suricata-update.yaml from template"
+  ansible.builtin.template:
+    src: suricata-update.yaml.j2
+    dest: "{{ suricata_config_dir }}/update.yaml"
+    owner: "{{ suricata_user }}"
+    group: "{{ suricata_group }}"
+    mode: "0640"
+  tags: [rules]
+
+# =============================================================================
+# ENABLE / DISABLE RULE SOURCES
+# =============================================================================
+
+- name: "Enable ET Open rules source"
+  ansible.builtin.command: >
+    suricata-update enable-source et/open
+  when: et_open_enabled | bool
+  register: et_open_result
+  changed_when: "'Enabled' in et_open_result.stdout"
+  tags: [rules]
+
+- name: "Enable ET Pro rules source with oinkcode"
+  ansible.builtin.command: >
+    suricata-update enable-source et/pro
+    --set secret-code={{ et_pro_oinkcode }}
+  when:
+    - et_pro_enabled | bool
+    - et_pro_oinkcode != ""
+  register: et_pro_result
+  changed_when: "'Enabled' in et_pro_result.stdout"
+  no_log: true    # oinkcode is sensitive
+  tags: [rules]
+
+- name: "Enable extra rule sources"
+  ansible.builtin.command: >
+    suricata-update enable-source {{ item.name }}
+  loop: "{{ extra_rule_sources }}"
+  when: extra_rule_sources | length > 0
+  register: extra_source_result
+  changed_when: "'Enabled' in extra_source_result.stdout"
+  tags: [rules]
+
+# =============================================================================
+# DISABLE NOISY RULE CATEGORIES
+# =============================================================================
+
+- name: "Write disable-conf for noisy rule categories"
+  ansible.builtin.copy:
+    dest: /etc/suricata/update.d/disable-categories.yaml
+    owner: "{{ suricata_user }}"
+    group: "{{ suricata_group }}"
+    mode: "0640"
+    content: |
+      # Disabled rule categories — managed by Ansible
+      # See group_vars/suricata_sensors.yml: disabled_rule_categories
+      disable-conf:
+      {% for category in disabled_rule_categories %}
+        - group: "{{ category }}"
+      {% endfor %}
+  tags: [rules]
+
+# =============================================================================
+# COPY CUSTOM IGAMING RULES
+# =============================================================================
+
+- name: "Ensure custom rules are in the rules directory"
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ suricata_rules_dir }}/{{ item }}"
+    owner: "{{ suricata_user }}"
+    group: "{{ suricata_group }}"
+    mode: "0640"
+  loop: "{{ suricata_custom_rule_files }}"
+  tags: [rules, custom]
+
+# =============================================================================
+# RUN SURICATA-UPDATE
+# =============================================================================
+
+- name: "Run suricata-update to fetch and merge rules"
+  ansible.builtin.command: >
+    suricata-update
+    --suricata /usr/bin/suricata
+    --suricata-conf {{ suricata_config_dir }}/suricata.yaml
+    --output {{ suricata_rules_dir }}/suricata.rules
+    --no-reload
+  register: suricata_update_result
+  changed_when: >
+    'Enabled rules' in suricata_update_result.stdout or
+    'New rules' in suricata_update_result.stdout
+  tags: [rules]
+
+- name: "Display rule update summary"
+  ansible.builtin.debug:
+    msg: "{{ suricata_update_result.stdout_lines[-5:] }}"
+  tags: [rules]
+
+# =============================================================================
+# VALIDATE RULES BEFORE RELOAD
+# =============================================================================
+
+- name: "Test Suricata config and rules before hot reload"
+  ansible.builtin.command: >
+    suricata -T -c {{ suricata_config_dir }}/suricata.yaml -l /tmp
+  register: suricata_rule_test
+  changed_when: false
+  failed_when: suricata_rule_test.rc != 0
+  tags: [rules, validate]
+
+# =============================================================================
+# HOT RELOAD (SIGUSR2 — no traffic interruption)
+# =============================================================================
+
+- name: "Check if Suricata is running before attempting reload"
+  ansible.builtin.command: systemctl is-active suricata
+  register: suricata_active
+  changed_when: false
+  failed_when: false
+  tags: [rules]
+
+- name: "Hot reload rules via SIGUSR2 (no restart, no dropped packets)"
+  ansible.builtin.command: kill -USR2 $(cat /var/run/suricata/suricata.pid)
+  when:
+    - suricata_active.stdout == "active"
+    - suricata_update_result.changed
+  changed_when: true
+  register: sigusr2_result
+  tags: [rules]
+
+- name: "Pause to allow rule reload to complete"
+  ansible.builtin.pause:
+    seconds: 10
+  when:
+    - suricata_active.stdout == "active"
+    - suricata_update_result.changed
+  tags: [rules]
+
+- name: "Verify rules were reloaded (check Suricata stats)"
+  ansible.builtin.command: >
+    journalctl -u suricata -n 50 --no-pager
+  register: journal_output
+  changed_when: false
+  tags: [rules]
+
+- name: "Display reload status from journal"
+  ansible.builtin.debug:
+    msg: >
+      {{ journal_output.stdout_lines | select('search', 'Rule|rule|reload|Reload') | list }}
+  tags: [rules]

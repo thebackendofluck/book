@@ -1,0 +1,9 @@
+# ty configuration for the fraud-api project.
+# https://github.com/astral-sh/ty
+#
+# Suppress a false-positive on Starlette's ParamSpec-typed add_middleware
+# signature — CORSMiddleware via add_middleware is the idiomatic FastAPI
+# pattern and works correctly at runtime.
+
+[rules]
+"invalid-argument-type" = "ignore"

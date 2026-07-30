@@ -1,0 +1,96 @@
+# Companion code for "The Backend of Luck" - Chapter 18, Real-Time Clock Module Implementation.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# =============================================================================
+# Prometheus Configuration for RTC System
+# =============================================================================
+# Metrics collection for Real-Time Clock infrastructure
+# =============================================================================
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: rtc-igaming
+    environment: production
+
+# Alerting configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
+
+# Rule files
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+# Scrape configurations
+scrape_configs:
+  # RTC API Services
+  - job_name: 'rtc-api'
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names:
+            - rtc-system
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        regex: rtc-api
+        action: keep
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+        regex: "true"
+        action: keep
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+        regex: (.+)
+        target_label: __address__
+        replacement: ${1}:${2}
+        action: replace
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+        regex: (.+)
+        target_label: __metrics_path__
+        action: replace
+    metrics_path: /metrics
+    scrape_interval: 5s  # More frequent for latency metrics
+
+  # RTC Consensus Services
+  - job_name: 'rtc-consensus'
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names:
+            - rtc-system
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        regex: rtc-consensus
+        action: keep
+    scrape_interval: 10s
+
+  # Redis (via redis_exporter)
+  - job_name: 'redis'
+    static_configs:
+      - targets:
+          - redis-exporter:9121
+    scrape_interval: 15s
+
+  # PostgreSQL (via postgres_exporter)
+  - job_name: 'postgres'
+    static_configs:
+      - targets:
+          - postgres-exporter:9187
+    scrape_interval: 15s
+
+  # Node Exporter for host metrics
+  - job_name: 'node'
+    kubernetes_sd_configs:
+      - role: node
+    relabel_configs:
+      - action: labelmap
+        regex: __meta_kubernetes_node_label_(.+)

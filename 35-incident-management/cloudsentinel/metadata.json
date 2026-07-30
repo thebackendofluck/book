@@ -1,0 +1,5 @@
+{
+  "name": "CloudSentinel",
+  "description": "A DevOps dashboard that monitors cloud provider status (AWS, GCP, Azure) via AI-powered search and analyzes Terraform code for potential API breaking changes.",
+  "requestFramePermissions": []
+}

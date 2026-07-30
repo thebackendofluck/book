@@ -1,0 +1,109 @@
+# Companion code for "The Backend of Luck" - Chapter 27d, PostgreSQL Aegis.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+{{- if .Values.pgbouncer.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "postgres-aegis.fullname" . }}-pgbouncer
+  labels:
+    {{- include "postgres-aegis.labels" . | nindent 4 }}
+data:
+  pgbouncer.ini: |
+    [databases]
+    casino = host={{ include "postgres-aegis.writerName" . }} port=5432 dbname=casino
+    casino_ro = host={{ include "postgres-aegis.readerName" . }} port=5432 dbname=casino
+
+    [pgbouncer]
+    listen_addr = 0.0.0.0
+    listen_port = 6432
+    auth_type = scram-sha-256
+    auth_file = /etc/pgbouncer/userlist.txt
+    pool_mode = {{ .Values.pgbouncer.poolMode }}
+    max_client_conn = {{ .Values.pgbouncer.maxClientConn }}
+    default_pool_size = {{ .Values.pgbouncer.defaultPoolSize }}
+    server_tls_sslmode = verify-full
+    server_tls_ca_file = /etc/postgresql/tls/ca.crt
+    admin_users = admin
+    stats_users = admin
+    ignore_startup_parameters = extra_float_digits
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "postgres-aegis.fullname" . }}-pgbouncer
+  labels:
+    {{- include "postgres-aegis.labels" . | nindent 4 }}
+    postgres-aegis.io/role: pgbouncer
+spec:
+  replicas: {{ .Values.pgbouncer.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "postgres-aegis.selectorLabels" . | nindent 6 }}
+      postgres-aegis.io/role: pgbouncer
+  template:
+    metadata:
+      labels:
+        {{- include "postgres-aegis.selectorLabels" . | nindent 8 }}
+        postgres-aegis.io/role: pgbouncer
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1100
+        runAsGroup: 1100
+        fsGroup: 1100
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: pgbouncer
+          image: edoburu/pgbouncer:v1.24.1-p1
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          ports:
+            - name: pgbouncer
+              containerPort: 6432
+          resources:
+            {{- toYaml .Values.pgbouncer.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/pgbouncer
+            - name: tls
+              mountPath: /etc/postgresql/tls
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "postgres-aegis.fullname" . }}-pgbouncer
+        - name: tls
+          secret:
+            secretName: {{ include "postgres-aegis.fullname" . }}-tls
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "postgres-aegis.fullname" . }}-pgbouncer
+  labels:
+    {{- include "postgres-aegis.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "postgres-aegis.selectorLabels" . | nindent 4 }}
+    postgres-aegis.io/role: pgbouncer
+  ports:
+    - name: pgbouncer
+      port: 6432
+      targetPort: 6432
+{{- end }}

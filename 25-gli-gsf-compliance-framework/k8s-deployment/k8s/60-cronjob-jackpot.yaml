@@ -1,0 +1,66 @@
+# Companion code for "The Backend of Luck" - Chapter 25, GLI-GSF Compliance Framework.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: gli-12-jackpot-reserve
+  namespace: gli-compliance
+  labels:
+    app.kubernetes.io/name: gli-compliance-runner
+    gli-standard: GLI-12
+spec:
+  # GLI-12 v3.0 (2026) jackpot reserve check — every 5 minutes.
+  schedule: "*/5 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 120
+      template:
+        spec:
+          serviceAccountName: gli-compliance
+          automountServiceAccountToken: false
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: jackpot
+              image: registry.internal.example:5000/gli-compliance-runner:0.1.1
+              imagePullPolicy: IfNotPresent
+              command: ["python"]
+              args:
+                - /app/scripts/chapter-15/gli-12/jackpot-reserve-check.py
+                - --config
+                - /etc/gli/jackpot-config.json
+                - --ledger
+                - /etc/gli/jackpot-ledger.csv
+              volumeMounts:
+                - name: stub-data
+                  mountPath: /etc/gli
+                  readOnly: true
+              resources:
+                requests: { cpu: "20m", memory: "64Mi" }
+                limits:   { cpu: "200m", memory: "256Mi" }
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+          volumes:
+            - name: stub-data
+              configMap:
+                name: gli-compliance-stub-data

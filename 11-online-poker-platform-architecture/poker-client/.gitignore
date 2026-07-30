@@ -1,0 +1,15 @@
+node_modules/
+dist/
+release/
+data/cache/
+*.log
+.DS_Store
+.env
+*.tsbuildinfo
+src/renderer/renderer.js
+bin/*.exe
+bin/*.cmd
+# Local tool config (local only; never commit)
+keys/
+tests/fixtures/*.key
+tests/fixtures/*.pem

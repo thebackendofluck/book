@@ -1,0 +1,63 @@
+# =============================================================================
+# RTC API Service - Production Dockerfile
+# =============================================================================
+# Multi-stage build for minimal, secure container image
+# Target: <50MB final image, non-root user, read-only filesystem
+# =============================================================================
+
+# Stage 1: Build
+FROM golang:1.26-alpine AS builder
+
+# Install build dependencies
+RUN apk add --no-cache git ca-certificates tzdata
+
+WORKDIR /build
+
+# Copy go mod files first for better caching
+COPY go.mod go.sum ./
+RUN go mod download && go mod verify
+
+# Copy source code
+COPY . .
+
+# Build with security flags
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+    -ldflags="-w -s -X main.Version=$(git describe --tags --always) -X main.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    -o /build/rtc-api \
+    ./cmd/rtc-api
+
+# Stage 2: Runtime
+FROM scratch
+
+# Import CA certificates for TLS
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
+
+# Create non-root user
+COPY --from=builder /etc/passwd /etc/passwd
+COPY --from=builder /etc/group /etc/group
+
+# Copy binary
+COPY --from=builder /build/rtc-api /rtc-api
+
+# Security labels
+LABEL org.opencontainers.image.title="RTC API Service" \
+      org.opencontainers.image.description="Real-Time Clock API for iGaming platforms" \
+      org.opencontainers.image.vendor="iGaming Infrastructure" \
+      org.opencontainers.image.version="1.0.0" \
+      org.opencontainers.image.licenses="Proprietary" \
+      security.compliance="GLI-11,MGA,UKGC"
+
+# Run as non-root user (UID 1000)
+USER 1000:1000
+
+# Expose ports
+EXPOSE 8080 50051 9090 8081
+
+# Health check
+HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
+    CMD ["/rtc-api", "health"]
+
+# Entry point
+ENTRYPOINT ["/rtc-api"]
+CMD ["serve"]

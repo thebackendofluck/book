@@ -1,0 +1,90 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 27c, Migrating a Single-Jurisdiction Casino Platform to Hub & Spo.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# Block spoke-br pods from reaching anything in the hub namespace *except* the
+# two services spokes legitimately need: hub-redis (for pub/sub) and global-id
+# (HTTP API). hub-postgres is explicitly not in the allowlist, which is what
+# the validation test exercises.
+#
+# NOTE: this is an egress policy on the spoke side only. It stops a
+# well-behaved spoke-br pod from dialing hub-postgres, but it does nothing
+# against a pod that is *already inside* the hub namespace (a compromised
+# hub workload, a misconfigured debug pod, etc.) or against any pod placed
+# in a namespace this egress rule doesn't cover. The Ingress policies below
+# are what actually protect the databases: they run on the database pods
+# themselves and are the enforcement point that cannot be bypassed by
+# skipping this egress rule.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: spoke-br-egress-to-hub
+  namespace: spoke-br
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    # DNS
+    - to:
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+    # Intra-namespace (spoke-br-postgres, peers)
+    - to:
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: spoke-br}}
+    # Hub allowlist: redis pub/sub + global-id HTTP API only.
+    - to:
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: hub}}
+          podSelector: {matchLabels: {app: hub-redis}}
+      ports: [{protocol: TCP, port: 6379}]
+    - to:
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: hub}}
+          podSelector: {matchLabels: {app: global-id}}
+      ports: [{protocol: TCP, port: 8000}]
+---
+# Ingress guard on hub-postgres itself: only the hub API workloads that
+# actually own hub tables (global-id, mailer) may open a connection, and
+# only from inside the hub namespace (labelled tier=hub in namespace-hub.yaml,
+# NOT role=hub). Because this NetworkPolicy sets policyTypes: [Ingress] with
+# a podSelector matching hub-postgres, every ingress flow not covered by the
+# rule below is denied by default — including from other hub-namespace pods,
+# debug pods, or a compromised spoke workload that somehow lands inside hub.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: hub-postgres-ingress-allowlist
+  namespace: hub
+spec:
+  podSelector: {matchLabels: {app: hub-postgres}}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector: {matchLabels: {tier: hub}}
+          podSelector:
+            matchExpressions:
+              - {key: app, operator: In, values: [global-id, mailer]}
+      ports: [{protocol: TCP, port: 5432}]
+---
+# Same guard for spoke-br-postgres: only wallet-br, the one spoke-br service
+# that owns the local wallet tables, may reach it.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: spoke-br-postgres-ingress-allowlist
+  namespace: spoke-br
+spec:
+  podSelector: {matchLabels: {app: spoke-br-postgres}}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector: {matchLabels: {tier: spoke, jurisdiction: BR}}
+          podSelector: {matchLabels: {app: wallet-br}}
+      ports: [{protocol: TCP, port: 5432}]

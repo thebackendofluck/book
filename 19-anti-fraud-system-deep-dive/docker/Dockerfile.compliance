@@ -1,0 +1,38 @@
+# Compliance Service Dockerfile
+FROM python:3.14-slim
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONPATH=/app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create app directory
+WORKDIR /app
+
+# Install Python dependencies
+COPY requirements/requirements-compliance.txt .
+RUN pip install --no-cache-dir -r requirements-compliance.txt
+
+# Copy application code
+COPY src/compliance/ ./src/compliance/
+COPY src/data_ingestion/metrics.py ./src/data_ingestion/
+
+# Create non-root user
+RUN useradd --create-home --shell /bin/bash app \
+    && chown -R app:app /app
+USER app
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8084/health || exit 1
+
+# Expose port
+EXPOSE 8084
+
+# Run the application
+CMD ["python", "-m", "src.compliance.app"]

@@ -1,0 +1,596 @@
+{
+  "name": "AcmeToCasino - Auto-Unblock Expired IPs (TTL Manager)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "id": "node-schedule-unblock",
+      "name": "Schedule: Run Every 5 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [180, 400]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  id,\n  ip_address,\n  incident_id,\n  detection_type,\n  severity,\n  deployment_type,\n  blocked_at,\n  expires_at,\n  unblock_attempts\nFROM blocked_ips\nWHERE\n  is_active    = true\n  AND expires_at <= NOW()\n  AND unblock_attempts < 3\nORDER BY expires_at ASC\nLIMIT 100;",
+        "options": {}
+      },
+      "id": "node-query-expired",
+      "name": "PostgreSQL: Query Expired Blocked IPs",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [400, 400],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-security-db",
+          "name": "AcmeToCasino Security DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $items().length }}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "id": "node-check-any-expired",
+      "name": "IF: Any Expired IPs Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [620, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build per-item unblock context - AcmeToCasino SOAR TTL Manager\n// Annotates each expired IP record with environment context\n// consumed by the deployment-type switch downstream.\n\nconst results = [];\n\nfor (const item of $input.all()) {\n  const row = item.json;\n  results.push({ json: {\n    id:               row.id,\n    ip_address:       row.ip_address,\n    incident_id:      row.incident_id,\n    detection_type:   row.detection_type,\n    severity:         row.severity,\n    deployment_type:  row.deployment_type || $env.DEPLOYMENT_TYPE || 'aws',\n    blocked_at:       row.blocked_at,\n    expires_at:       row.expires_at,\n    unblock_attempts: row.unblock_attempts || 0,\n    unblock_reason:   'TTL_EXPIRED',\n    unblock_timestamp: new Date().toISOString(),\n    aws_waf_ipset_id:  $env.AWS_WAF_IPSET_ID || 'REPLACE_WITH_IPSET_ID',\n    aws_waf_scope:     $env.AWS_WAF_SCOPE    || 'REGIONAL',\n    aws_region:        $env.AWS_REGION       || 'us-east-1'\n  }});\n}\n\nreturn results;\n"
+      },
+      "id": "node-prepare-unblock",
+      "name": "Code: Prepare Unblock Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [840, 300]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "rules": [
+            { "value2": "aws",       "outputKey": "aws"       },
+            { "value2": "onpremise", "outputKey": "onpremise" }
+          ]
+        },
+        "fallbackOutput": "aws",
+        "dataPropertyName": "={{ $json.deployment_type }}"
+      },
+      "id": "node-deploy-switch-unblock",
+      "name": "Switch: Unblock by Deployment Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 2,
+      "position": [1060, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// AWS WAF UNBLOCK PAYLOAD BUILDER - AcmeToCasino SOAR TTL Manager\n//\n// The WAF UpdateIPSet API requires the current LockToken.\n// In production, add a GetIPSet HTTP Request node before this one\n// to retrieve the LockToken, then pass it as $json.aws_waf_lock_token.\n// This node builds the DELETE (remove IP) payload.\n\nconst results = [];\n\nfor (const item of $input.all()) {\n  const event = item.json;\n  const ip    = event.ip_address;\n  const cidr  = ip.includes('/') ? ip : `${ip}/32`;\n\n  results.push({ json: {\n    ...event,\n    aws_waf_unblock_payload: {\n      Name:           'AcmeToCasino-BlockList',\n      Scope:          event.aws_waf_scope,\n      IPSetId:        event.aws_waf_ipset_id,\n      IPSetLockToken: event.aws_waf_lock_token || 'REPLACE_WITH_LOCK_TOKEN',\n      Addresses:      [cidr],\n      operation:      'REMOVE',\n      reason: `TTL expired auto-unblock: ${event.incident_id} (blocked_at: ${event.blocked_at})`\n    },\n    aws_cloudwatch_unblock_metric: {\n      Namespace:  'AcmeToCasino/Security',\n      MetricName: 'IPAutoUnblocked',\n      Value: 1,\n      Unit:  'Count',\n      Dimensions: [\n        { Name: 'DetectionType', Value: event.detection_type },\n        { Name: 'Severity',      Value: event.severity }\n      ]\n    }\n  }});\n}\n\nreturn results;\n"
+      },
+      "id": "node-aws-unblock-prepare",
+      "name": "AWS WAF: Prepare Unblock Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1280, 180]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://waf.{{ $json.aws_region }}.amazonaws.com/2019-07-29/ipset/{{ $json.aws_waf_ipset_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "X-Amz-Target", "value": "AWSWAF_20190729.UpdateIPSet" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.aws_waf_unblock_payload) }}",
+        "options": {
+          "timeout": 10000,
+          "retry": { "enabled": true, "maxTries": 3, "waitBetweenTries": 1500 }
+        }
+      },
+      "id": "node-aws-waf-unblock",
+      "name": "AWS WAF: Remove IP from IPSet",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1500, 120],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "aws-waf-creds",
+          "name": "AWS WAF Credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://monitoring.{{ $json.aws_region }}.amazonaws.com/",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.aws_cloudwatch_unblock_metric) }}",
+        "options": { "timeout": 5000 }
+      },
+      "id": "node-cloudwatch-unblock",
+      "name": "AWS CloudWatch: Unblock Metric",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1500, 280],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "aws-cloudwatch-creds",
+          "name": "AWS CloudWatch Credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ON-PREMISE UNBLOCK COMMAND BUILDER - AcmeToCasino SOAR TTL Manager\n//\n// Builds iptables/nftables remove commands and cleans the blocked_ips.txt\n// tracking file so the SSH node can execute them on the firewall host.\n\nconst results = [];\n\nfor (const item of $input.all()) {\n  const event    = item.json;\n  const ip       = event.ip_address;\n  const incId    = event.incident_id;\n  const useNft   = $env.USE_NFTABLES === 'true';\n\n  let command;\n  if (useNft) {\n    command = `nft delete element inet filter acme_blocklist { ${ip} } 2>/dev/null || true && echo 'unblocked ${ip}'`;\n  } else {\n    command = [\n      `iptables -D INPUT   -s ${ip} -j DROP 2>/dev/null || true`,\n      `iptables -D FORWARD -s ${ip} -j DROP 2>/dev/null || true`,\n      `sed -i '/^${ip.replace(/\\./g, '\\\\.')}/d' /var/lib/acme-security/blocked_ips.txt`,\n      `echo 'unblocked ${ip} ${incId}'`\n    ].join(' && ');\n  }\n\n  results.push({ json: {\n    ...event,\n    firewall_type: useNft ? 'nftables' : 'iptables',\n    ssh_unblock_command: command,\n    modsecurity_delete_payload: {\n      action: 'delete',\n      ip: ip,\n      incident_id: incId\n    },\n    nginx_unblock_comment: `# removed: deny ${ip}; # ${incId}`\n  }});\n}\n\nreturn results;\n"
+      },
+      "id": "node-onprem-unblock-prepare",
+      "name": "On-Prem: Prepare Unblock Commands",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1280, 420]
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "host": "={{ $env.FIREWALL_HOST }}",
+        "port": 22,
+        "username": "={{ $env.FIREWALL_USER }}",
+        "command": "={{ $json.ssh_unblock_command }}"
+      },
+      "id": "node-ssh-unblock",
+      "name": "SSH: Remove iptables/nftables Rule",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [1500, 360],
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "ssh-firewall-creds",
+          "name": "Firewall SSH Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "={{ $env.MODSECURITY_API_URL }}/rules/{{ $json.ip_address }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.MODSECURITY_API_TOKEN }}" },
+            { "name": "Content-Type",  "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.modsecurity_delete_payload) }}",
+        "options": {
+          "timeout": 8000,
+          "ignoreResponseCode": true
+        }
+      },
+      "id": "node-modsecurity-unblock",
+      "name": "ModSecurity: Delete Block Rule",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1700, 360],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "modsecurity-creds",
+          "name": "ModSecurity API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "={{ $env.NGINX_BLOCKLIST_API_URL }}/blocklist/{{ $json.ip_address }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.NGINX_API_TOKEN }}" },
+            { "name": "Content-Type",  "value": "application/json" }
+          ]
+        },
+        "options": {
+          "timeout": 5000,
+          "ignoreResponseCode": true
+        }
+      },
+      "id": "node-nginx-unblock",
+      "name": "nginx/HAProxy: Remove from Blocklist",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1900, 360]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "multiplex",
+        "options": {}
+      },
+      "id": "node-merge-unblock-paths",
+      "name": "Merge: AWS + On-Prem Unblock Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2,
+      "position": [2100, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// UNBLOCK RESULT ANALYSER - AcmeToCasino SOAR TTL Manager\n//\n// Classifies each unblock attempt as SUCCESS or FAILED.\n// The HTTP response from WAF/SSH is checked for error indicators.\n// Results feed into the PostgreSQL update and Slack notification.\n\nconst results = [];\n\nfor (const item of $input.all()) {\n  const event  = item.json;\n  const status = item.json.$response?.statusCode || item.json.status || 200;\n  const body   = item.json.$response?.body || {};\n  const stderr = item.json.stderr || '';\n\n  // Consider it a failure if HTTP >= 400 or SSH stderr has 'error'\n  const failed = status >= 400 || (typeof stderr === 'string' && stderr.toLowerCase().includes('error'));\n\n  results.push({ json: {\n    ip_address:        event.ip_address,\n    incident_id:       event.incident_id,\n    detection_type:    event.detection_type,\n    severity:          event.severity,\n    deployment_type:   event.deployment_type,\n    unblock_status:    failed ? 'FAILED' : 'SUCCESS',\n    unblock_timestamp: event.unblock_timestamp || new Date().toISOString(),\n    unblock_attempts:  (event.unblock_attempts || 0) + 1,\n    http_status:       status,\n    error_detail:      failed ? (body.message || stderr || 'unknown error') : null,\n    blocked_at:        event.blocked_at,\n    expires_at:        event.expires_at,\n    db_record_id:      event.id\n  }});\n}\n\nreturn results;\n"
+      },
+      "id": "node-analyse-result",
+      "name": "Code: Analyse Unblock Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2300, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.unblock_status }}",
+              "operation": "equal",
+              "value2": "SUCCESS"
+            }
+          ]
+        }
+      },
+      "id": "node-unblock-success-filter",
+      "name": "IF: Unblock Succeeded?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [2520, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE blocked_ips\nSET\n  is_active         = false,\n  unblocked_at      = NOW(),\n  unblock_reason    = 'TTL_EXPIRED',\n  updated_at        = NOW()\nWHERE id = {{ $json.db_record_id }}\nRETURNING ip_address, incident_id, unblocked_at;",
+        "options": {}
+      },
+      "id": "node-postgres-mark-unblocked",
+      "name": "PostgreSQL: Mark IP as Unblocked",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [2740, 220],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-security-db",
+          "name": "AcmeToCasino Security DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO unblock_audit_log (\n  ip_address, incident_id, detection_type, severity,\n  blocked_at, expires_at, unblocked_at,\n  unblock_status, unblock_reason, deployment_type\n) VALUES (\n  '{{ $json.ip_address }}',\n  '{{ $json.incident_id }}',\n  '{{ $json.detection_type }}',\n  '{{ $json.severity }}',\n  '{{ $json.blocked_at }}',\n  '{{ $json.expires_at }}',\n  NOW(),\n  '{{ $json.unblock_status }}',\n  'TTL_EXPIRED',\n  '{{ $json.deployment_type }}'\n);",
+        "options": {}
+      },
+      "id": "node-postgres-audit-log",
+      "name": "PostgreSQL: Write Unblock Audit Log",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [2740, 380],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-security-db",
+          "name": "AcmeToCasino Security DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE blocked_ips\nSET\n  unblock_attempts  = {{ $json.unblock_attempts }},\n  last_unblock_error = $body${{ $json.error_detail || '' }}$body$,\n  updated_at        = NOW()\nWHERE id = {{ $json.db_record_id }};",
+        "options": {}
+      },
+      "id": "node-postgres-retry-track",
+      "name": "PostgreSQL: Track Failed Unblock Attempt",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [2740, 520],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-security-db",
+          "name": "AcmeToCasino Security DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "channel": "={{ $env.SLACK_SECURITY_CHANNEL || '#security-alerts' }}",
+        "text": "=*Auto-Unblock: TTL Expired*\nIP `{{ $json.ip_address }}` has been unblocked (TTL expired).\n*Incident:* {{ $json.incident_id }} | *Type:* {{ $json.detection_type }} | *Severity:* {{ $json.severity }}\n*Blocked:* {{ $json.blocked_at }} | *Expired:* {{ $json.expires_at }}\n*Deployment:* {{ $json.deployment_type }}",
+        "otherOptions": {
+          "icon_emoji": ":unlock:",
+          "username": "AcmeToCasino SOAR"
+        }
+      },
+      "id": "node-slack-unblock-notify",
+      "name": "Slack: Unblock Notification",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2,
+      "position": [2960, 220],
+      "credentials": {
+        "slackApi": {
+          "id": "slack-security-creds",
+          "name": "Slack Security Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "channel": "={{ $env.SLACK_SECURITY_CHANNEL || '#security-alerts' }}",
+        "text": "=*Auto-Unblock FAILED - Manual Action Required*\nFailed to unblock IP `{{ $json.ip_address }}` (attempt {{ $json.unblock_attempts }}/3).\n*Incident:* {{ $json.incident_id }} | *Type:* {{ $json.detection_type }}\n*Error:* {{ $json.error_detail }}\n*Deployment:* {{ $json.deployment_type }}\nPlease manually remove the block rule.",
+        "otherOptions": {
+          "icon_emoji": ":warning:",
+          "username": "AcmeToCasino SOAR"
+        }
+      },
+      "id": "node-slack-unblock-fail",
+      "name": "Slack: Unblock Failure Alert",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2,
+      "position": [2960, 520],
+      "credentials": {
+        "slackApi": {
+          "id": "slack-security-creds",
+          "name": "Slack Security Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  COUNT(*) FILTER (WHERE is_active = true AND expires_at > NOW())  AS currently_blocked,\n  COUNT(*) FILTER (WHERE is_active = false AND unblocked_at >= NOW() - INTERVAL '24 hours') AS unblocked_last_24h,\n  COUNT(*) FILTER (WHERE is_active = true AND unblock_attempts >= 3) AS stuck_blocks,\n  COUNT(*) FILTER (WHERE is_active = true AND expires_at <= NOW() AND unblock_attempts >= 3) AS max_retries_exceeded\nFROM blocked_ips;",
+        "options": {}
+      },
+      "id": "node-postgres-summary",
+      "name": "PostgreSQL: Block List Health Summary",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [400, 680],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-security-db",
+          "name": "AcmeToCasino Security DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ parseInt($json.stuck_blocks) + parseInt($json.max_retries_exceeded) }}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "id": "node-check-stuck",
+      "name": "IF: Any Stuck Blocks?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [620, 680]
+    },
+    {
+      "parameters": {
+        "channel": "={{ $env.SLACK_SECURITY_CHANNEL || '#security-alerts' }}",
+        "text": "=*Block List Health Report*\n*Currently Blocked:* {{ $json.currently_blocked }}\n*Unblocked Last 24h:* {{ $json.unblocked_last_24h }}\n*Stuck Blocks (max retries):* {{ $json.stuck_blocks }}\n*Max Retries Exceeded:* {{ $json.max_retries_exceeded }}\n{{ parseInt($json.stuck_blocks) > 0 ? 'ACTION REQUIRED: Some IPs could not be automatically unblocked. Manual review needed.' : 'All systems nominal.' }}",
+        "otherOptions": {
+          "icon_emoji": ":bar_chart:",
+          "username": "AcmeToCasino SOAR"
+        }
+      },
+      "id": "node-slack-health-report",
+      "name": "Slack: Block List Health Report",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2,
+      "position": [840, 600],
+      "credentials": {
+        "slackApi": {
+          "id": "slack-security-creds",
+          "name": "Slack Security Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  id, ip_address, incident_id, detection_type, severity,\n  deployment_type, blocked_at, expires_at, unblock_attempts\nFROM blocked_ips\nWHERE\n  is_active        = true\n  AND expires_at   <= NOW()\n  AND unblock_attempts >= 3\nORDER BY expires_at ASC\nLIMIT 50;",
+        "options": {}
+      },
+      "id": "node-query-stuck",
+      "name": "PostgreSQL: Query Stuck Blocks",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [840, 740],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-security-db",
+          "name": "AcmeToCasino Security DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.JIRA_BASE_URL }}/rest/api/3/issue",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Basic {{ Buffer.from($env.JIRA_USER + ':' + $env.JIRA_API_TOKEN).toString('base64') }}" },
+            { "name": "Content-Type",  "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ fields: { project: { key: $env.JIRA_SECURITY_PROJECT || 'SEC' }, summary: `[SOAR] Manual unblock required: ${$json.ip_address} - ${$json.incident_id}`, description: { type: 'doc', version: 1, content: [{ type: 'paragraph', content: [{ type: 'text', text: `IP ${$json.ip_address} could not be automatically unblocked after ${$json.unblock_attempts} attempts.\\n\\nDetection: ${$json.detection_type} (${$json.severity})\\nBlocked at: ${$json.blocked_at}\\nExpired at: ${$json.expires_at}\\nDeployment: ${$json.deployment_type}\\nIncident: ${$json.incident_id}\\n\\nPlease manually remove the block rule from the appropriate firewall/WAF.` }] }] }, issuetype: { name: 'Task' }, priority: { name: 'High' }, labels: ['security', 'soar', 'manual-unblock', 'acmetocasino'] } }) }}",
+        "options": { "timeout": 15000 }
+      },
+      "id": "node-jira-stuck-ticket",
+      "name": "JIRA: Create Manual Unblock Ticket",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1060, 740]
+    },
+    {
+      "parameters": {
+        "jsCode": "// NO-OP TERMINAL NODE - indicates clean run with nothing to unblock\nreturn [{ json: { status: 'NO_EXPIRED_IPS', checked_at: new Date().toISOString() } }];\n"
+      },
+      "id": "node-no-expired",
+      "name": "Code: No Expired IPs - Exit Clean",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [840, 480]
+    }
+  ],
+  "connections": {
+    "Schedule: Run Every 5 Minutes": {
+      "main": [[
+        { "node": "PostgreSQL: Query Expired Blocked IPs", "type": "main", "index": 0 },
+        { "node": "PostgreSQL: Block List Health Summary", "type": "main", "index": 0 }
+      ]]
+    },
+    "PostgreSQL: Query Expired Blocked IPs": {
+      "main": [[{ "node": "IF: Any Expired IPs Found?", "type": "main", "index": 0 }]]
+    },
+    "IF: Any Expired IPs Found?": {
+      "main": [
+        [{ "node": "Code: Prepare Unblock Context",    "type": "main", "index": 0 }],
+        [{ "node": "Code: No Expired IPs - Exit Clean", "type": "main", "index": 0 }]
+      ]
+    },
+    "Code: Prepare Unblock Context": {
+      "main": [[{ "node": "Switch: Unblock by Deployment Type", "type": "main", "index": 0 }]]
+    },
+    "Switch: Unblock by Deployment Type": {
+      "main": [
+        [{ "node": "AWS WAF: Prepare Unblock Payload",    "type": "main", "index": 0 }],
+        [{ "node": "On-Prem: Prepare Unblock Commands",   "type": "main", "index": 0 }]
+      ]
+    },
+    "AWS WAF: Prepare Unblock Payload": {
+      "main": [[
+        { "node": "AWS WAF: Remove IP from IPSet", "type": "main", "index": 0 },
+        { "node": "AWS CloudWatch: Unblock Metric", "type": "main", "index": 0 }
+      ]]
+    },
+    "AWS WAF: Remove IP from IPSet": {
+      "main": [[{ "node": "Merge: AWS + On-Prem Unblock Results", "type": "main", "index": 0 }]]
+    },
+    "AWS CloudWatch: Unblock Metric": {
+      "main": [[]]
+    },
+    "On-Prem: Prepare Unblock Commands": {
+      "main": [[{ "node": "SSH: Remove iptables/nftables Rule", "type": "main", "index": 0 }]]
+    },
+    "SSH: Remove iptables/nftables Rule": {
+      "main": [[{ "node": "ModSecurity: Delete Block Rule", "type": "main", "index": 0 }]]
+    },
+    "ModSecurity: Delete Block Rule": {
+      "main": [[{ "node": "nginx/HAProxy: Remove from Blocklist", "type": "main", "index": 0 }]]
+    },
+    "nginx/HAProxy: Remove from Blocklist": {
+      "main": [[{ "node": "Merge: AWS + On-Prem Unblock Results", "type": "main", "index": 1 }]]
+    },
+    "Merge: AWS + On-Prem Unblock Results": {
+      "main": [[{ "node": "Code: Analyse Unblock Results", "type": "main", "index": 0 }]]
+    },
+    "Code: Analyse Unblock Results": {
+      "main": [[{ "node": "IF: Unblock Succeeded?", "type": "main", "index": 0 }]]
+    },
+    "IF: Unblock Succeeded?": {
+      "main": [
+        [
+          { "node": "PostgreSQL: Mark IP as Unblocked",       "type": "main", "index": 0 },
+          { "node": "PostgreSQL: Write Unblock Audit Log",    "type": "main", "index": 0 }
+        ],
+        [
+          { "node": "PostgreSQL: Track Failed Unblock Attempt", "type": "main", "index": 0 },
+          { "node": "Slack: Unblock Failure Alert",             "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "PostgreSQL: Mark IP as Unblocked": {
+      "main": [[{ "node": "Slack: Unblock Notification", "type": "main", "index": 0 }]]
+    },
+    "PostgreSQL: Write Unblock Audit Log": {
+      "main": [[]]
+    },
+    "PostgreSQL: Track Failed Unblock Attempt": {
+      "main": [[]]
+    },
+    "PostgreSQL: Block List Health Summary": {
+      "main": [[{ "node": "IF: Any Stuck Blocks?", "type": "main", "index": 0 }]]
+    },
+    "IF: Any Stuck Blocks?": {
+      "main": [
+        [
+          { "node": "Slack: Block List Health Report",   "type": "main", "index": 0 },
+          { "node": "PostgreSQL: Query Stuck Blocks",    "type": "main", "index": 0 }
+        ],
+        [{ "node": "Slack: Block List Health Report", "type": "main", "index": 0 }]
+      ]
+    },
+    "PostgreSQL: Query Stuck Blocks": {
+      "main": [[{ "node": "JIRA: Create Manual Unblock Ticket", "type": "main", "index": 0 }]]
+    },
+    "Slack: Unblock Notification":      { "main": [[]] },
+    "Slack: Unblock Failure Alert":     { "main": [[]] },
+    "Slack: Block List Health Report":  { "main": [[]] },
+    "JIRA: Create Manual Unblock Ticket": { "main": [[]] },
+    "Code: No Expired IPs - Exit Clean":  { "main": [[]] }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "timezone": "UTC"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "acmetocasino-soar-instance"
+  },
+  "pinData": {},
+  "versionId": "1.0.0",
+  "triggerCount": 1,
+  "tags": [
+    { "id": "tag-security",    "name": "security"    },
+    { "id": "tag-soar",        "name": "soar"         },
+    { "id": "tag-ttl-manager", "name": "ttl-manager"  },
+    { "id": "tag-igaming",     "name": "igaming"      }
+  ]
+}

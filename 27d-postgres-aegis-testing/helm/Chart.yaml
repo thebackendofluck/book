@@ -1,0 +1,35 @@
+# Companion code for "The Backend of Luck" - Chapter 27d, PostgreSQL Aegis.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+apiVersion: v2
+name: postgres-aegis
+description: |
+  PostgreSQL cluster for iGaming workloads with layered encryption:
+  LUKS at-rest + TLS in-transit (cert-manager) + pg_aegis column-level
+  AEAD (fallback to pgcrypto) + DEK wrapped by OpenBao (HSM-style).
+  Ships 1 writer + 1 hot standby (Patroni failover) + N read replicas
+  behind PgBouncer r/w split. Multi-primary (true 2W) requires pgEdge BDR
+  and is out of scope.
+type: application
+version: 0.1.0
+appVersion: "16.4"
+kubeVersion: ">=1.28.0-0"
+keywords:
+  - postgresql
+  - patroni
+  - aegis
+  - encryption
+  - igaming
+home: https://github.com/egambling-book
+sources:
+  - https://patroni.readthedocs.io/
+  - https://thebackendofluck.com/tech/postgresql-aegis.html
+maintainers:
+  - name: egambling-book

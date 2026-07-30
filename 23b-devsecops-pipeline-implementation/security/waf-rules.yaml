@@ -1,0 +1,145 @@
+# Companion code for "The Backend of Luck" - Chapter 23b, DevSecOps Pipeline Implementation.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# ---------------------------------------------------------------------------
+# WAF Configuration for the Casino Platform
+#
+# Kong OSS does NOT include a WAF module.  This file documents the chosen
+# approach and configures the available mitigations via Kong plugins.
+#
+# RECOMMENDED WAF APPROACH: Coraza WAF via kong-plugin-coraza
+# ============================================================
+# Coraza is an open-source, OWASP CRS-compatible WAF engine with a native
+# Kong plugin (https://github.com/corazawaf/coraza-kong).
+#
+# Install on K3s:
+#   helm repo add corazawaf https://corazawaf.github.io/coraza-helm
+#   helm install coraza-proxy corazawaf/coraza-proxy \
+#     --namespace acmetocasino-prod \
+#     --set crs.enabled=true
+#
+# Then enable the plugin on the casino-api service below.
+#
+# ALTERNATIVE: Kong Enterprise includes the built-in oas-validation and
+# jwe-decrypt plugins that can act as a WAF layer.  Not assumed here.
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# 1. Coraza WAF Plugin (requires coraza-kong plugin installed in Kong)
+#    Uncomment after installing the plugin in your Kong image.
+# ---------------------------------------------------------------------------
+# apiVersion: configuration.konghq.com/v1
+# kind: KongPlugin
+# metadata:
+#   name: coraza-waf
+#   namespace: acmetocasino-prod
+# spec:
+#   plugin: coraza
+#   config:
+#     directives_map:
+#       default:
+#         - "Include @recommended-conf"
+#         - "Include @crs-setup-conf"
+#         - "Include @owasp_crs/*.conf"
+#         - "SecRuleEngine On"
+#         - "SecRequestBodyAccess On"
+#         - "SecResponseBodyAccess Off"
+#         - "SecAuditLog /tmp/coraza-audit.log"
+#         - "SecAuditLogParts ABIJDEFHZ"
+
+---
+# ---------------------------------------------------------------------------
+# 2. Request Termination — catch-all for obviously malicious paths
+#    Uses Kong's built-in request-termination plugin triggered by a router
+#    condition (no Coraza needed).
+# ---------------------------------------------------------------------------
+# To use: create a KongRoute matching these paths, attach this plugin.
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: block-malicious-paths
+  namespace: acmetocasino-prod
+  labels:
+    app.kubernetes.io/part-of: casino-security
+spec:
+  plugin: request-termination
+  config:
+    status_code: 404       # return 404 (not 403) to avoid confirming path existence
+    message: "Not found"
+    trigger:
+      status: 404
+
+---
+# ---------------------------------------------------------------------------
+# 3. Pre-function plugin — lightweight Lua-based request inspection
+#    Blocks common SQLi and XSS patterns in query strings without Coraza.
+#    This is a best-effort layer; Coraza is strongly recommended for production.
+# ---------------------------------------------------------------------------
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: lua-request-inspect
+  namespace: acmetocasino-prod
+  labels:
+    app.kubernetes.io/part-of: casino-security
+spec:
+  plugin: pre-function
+  config:
+    access:
+      - |
+        -- Minimal SQLi / path-traversal guard in Lua (Kong PDK)
+        local request = kong.request
+        local uri = request.get_path()
+        local query = request.get_raw_query() or ""
+
+        -- Block path traversal attempts
+        if uri:find("%.%./") or uri:find("%%2e%%2e") then
+          return kong.response.exit(400, { message = "Bad request" })
+        end
+
+        -- Block obvious SQL injection probes in query string
+        local sqli_patterns = {
+          "union%%20select", "select%%20.*%%20from",
+          "insert%%20into", "drop%%20table",
+          "'%%20or%%20'", "1=1", "1%%3d1",
+        }
+        local lower_query = query:lower()
+        for _, pattern in ipairs(sqli_patterns) do
+          if lower_query:find(pattern) then
+            return kong.response.exit(400, { message = "Bad request" })
+          end
+        end
+
+        -- Block XSS probes in query string
+        if lower_query:find("<script") or lower_query:find("javascript:") then
+          return kong.response.exit(400, { message = "Bad request" })
+        end
+
+---
+# ---------------------------------------------------------------------------
+# WAF Deployment Notes
+# ---------------------------------------------------------------------------
+# Kong OSS WAF stack (in priority order):
+#
+#   1. Coraza + OWASP CRS (recommended, open-source, OWASP-compliant)
+#      Plugin: https://github.com/corazawaf/coraza-kong
+#      CRS:    https://github.com/corazawaf/coraza-coreruleset
+#
+#   2. Cloudflare WAF (already active via CF Workers / Pro plan)
+#      - Managed ruleset covers OWASP Top 10 at the edge
+#      - Enable in CF dashboard: Security > WAF > Managed rules
+#      - Custom rules can block specific paths / user-agents
+#
+#   3. Kong pre-function (lua-request-inspect above) — lightweight fallback
+#
+# During an active attack:
+#   - Escalate CF WAF to "Block" mode (vs "Log" default)
+#   - Add attacker CIDRs to ip-blocklist-global (ip-restriction.yaml)
+#   - Add attacker CIDRs to pfSense WAN block table (pfsense-ddos-protection.sh)

@@ -1,0 +1,31 @@
+# Companion code for "The Backend of Luck" - Chapter 22b, Developer Inner-Loop Experience in Containerized iGaming Pla.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# Kubernetes Deployment strategy that achieves zero-downtime rollouts
+# Section 7.2 Finding 3 — maxUnavailable=0 + readiness probes = zero request failures
+# Apply as part of every service's Deployment spec.
+
+spec:
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0     # Never remove a pod until a new one is Ready
+      maxSurge: 1           # Allow one extra pod during rollout
+  template:
+    spec:
+      containers:
+        - name: wallet-service
+          readinessProbe:
+            httpGet:
+              path: /health/ready    # Must check actual application readiness, not just port open
+              port: 8001
+            initialDelaySeconds: 3
+            periodSeconds: 2
+            failureThreshold: 3

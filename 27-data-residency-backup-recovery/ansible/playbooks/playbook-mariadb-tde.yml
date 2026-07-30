@@ -1,0 +1,104 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 27, Data Residency and Backup/Recovery.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# ============================================================================
+# AcmeToCasino — MariaDB with Transparent Data Encryption
+# ============================================================================
+#
+# Deploys MariaDB with native TDE using the file-key-management plugin.
+# Enables innodb_encrypt_tables = FORCE, binlog encryption, and redo/undo
+# log encryption.  Encryption keys are generated via HSM and stored in the
+# MariaDB key file format.
+#
+# Usage:
+#   ansible-playbook -i inventory/hosts.yml playbook-mariadb-tde.yml
+#
+#   # Dry-run
+#   ansible-playbook -i inventory/hosts.yml playbook-mariadb-tde.yml --check --diff
+#
+#   # Primary only
+#   ansible-playbook -i inventory/hosts.yml playbook-mariadb-tde.yml --limit mdb-tde-01
+# ============================================================================
+
+- name: Deploy MariaDB with TDE (file-key-management)
+  hosts: mariadb_tde
+  become: true
+  gather_facts: true
+
+  vars:
+    mdb_version: "11.4"
+    mdb_conf_dir: /etc/mysql/mariadb.conf.d
+    mdb_data_dir: /var/lib/mysql
+    mdb_key_file: /etc/mysql/encryption/keyfile
+    mdb_key_file_enc: /etc/mysql/encryption/keyfile.enc
+    mdb_key_password_file: /etc/mysql/encryption/keyfile.password
+    mdb_ssl_cert: "{{ ssl_cert_path }}/server.crt"
+    mdb_ssl_key: "{{ ssl_key_path }}/server.key"
+    mdb_ssl_ca: "{{ ssl_cert_path }}/ca.crt"
+    mdb_casino_db: acmetocasino
+    mdb_casino_user: casino_app
+    key_rotation_cron_hour: "4"
+    key_rotation_cron_minute: "0"
+    key_rotation_cron_weekday: "0"
+
+  pre_tasks:
+    - name: Verify SSH connectivity
+      ansible.builtin.ping:
+
+    - name: Verify minimum resources
+      ansible.builtin.assert:
+        that:
+          - ansible_memtotal_mb >= 3500
+          - ansible_processor_vcpus >= 2
+        fail_msg: >
+          MariaDB TDE requires at least 4GB RAM and 2 CPU cores.
+          Found {{ ansible_memtotal_mb }}MB RAM and {{ ansible_processor_vcpus }} vCPUs.
+        success_msg: "Resource check passed: {{ ansible_memtotal_mb }}MB RAM, {{ ansible_processor_vcpus }} vCPUs"
+
+    - name: Verify AES-NI support
+      ansible.builtin.shell: grep -c aes /proc/cpuinfo
+      register: aesni_check
+      changed_when: false
+      failed_when: false
+
+    - name: Warn if AES-NI not available
+      ansible.builtin.debug:
+        msg: >
+          WARNING: AES-NI not detected.  MariaDB TDE overhead will increase
+          from 5-10% to 20-30%.
+      when: aesni_check.stdout | int == 0
+
+    - name: Record deployment start time
+      ansible.builtin.set_fact:
+        deploy_start: "{{ ansible_date_time.iso8601 }}"
+
+  roles:
+    - role: mariadb-tde
+      tags: [mariadb, tde, encryption]
+
+  post_tasks:
+    - name: Display deployment summary
+      ansible.builtin.debug:
+        msg: |
+          MariaDB TDE deployment complete
+          Host: {{ inventory_hostname }} ({{ ansible_host }})
+          Role: {{ server_role }}
+          MariaDB: {{ mdb_version }}
+          Data dir: {{ mdb_data_dir }}
+          SSL: enabled
+          innodb_encrypt_tables: FORCE
+          innodb_encrypt_log: ON
+          encrypt_binlog: ON
+          Key rotation: weekly (Sunday {{ key_rotation_cron_hour }}:{{ key_rotation_cron_minute }})
+          HSM connector: {{ hsm_connector_url }}
+          TDE key ID: {{ tde_key_id }}
+          Started: {{ deploy_start }}
+          Finished: {{ ansible_date_time.iso8601 }}

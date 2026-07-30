@@ -1,0 +1,69 @@
+---
+# Companion code for "The Backend of Luck" - Chapter 27d, PostgreSQL Aegis.
+# https://thebackendofluck.com | https://github.com/thebackendofluck/book
+# SPDX-License-Identifier: Apache-2.0
+#
+# FOR TESTING AND EVALUATION ONLY. NOT FOR PRODUCTION USE.
+# Published to demonstrate the patterns explained in the book. This code is
+# not certified for real-money gaming: operating a gambling platform requires
+# your own licence, independent test-lab certification (GLI, eCOGRA or
+# equivalent) and regulator approval.
+
+# etcd — 3-node cluster used by Patroni as DCS.
+
+- name: Install etcd
+  ansible.builtin.apt:
+    name: etcd-server
+    state: present
+    update_cache: true
+
+- name: Ensure etcd dirs
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: etcd
+    group: etcd
+    mode: "0750"
+  loop:
+    - /etc/etcd
+    - /var/lib/etcd
+
+- name: Render etcd.conf.yml
+  ansible.builtin.template:
+    src: etcd.conf.yml.j2
+    dest: /etc/etcd/etcd.conf.yml
+    owner: etcd
+    group: etcd
+    mode: "0640"
+  notify: Restart etcd
+
+- name: systemd unit
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/etcd.service
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=etcd for Patroni DCS
+      After=network-online.target
+      Requires=network-online.target
+      [Service]
+      Type=notify
+      User=etcd
+      ExecStart=/usr/bin/etcd --config-file /etc/etcd/etcd.conf.yml
+      Restart=on-failure
+      RestartSec=5
+      LimitNOFILE=65535
+      [Install]
+      WantedBy=multi-user.target
+  notify:
+    - Reload systemd
+    - Restart etcd
+
+- name: Enable etcd
+  ansible.builtin.systemd:
+    name: etcd
+    enabled: true
+    state: started
+    daemon_reload: true
