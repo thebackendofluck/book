@@ -22,7 +22,7 @@
   "devDependencies": {
     "@types/node": "^22.7.5",
     "@types/ws": "^8.5.12",
-    "electron": "^39.8.5",
+    "electron": "^39.8.10",
     "electron-builder": "^26.8.1",
     "typescript": "^5.6.3",
     "vitest": "^4.1.4",
