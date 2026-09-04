@@ -3,7 +3,10 @@
 # the Dependabot automation needs. Safe to re-run; prints the resulting state.
 #
 #   1. Allow GitHub Actions to approve pull requests (GITHUB_TOKEN reviews
-#      count toward the required approval).
+#      count toward the required approval). For a repository owned by an
+#      organization this must ALSO be allowed at organization level; the
+#      script tries that first and explains what to do when the token lacks
+#      the admin:org scope.
 #   2. Allow auto-merge on the repository.
 #   3. Make "Dependency Gate" a required status check on `main`, keeping the
 #      existing review / conversation-resolution rules.
@@ -15,15 +18,32 @@ set -euo pipefail
 REPO="${GH_REPO:-thebackendofluck/book}"
 BRANCH="${GH_BRANCH:-main}"
 GATE_CONTEXT="${GATE_CONTEXT:-Dependency Gate}"
+OWNER="${REPO%%/*}"
+STATUS=0
 
-say() { printf '\033[1;34m[settings]\033[0m %s\n' "$*"; }
+say()  { printf '\033[1;34m[settings]\033[0m %s\n' "$*"; }
+warn() { printf '\033[1;33m[settings] WARN\033[0m %s\n' "$*"; }
 
 say "1/4 allow GitHub Actions to create and approve pull requests"
-gh api -X PUT "repos/${REPO}/actions/permissions/workflow" \
-  -f default_workflow_permissions=read \
-  -F can_approve_pull_request_reviews=true >/dev/null
-gh api "repos/${REPO}/actions/permissions/workflow"
-echo
+if [ "$(gh api "users/${OWNER}" --jq .type)" = "Organization" ]; then
+  if gh api -X PUT "orgs/${OWNER}/actions/permissions/workflow" \
+       -f default_workflow_permissions=read -F can_approve_pull_request_reviews=true >/dev/null 2>&1; then
+    say "  organization ${OWNER}: enabled"
+  else
+    warn "  could not change the organization setting (token needs admin:org, or you are not an org admin)."
+    warn "  Either run:  gh auth refresh -h github.com -s admin:org   and re-run this script,"
+    warn "  or tick 'Allow GitHub Actions to create and approve pull requests' at"
+    warn "  https://github.com/organizations/${OWNER}/settings/actions"
+  fi
+fi
+if gh api -X PUT "repos/${REPO}/actions/permissions/workflow" \
+     -f default_workflow_permissions=read -F can_approve_pull_request_reviews=true >/dev/null 2>&1; then
+  gh api "repos/${REPO}/actions/permissions/workflow"; echo
+else
+  warn "  repository setting refused (organization policy still blocks it). Auto-approve will not work until it is allowed;"
+  warn "  the nightly sweeper merges green Dependabot PRs in the meantime."
+  STATUS=1
+fi
 
 say "2/4 allow auto-merge + delete head branches after merge"
 gh api -X PATCH "repos/${REPO}" \
@@ -83,4 +103,5 @@ ensure_label rust              dea584 "Cargo"
 ensure_label docker            0db7ed "Container images"
 ensure_label github-actions    2088ff "Workflow actions"
 
-say "done"
+if [ "$STATUS" = 0 ]; then say "done"; else warn "done with the approval setting still pending (see step 1)"; fi
+exit "$STATUS"

@@ -337,7 +337,9 @@ baseline_also_fails() {
   # the merge-base too (so the change under review did not cause it).
   local d="$1" eco="$2" mb wt rc
   mb="$(git merge-base "$BASE" HEAD 2>/dev/null)" || { warn "no merge-base with $BASE; cannot compare"; return 1; }
-  if git diff --quiet "$mb" HEAD -- "$d" 2>/dev/null; then
+  # Compare the working tree (not HEAD) so uncommitted edits, as made by the
+  # sweeper before it commits, count as changes.
+  if git diff --quiet "$mb" -- "$d" 2>/dev/null; then
     warn "$d is unchanged since $mb; failure is environmental"; return 1
   fi
   wt="$(mktemp -d "${TMPDIR:-/tmp}/verify-base.XXXXXX")"
