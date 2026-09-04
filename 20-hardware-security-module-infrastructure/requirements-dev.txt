@@ -26,7 +26,7 @@ pre-commit==4.6.0
 
 # Documentation
 mkdocs==1.6.1
-mkdocs-material==9.7.6
+mkdocs-material==9.7.7
 
 # Development tools
 jupyter==1.1.1
