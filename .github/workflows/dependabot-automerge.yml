@@ -14,7 +14,7 @@ name: Dependabot auto-merge
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
     branches: [main]
 
 permissions:
@@ -29,6 +29,7 @@ jobs:
   automerge:
     name: Approve and enable auto-merge
     if: >-
+      (github.event.action != 'labeled' || github.event.label.name == 'retest') &&
       github.event.pull_request.user.login == 'dependabot[bot]' &&
       github.repository == 'thebackendofluck/book' &&
       github.event.pull_request.draft == false
