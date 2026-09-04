@@ -96,6 +96,7 @@ ensure_label() {
 ensure_label dependencies      0366d6 "Dependency updates"
 ensure_label security          d73a4a "Fixes a security advisory"
 ensure_label needs-human-review fbca04 "Automation declined to merge; a maintainer must look"
+ensure_label retest            c5def5 "Re-run the Dependency Gate on this pull request"
 ensure_label python            3572A5 "Python ecosystem"
 ensure_label javascript        f1e05a "npm ecosystem"
 ensure_label go                00ADD8 "Go modules"
