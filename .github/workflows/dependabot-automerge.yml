@@ -1,0 +1,100 @@
+name: Dependabot auto-merge
+
+# Approves and queues for auto-merge every Dependabot pull request that is a
+# security update or a semver patch/minor bump. Major version bumps get a
+# comment and wait for a human. The merge itself only happens after the
+# required "Dependency Gate" check passes, because auto-merge honours branch
+# protection.
+#
+# Requires, once, on the repository:
+#   * Settings > Actions > General > "Allow GitHub Actions to create and
+#     approve pull requests" (REST: can_approve_pull_request_reviews=true)
+#   * Settings > General > "Allow auto-merge" (REST: allow_auto_merge=true)
+# Both are applied by .github/scripts/apply-repo-settings.sh.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: dependabot-automerge-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  automerge:
+    name: Approve and enable auto-merge
+    if: >-
+      github.event.pull_request.user.login == 'dependabot[bot]' &&
+      github.repository == 'thebackendofluck/book' &&
+      github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Dependabot metadata
+        id: meta
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Decide
+        id: decide
+        env:
+          UPDATE_TYPE: ${{ steps.meta.outputs.update-type }}
+          ALERT_STATE: ${{ steps.meta.outputs.alert-state }}
+          GHSA_ID: ${{ steps.meta.outputs.ghsa-id }}
+          DEPS: ${{ steps.meta.outputs.dependency-names }}
+          ECOSYSTEM: ${{ steps.meta.outputs.package-ecosystem }}
+          DIRECTORY: ${{ steps.meta.outputs.directory }}
+        run: |
+          echo "deps=${DEPS} ecosystem=${ECOSYSTEM} dir=${DIRECTORY} update=${UPDATE_TYPE} alert=${ALERT_STATE} ghsa=${GHSA_ID}"
+          VERDICT="manual"
+          REASON=""
+          if [ -n "$ALERT_STATE" ] || [ -n "$GHSA_ID" ]; then
+            VERDICT="merge"; REASON="security update (${GHSA_ID:-alert})"
+          else
+            case "$UPDATE_TYPE" in
+              version-update:semver-patch) VERDICT="merge"; REASON="semver patch" ;;
+              version-update:semver-minor) VERDICT="merge"; REASON="semver minor" ;;
+              version-update:semver-major) VERDICT="manual"; REASON="semver major needs a human review" ;;
+              *) VERDICT="manual"; REASON="unknown update type '${UPDATE_TYPE}'" ;;
+            esac
+          fi
+          echo "verdict=${VERDICT}" >> "$GITHUB_OUTPUT"
+          echo "reason=${REASON}" >> "$GITHUB_OUTPUT"
+          echo "Verdict: ${VERDICT} (${REASON})"
+
+      - name: Approve
+        if: steps.decide.outputs.verdict == 'merge'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          REASON: ${{ steps.decide.outputs.reason }}
+        run: |
+          # Re-approve on every push: "dismiss stale reviews" drops the previous
+          # approval whenever Dependabot rebases.
+          gh pr review --approve --body "Auto-approved: ${REASON}. Merge waits for the Dependency Gate." "$PR_URL"
+
+      - name: Enable auto-merge
+        if: steps.decide.outputs.verdict == 'merge'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: gh pr merge --auto --squash "$PR_URL"
+
+      - name: Flag for manual review
+        if: steps.decide.outputs.verdict == 'manual'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          REASON: ${{ steps.decide.outputs.reason }}
+        run: |
+          gh pr edit "$PR_URL" --add-label "needs-human-review" 2>/dev/null || true
+          # Only comment once per PR head to avoid noise on every rebase.
+          if ! gh pr view "$PR_URL" --json comments --jq '.comments[].body' | grep -q "Not auto-merged:"; then
+            gh pr comment "$PR_URL" --body "Not auto-merged: ${REASON}. A maintainer will review it."
+          fi
