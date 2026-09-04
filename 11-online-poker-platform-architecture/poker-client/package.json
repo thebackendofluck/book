@@ -23,14 +23,14 @@
     "@types/node": "^22.7.5",
     "@types/ws": "^8.5.12",
     "electron": "^39.8.10",
-    "electron-builder": "^26.8.1",
+    "electron-builder": "^26.15.3",
     "typescript": "^5.6.3",
-    "vitest": "^4.1.4",
-    "ws": "^8.20.1"
+    "vitest": "^4.1.11",
+    "ws": "^8.21.3"
   },
   "dependencies": {
-    "electron-updater": "^6.3.9",
-    "ip-address": "^10.3.1"
+    "electron-updater": "^6.8.9",
+    "ip-address": "^10.5.1"
   },
   "overrides": {
     "brace-expansion": "5.0.8",

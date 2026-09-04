@@ -18,7 +18,7 @@
     "db:migrate:production": "wrangler d1 execute casino-player-db-production --file=./terraform/migrations/001_create_player_kyc.sql --env production"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "^0.5.0",
+    "@cloudflare/vitest-pool-workers": "^0.22.0",
     "@cloudflare/workers-types": "^4.20240909.0",
     "typescript": "^5.5.4",
     "vitest": "^3.2.6",

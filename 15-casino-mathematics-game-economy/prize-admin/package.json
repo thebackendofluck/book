@@ -24,7 +24,7 @@
     "keycloak-angular": "^8.3.0",
     "keycloak-js": "^15.0.2",
     "moment": "^2.29.1",
-    "moment-timezone": "^0.5.34",
+    "moment-timezone": "^0.6.3",
     "primeicons": "^4.1.0",
     "rxjs": "~6.6.0"
   },
