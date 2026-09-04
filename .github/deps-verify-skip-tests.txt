@@ -1,0 +1,4 @@
+# Directories whose test suites need external services (databases, brokers,
+# live APIs) and therefore cannot pass on a bare CI runner. They are still
+# installed and built by verify-deps.sh; only their tests run in report mode.
+# One repository-relative directory per line, no trailing slash.

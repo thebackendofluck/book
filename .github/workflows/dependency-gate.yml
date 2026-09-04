@@ -1,0 +1,143 @@
+name: Dependency Gate
+
+# Installs and tests every project whose dependency manifest changed in the
+# pull request. The final job ("Dependency Gate") is the required status check
+# on `main`, so `gh pr merge --auto` waits for it. Runs on GitHub-hosted runners
+# only: they are free for public repositories and never expose maintainer
+# infrastructure to code from a pull request.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependency-gate-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  VERIFY_TIMEOUT: "900"
+
+jobs:
+  detect:
+    name: Detect changed manifests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.list.outputs.matrix }}
+      count: ${{ steps.list.outputs.count }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: List changed manifest directories
+        id: list
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref || 'main' }}
+        run: |
+          MATRIX="$(bash .github/scripts/verify-deps.sh --list --base "origin/${BASE_REF}")"
+          COUNT="$(printf '%s' "$MATRIX" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')"
+          echo "matrix=${MATRIX}" >> "$GITHUB_OUTPUT"
+          echo "count=${COUNT}" >> "$GITHUB_OUTPUT"
+          echo "Changed manifest directories: ${COUNT}"
+          printf '%s\n' "$MATRIX"
+
+  verify:
+    name: Verify ${{ matrix.dir }} (${{ matrix.ecosystem }})
+    needs: detect
+    if: needs.detect.outputs.count != '0'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        include: ${{ fromJSON(needs.detect.outputs.matrix) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Full history: verify-deps.sh re-runs a failing directory on the
+          # merge-base to tell regressions from pre-existing breakage.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Python
+        if: matrix.ecosystem == 'python'
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Setup uv
+        if: matrix.ecosystem == 'python'
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+
+      - name: Setup Node
+        if: matrix.ecosystem == 'node'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+
+      - name: Setup Go
+        if: matrix.ecosystem == 'go'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: ${{ matrix.dir }}/go.mod
+          cache-dependency-path: ${{ matrix.dir }}/go.sum
+
+      - name: Setup Rust
+        if: matrix.ecosystem == 'rust'
+        # This action has no release tags; the SHA is the head of its `stable`
+        # branch. The toolchain channel is passed explicitly because the
+        # action otherwise derives it from the ref name.
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+
+      - name: Install hadolint
+        if: matrix.ecosystem == 'docker'
+        run: |
+          curl -fsSL -o /usr/local/bin/hadolint \
+            https://github.com/hadolint/hadolint/releases/download/v2.15.1/hadolint-Linux-x86_64
+          chmod +x /usr/local/bin/hadolint
+
+      - name: Install actionlint
+        if: matrix.ecosystem == 'actions'
+        run: |
+          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12
+          sudo mv ./actionlint /usr/local/bin/actionlint
+
+      - name: Verify
+        env:
+          TARGET_DIR: ${{ matrix.dir }}
+        run: bash .github/scripts/verify-deps.sh "$TARGET_DIR"
+
+  gate:
+    name: Dependency Gate
+    needs: [detect, verify]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Evaluate
+        env:
+          DETECT: ${{ needs.detect.result }}
+          VERIFY: ${{ needs.verify.result }}
+          COUNT: ${{ needs.detect.outputs.count }}
+        run: |
+          echo "detect=${DETECT} verify=${VERIFY} changed=${COUNT}"
+          if [ "$DETECT" != "success" ]; then
+            echo "::error::manifest detection failed"; exit 1
+          fi
+          case "$VERIFY" in
+            success) echo "all changed dependency manifests verified" ;;
+            skipped) echo "no dependency manifests changed; gate passes" ;;
+            *) echo "::error::dependency verification ${VERIFY}"; exit 1 ;;
+          esac

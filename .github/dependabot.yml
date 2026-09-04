@@ -1,0 +1,145 @@
+version: 2
+
+# One grouped pull request per ecosystem instead of one per package per
+# directory. `directories: ["**/*"]` discovers every manifest in the monorepo.
+# Security updates are grouped too (`applies-to: security-updates`), so a
+# vulnerability that touches several chapter folders arrives as a single PR.
+# Routine version updates run monthly with a cooldown so brand-new releases
+# settle first; major bumps are excluded from the groups and left to humans.
+#
+# Merging is automated by .github/workflows/dependabot-automerge.yml once the
+# Dependency Gate workflow has installed and tested the changed projects.
+
+updates:
+  - package-ecosystem: "github-actions"
+    directories: ["**/*"]
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 3
+    labels: ["dependencies", "github-actions"]
+    cooldown:
+      default-days: 7
+    groups:
+      actions-security:
+        applies-to: security-updates
+        patterns: ["*"]
+      actions:
+        applies-to: version-updates
+        patterns: ["*"]
+
+  - package-ecosystem: "pip"
+    directories: ["**/*"]
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 3
+    labels: ["dependencies", "python"]
+    cooldown:
+      default-days: 7
+      semver-major-days: 30
+      semver-minor-days: 7
+      semver-patch-days: 3
+    groups:
+      python-security:
+        applies-to: security-updates
+        patterns: ["*"]
+      python:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "uv"
+    directories: ["**/*"]
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 3
+    labels: ["dependencies", "python"]
+    cooldown:
+      default-days: 7
+      semver-major-days: 30
+      semver-minor-days: 7
+      semver-patch-days: 3
+    groups:
+      uv-security:
+        applies-to: security-updates
+        patterns: ["*"]
+      uv:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "npm"
+    directories: ["**/*"]
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 3
+    labels: ["dependencies", "javascript"]
+    cooldown:
+      default-days: 7
+      semver-major-days: 30
+      semver-minor-days: 7
+      semver-patch-days: 3
+    groups:
+      npm-security:
+        applies-to: security-updates
+        patterns: ["*"]
+      npm:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "gomod"
+    directories: ["**/*"]
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 3
+    labels: ["dependencies", "go"]
+    cooldown:
+      default-days: 7
+      semver-major-days: 30
+      semver-minor-days: 7
+      semver-patch-days: 3
+    groups:
+      go-security:
+        applies-to: security-updates
+        patterns: ["*"]
+      go:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "cargo"
+    directories: ["**/*"]
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 3
+    labels: ["dependencies", "rust"]
+    cooldown:
+      default-days: 7
+      semver-major-days: 30
+      semver-minor-days: 7
+      semver-patch-days: 3
+    groups:
+      cargo-security:
+        applies-to: security-updates
+        patterns: ["*"]
+      cargo:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "docker"
+    directories: ["**/*"]
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 3
+    labels: ["dependencies", "docker"]
+    cooldown:
+      default-days: 7
+    groups:
+      docker-security:
+        applies-to: security-updates
+        patterns: ["*"]
+      docker:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
