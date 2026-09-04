@@ -39,7 +39,7 @@
   },
   "devDependencies": {
     "@nrwl/cli": "13.8.5",
-    "@nrwl/cypress": "13.8.5",
+    "@nrwl/cypress": "19.8.4",
     "@nrwl/jest": "13.8.5",
     "@nrwl/node": "13.8.5",
     "@nrwl/workspace": "13.8.5",
