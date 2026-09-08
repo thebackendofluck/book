@@ -20,6 +20,15 @@
 
 > Applied code for TCP/IP tuning, Kafka integration, CQRS patterns, and distributed consistency in casino platforms.
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch28a-distributed-systems-deep-dive.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch28a-distributed-systems-deep-dive.png" alt="Distributed Event Processing Pipeline" width="100%" /></a>
+
+<sub><em>Distributed Event Processing Pipeline. <a href="https://thebackendofluck.com/architecture/ch28a-distributed-systems-deep-dive.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Overview
 
 These scripts demonstrate the production-level distributed systems patterns covered in Chapter 28a. The focus is on the operational details that matter at scale: kernel-level network tuning, idempotent event processing on Kafka, Redis pub/sub for real-time session state, and an Apache Iggy pilot used as an internal low-latency stream in front of the regulated Kafka backbone. A Cloudflare Workers schema (`worker-d1-schema.sql`) shows how idempotency keys are persisted at the edge.

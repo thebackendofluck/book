@@ -20,6 +20,15 @@
 
 > cert-manager, trust-manager, SPIFFE/SPIRE, and network policies for service-to-service mTLS on K3s iGaming clusters.
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch24h-mtls-kubernetes.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch24h-mtls-kubernetes.png" alt="Mutual TLS Service Mesh" width="100%" /></a>
+
+<sub><em>Mutual TLS Service Mesh. <a href="https://thebackendofluck.com/architecture/ch24h-mtls-kubernetes.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Overview
 
 Manifests, Go services, and automation scripts for enforcing mutual TLS across all iGaming microservice-to-microservice communication on K3s. Covers cert-manager Certificate issuance, trust-manager CA bundle federation across namespaces, SPIRE workload identity, network policies that complement mTLS enforcement, and rotation chaos testing under load (PCI-DSS 4.0 Req 4.2.1).

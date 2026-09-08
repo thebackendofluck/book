@@ -20,6 +20,15 @@
 
 > The Secure Data Destruction System (SDDS): cryptographic erasure, hardware self-destruction, and compliance reporting for iGaming platform decommissioning under GDPR, PCI DSS, GLI-11, and SOX.
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch45-secure-infrastructure-decommissioning.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch45-secure-infrastructure-decommissioning.png" alt="Secure Data Destruction Lifecycle" width="100%" /></a>
+
+<sub><em>Secure Data Destruction Lifecycle. <a href="https://thebackendofluck.com/architecture/ch45-secure-infrastructure-decommissioning.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Overview
 
 When an operator exits a jurisdiction or loses a license, regulators demand proof of destruction — not just deletion. This toolkit automates the full decommissioning lifecycle: infrastructure discovery, sequenced cryptographic erasure across AWS accounts, Ansible-managed server wipe, MikroTik/Meraki network device zero-fill, YubiHSM key material destruction, and a tamper-evident audit trail. The Zymbit SEN500 secure edge node acts as the hardware root of trust and self-destructs after the final phase completes.

@@ -18,6 +18,15 @@
 
 ---
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch37-marketing-technology-crm.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch37-marketing-technology-crm.png" alt="Marketing Technology and CRM" width="100%" /></a>
+
+<sub><em>Marketing Technology and CRM. <a href="https://thebackendofluck.com/architecture/ch37-marketing-technology-crm.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Overview
 
 Complete marketing technology stack for an online casino, from email delivery and affiliate tracking to VIP management, A/B testing, and privacy-compliant data synchronization with third-party platforms.

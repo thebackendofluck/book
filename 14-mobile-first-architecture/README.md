@@ -20,6 +20,15 @@
 
 > PWA, React Native, Flutter, and WebView shell implementations for real-money gaming on mobile.
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch14-mobile-first-architecture.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch14-mobile-first-architecture.png" alt="Mobile-First Client Architecture" width="100%" /></a>
+
+<sub><em>Mobile-First Client Architecture. <a href="https://thebackendofluck.com/architecture/ch14-mobile-first-architecture.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Overview
 
 Scripts and configurations for building mobile-first iGaming clients: PWA service workers, offline state sync, push notifications, CDN asset delivery, and Lighthouse CI performance budgets. Covers both the PWA and native (React Native / Flutter) paths described in the chapter.

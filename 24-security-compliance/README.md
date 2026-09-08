@@ -22,27 +22,11 @@ Enterprise security infrastructure for iGaming platforms, implementing comprehen
 
 ## Architecture Overview
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                         Security Infrastructure                              │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐  │
-│  │  CloudFront │───▶│  AWS WAF    │───▶│    ALB      │───▶│    EKS      │  │
-│  │    CDN      │    │  (Global)   │    │  (Regional) │    │  Cluster    │  │
-│  └─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘  │
-│                            │                  │                  │          │
-│                            ▼                  ▼                  ▼          │
-│                     ┌─────────────────────────────────────────────────┐    │
-│                     │              Security Services                   │    │
-│                     │  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌────────┐ │    │
-│                     │  │ Guard   │ │Security │ │  AWS    │ │ Shield │ │    │
-│                     │  │  Duty   │ │   Hub   │ │Inspector│ │Advanced│ │    │
-│                     │  └─────────┘ └─────────┘ └─────────┘ └────────┘ │    │
-│                     └─────────────────────────────────────────────────┘    │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch24-security-infrastructure.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch24-security-infrastructure.png" alt="Security infrastructure: WAF to EKS" width="100%" /></a>
+
+<sub><em>Security infrastructure: WAF to EKS. <a href="https://thebackendofluck.com/architecture/ch24-security-infrastructure.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
 
 ## Table of Contents
 

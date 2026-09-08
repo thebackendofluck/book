@@ -20,6 +20,15 @@
 
 This directory contains comprehensive implementations for building an enterprise data lake on AWS for iGaming platforms, including Terraform infrastructure, ETL pipelines, on-premise connectors, and data governance.
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch34-data-analytics.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch34-data-analytics.png" alt="iGaming Data Lake Pipeline" width="100%" /></a>
+
+<sub><em>iGaming Data Lake Pipeline. <a href="https://thebackendofluck.com/architecture/ch34-data-analytics.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Directory Structure
 
 ```
@@ -582,33 +591,15 @@ Note: ETL Glue jobs require PySpark/AWS Glue environment for execution.
 
 ### Data Flow
 
-```
-On-Premise DB ──┬──> VPN ──> AWS
-API Events ─────┼──> Kinesis ──> Firehose ──> S3 Bronze
-Game Servers ───┘
-                                    │
-                              AWS Glue ETL
-                                    │
-                              S3 Silver
-                                    │
-                              AWS Glue ETL
-                                    │
-                              S3 Gold
-                                    │
-                    ┌───────────────┼───────────────┐
-                    │               │               │
-                 Athena        Redshift       QuickSight
-```
+*The iGaming data lake pipeline diagram at the top of this README ("Architecture diagram") replaces the former ASCII sketch; open the interactive version for the full picture.*
 
 ### Retention Lifecycle
 
-```
-Day 0        Day 30       Day 90       Day 365      Day 2555
-  │            │            │            │            │
-  ▼            ▼            ▼            ▼            ▼
-Standard → Standard-IA → Glacier IR → Deep Archive → Delete
-$0.023/GB    $0.0125/GB   $0.004/GB    $0.00099/GB
-```
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch34-s3-retention-lifecycle.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch34-s3-retention-lifecycle.png" alt="S3 retention lifecycle" width="100%" /></a>
+
+<sub><em>S3 retention lifecycle. <a href="https://thebackendofluck.com/architecture/ch34-s3-retention-lifecycle.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
 
 ---
 

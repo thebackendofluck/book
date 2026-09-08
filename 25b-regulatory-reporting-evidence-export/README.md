@@ -18,4 +18,13 @@
 
 ---
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch25b-regulatory-reporting-evidence-export.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch25b-regulatory-reporting-evidence-export.png" alt="Regulatory Evidence Export Workflow" width="100%" /></a>
+
+<sub><em>Regulatory Evidence Export Workflow. <a href="https://thebackendofluck.com/architecture/ch25b-regulatory-reporting-evidence-export.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 

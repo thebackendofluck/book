@@ -23,6 +23,15 @@ them targets the isolated sandbox started by `setup/start-sandbox.sh` and
 is safe to run against a developer machine or the ops-host host without
 any risk to the production OpenBao instance on `:8200`.
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch20-hsm-openbao-key-hierarchy.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch20-hsm-openbao-key-hierarchy.png" alt="HSM root of trust and OpenBao key hierarchy" width="100%" /></a>
+
+<sub><em>HSM root of trust and OpenBao key hierarchy. <a href="https://thebackendofluck.com/architecture/ch20-hsm-openbao-key-hierarchy.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Layout
 
 ```

@@ -20,6 +20,15 @@
 
 > Infrastructure automation for a 15x traffic spike: predictive auto-scaling, multi-region capacity planning, and match-day operations for the 2022 FIFA World Cup.
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch41-case-study-scaling-world.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch41-case-study-scaling-world.png" alt="World Cup Scaling Pipeline" width="100%" /></a>
+
+<sub><em>World Cup Scaling Pipeline. <a href="https://thebackendofluck.com/architecture/ch41-case-study-scaling-world.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Overview
 
 These scripts demonstrate how to scale an iGaming platform from 150,000 to 2.3 million concurrent users over 29 days. They cover predictive capacity modelling, EKS horizontal pod autoscaling, database read-replica burst provisioning, and real-time match-day operations runbooks — all validated against the actual tournament traffic profile.

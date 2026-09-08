@@ -20,6 +20,15 @@
 
 > EU AI Act compliance toolkit, ML model governance, and experimental implementations for AI personalisation, blockchain provable fairness, and VR spatial engines.
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch43-future-technology-innovation.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch43-future-technology-innovation.png" alt="AI Governance Go/No-Go Gate" width="100%" /></a>
+
+<sub><em>AI Governance Go/No-Go Gate. <a href="https://thebackendofluck.com/architecture/ch43-future-technology-innovation.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Overview
 
 These scripts cover two tracks: (1) production-ready AI governance tooling required under the EU AI Act for iGaming operators, and (2) experimental reference implementations for the future-tech stack with the highest validated ROI — AI personalisation, churn prediction, and immersive UX. The governance track is immediately deployable; the innovation track is annotated with maturity caveats.

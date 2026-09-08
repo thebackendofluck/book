@@ -18,6 +18,15 @@
 
 ---
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch02-regulation-and-compliance-landscape.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch02-regulation-and-compliance-landscape.png" alt="GDPR Data Subject Request Workflow" width="100%" /></a>
+
+<sub><em>GDPR Data Subject Request Workflow. <a href="https://thebackendofluck.com/architecture/ch02-regulation-and-compliance-landscape.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Overview
 
 Compliance-oriented code covering GDPR data handling, regulator reporting views, and audit report generation for multi-jurisdictional online gambling operations.

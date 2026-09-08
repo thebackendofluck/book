@@ -20,6 +20,15 @@
 
 Enterprise-grade Docker registry infrastructure for iGaming platforms with comprehensive security scanning, automated maintenance, and regulatory compliance.
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch22-internal-registry-aws.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch22-internal-registry-aws.png" alt="Internal Docker registry on AWS" width="100%" /></a>
+
+<sub><em>Internal Docker registry on AWS. <a href="https://thebackendofluck.com/architecture/ch22-internal-registry-aws.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Directory Structure
 
 ```
@@ -215,35 +224,7 @@ terraform apply \
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         AWS Cloud                                │
-├─────────────────────────────────────────────────────────────────┤
-│  ┌─────────────────┐    ┌─────────────────┐                     │
-│  │   NLB + TLS     │    │  Route 53       │                     │
-│  │   (Port 443)    │    │  DNS            │                     │
-│  └────────┬────────┘    └─────────────────┘                     │
-│           │                                                      │
-│  ┌────────┴────────────────────────────────────────────────┐    │
-│  │                    EKS Cluster                           │    │
-│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐      │    │
-│  │  │  Registry   │  │  Registry   │  │   Trivy     │      │    │
-│  │  │  Pod 1      │  │  Pod 2      │  │   Scanner   │      │    │
-│  │  └──────┬──────┘  └──────┬──────┘  └─────────────┘      │    │
-│  │         │                │                               │    │
-│  └─────────┴────────────────┴───────────────────────────────┘    │
-│                    │                                             │
-│  ┌─────────────────┴─────────────────────┐                      │
-│  │              S3 Storage               │                      │
-│  │           (KMS Encrypted)             │                      │
-│  └───────────────────────────────────────┘                      │
-│                                                                  │
-│  ┌─────────────────┐    ┌─────────────────┐                     │
-│  │   ElastiCache   │    │      ECR        │                     │
-│  │   Redis Cache   │    │   (Mirror)      │                     │
-│  └─────────────────┘    └─────────────────┘                     │
-└─────────────────────────────────────────────────────────────────┘
-```
+*The Internal Docker registry on AWS diagram at the top of this README ("Architecture diagram") replaces the former ASCII sketch; open the interactive version for the full picture.*
 
 ## Integration with Other Chapters
 

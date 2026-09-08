@@ -20,6 +20,15 @@
 
 > Daily K3s cluster rotation for zero-drift, fully auditable iGaming infrastructure — provisioning, switchover, and chaos validation.
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch24i-blue-green-kubernetes.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch24i-blue-green-kubernetes.png" alt="Daily Blue-Green Cluster Rotation" width="100%" /></a>
+
+<sub><em>Daily Blue-Green Cluster Rotation. <a href="https://thebackendofluck.com/architecture/ch24i-blue-green-kubernetes.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Overview
 
 Automation for the blue-green cluster ephemerality pattern: a new K3s cluster is provisioned each night from infrastructure-as-code baseline, live traffic is switched from the previous cluster, and the old cluster is destroyed. Includes the full provisioning script, switchover automation, systemd timers, chaos testing, and Grafana alerting for the rotation lifecycle.

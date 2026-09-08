@@ -20,6 +20,15 @@
 
 > Complete edge-native iGaming platform: Cloudflare Workers backend, D1/KV/R2 storage, multi-brand Wrangler deployment, GDPR crypto-shredding, remote HSM integration, and a live proof-of-concept at cfgp.cloud-acmetocasino.com.
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch44-cloudflare-workers-edge.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch44-cloudflare-workers-edge.png" alt="iGaming on Cloudflare Workers" width="100%" /></a>
+
+<sub><em>iGaming on Cloudflare Workers. <a href="https://thebackendofluck.com/architecture/ch44-cloudflare-workers-edge.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Overview
 
 This is the most complete Cloudflare Workers iGaming reference in existence. The codebase covers the full request lifecycle — compliance checks at the edge boundary, JWT auth, KYC, wallet, game launch, RNG, and settlement — deployed as a single Worker with per-brand TOML configuration. The `hybrid/` and `remote-hsm/` subdirectories extend the architecture for operators who retain a traditional core but want edge acceleration and HSM-backed key operations.

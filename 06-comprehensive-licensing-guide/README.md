@@ -20,6 +20,15 @@
 
 > Tooling for jurisdiction selection, license-application document generation, ongoing compliance monitoring, and renewal tracking across 20+ regulatory bodies.
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch06-comprehensive-licensing-guide.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch06-comprehensive-licensing-guide.png" alt="Multi-Jurisdiction Licensing Pipeline" width="100%" /></a>
+
+<sub><em>Multi-Jurisdiction Licensing Pipeline. <a href="https://thebackendofluck.com/architecture/ch06-comprehensive-licensing-guide.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Overview
 
 Chapter 6 maps the real timelines, costs, and technical requirements for gambling licenses from New Jersey to Malta to Brazil. These scripts automate the decision and compliance workflow: score jurisdictions against operator criteria, generate application-ready document checklists, run compliance rule checks for a live license, coordinate testing-lab submissions, and track renewal deadlines before they become emergencies.

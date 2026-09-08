@@ -20,6 +20,15 @@
 
 > Tools for market sizing, competitive mapping, regulatory risk scoring, and multi-jurisdiction expansion planning.
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch03-global-market-analysis.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch03-global-market-analysis.png" alt="Market Entry Analysis Pipeline" width="100%" /></a>
+
+<sub><em>Market Entry Analysis Pipeline. <a href="https://thebackendofluck.com/architecture/ch03-global-market-analysis.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Overview
 
 This chapter's scripts operationalize the market-entry framework from the book: calculating TAM/SAM/SOM for each region, scoring regulatory risk before committing to a jurisdiction, and mapping payment-method requirements per country. They complement the chapter's deep-dive into European, LatAm, Asia-Pacific, and North American market dynamics.

@@ -20,6 +20,15 @@
 
 > Python implementations for contract lifecycle management, SLA monitoring, revenue settlement, and GDPR-compliant data processing agreements.
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch09-legal-framework-contracts.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch09-legal-framework-contracts.png" alt="Contract Lifecycle Management" width="100%" /></a>
+
+<sub><em>Contract Lifecycle Management. <a href="https://thebackendofluck.com/architecture/ch09-legal-framework-contracts.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Overview
 
 Chapter 9 bridges engineering and legal: the contracts that constrain architecture, the SLAs that define acceptable failure, and the revenue-share models that determine how money flows between operators and game providers. These scripts automate the lifecycle of those agreements — from template generation through SLA alerting to monthly revenue settlement runs.

@@ -18,4 +18,13 @@
 
 ---
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch47d-casino-as-a-service.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch47d-casino-as-a-service.png" alt="Casino as a Service Provisioning" width="100%" /></a>
+
+<sub><em>Casino as a Service Provisioning. <a href="https://thebackendofluck.com/architecture/ch47d-casino-as-a-service.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 

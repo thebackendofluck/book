@@ -18,6 +18,15 @@
 
 ---
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch39-case-study-security-incident.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch39-case-study-security-incident.png" alt="Security Incident Response Timeline" width="100%" /></a>
+
+<sub><em>Security Incident Response Timeline. <a href="https://thebackendofluck.com/architecture/ch39-case-study-security-incident.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Overview
 
 Incident response tooling for online casino security teams, covering detection, containment, forensics, regulatory notification, and system recovery. Includes a dedicated Log4Shell (CVE-2021-44228) response kit.

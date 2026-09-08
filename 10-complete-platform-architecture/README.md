@@ -20,6 +20,15 @@
 
 > A runnable Python implementation of the full casino platform — game service, supplier control plane, wallet, bonus, and release-gate tooling — with a contract-test suite covering Evolution, Pragmatic, NetEnt, and Kambi.
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch10-platform-architecture.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch10-platform-architecture.png" alt="AcmeToCasino platform architecture" width="100%" /></a>
+
+<sub><em>AcmeToCasino platform architecture. <a href="https://thebackendofluck.com/architecture/ch10-platform-architecture.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Overview
 
 Chapter 10 assembles every prior subsystem into a single cohesive view of how a regulated casino platform runs under real traffic, with real money, and real failure modes. The `acmetocasino` package is the executable reference implementation: game-service accounts, supplier callbacks, wallet adapter, and a Dockerised game server. The `platform-core` layer adds operational scripts (session revocation, round-state integrity checks, supplier matrix validation) and Cloudflare Workers for backoffice, payments, and risk. The `implementation/` directory provides the surrounding infrastructure: API gateway, Kafka, service mesh, observability, saga patterns, and load tests.

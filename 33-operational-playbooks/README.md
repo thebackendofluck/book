@@ -20,6 +20,15 @@
 
 > Production-tested runbooks and automation for incident response, DR, backoffice operations, hardware monitoring, and workflow management.
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch33-operational-playbooks.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch33-operational-playbooks.png" alt="SEV-1 Incident Response Runbook" width="100%" /></a>
+
+<sub><em>SEV-1 Incident Response Runbook. <a href="https://thebackendofluck.com/architecture/ch33-operational-playbooks.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Overview
 
 These scripts implement the operational playbooks described in Chapter 33. They cover the full ops lifecycle: SEV-1 incident response automation, disaster recovery failover, hardware predictive maintenance, backoffice admin tooling, chargeback/dispute handling, notification delivery, and a workflow case-management engine. All modules are Python 3.12 with pytest coverage.

@@ -20,6 +20,15 @@
 
 Implementation scripts for the 4-phase GLI-GSF (Gaming Laboratories International - Gaming Security Framework) compliance program. Each phase builds upon the previous, covering the complete journey from initial assessment to ISF (Independent Security Firm) certification readiness.
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch25-gli-gsf-compliance-framework.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch25-gli-gsf-compliance-framework.png" alt="GLI-GSF Compliance Program" width="100%" /></a>
+
+<sub><em>GLI-GSF Compliance Program. <a href="https://thebackendofluck.com/architecture/ch25-gli-gsf-compliance-framework.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Directory Structure
 
 ```

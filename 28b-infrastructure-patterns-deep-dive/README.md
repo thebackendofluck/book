@@ -18,4 +18,13 @@
 
 ---
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch28b-infrastructure-patterns-deep-dive.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch28b-infrastructure-patterns-deep-dive.png" alt="Multi-Jurisdiction AWS Account Structure" width="100%" /></a>
+
+<sub><em>Multi-Jurisdiction AWS Account Structure. <a href="https://thebackendofluck.com/architecture/ch28b-infrastructure-patterns-deep-dive.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 

@@ -20,6 +20,15 @@
 
 This directory contains the implementation scripts for Chapter 35 - Incident Management for iGaming platforms.
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch35-incident-management.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch35-incident-management.png" alt="Incident Detection to Blameless Postmortem" width="100%" /></a>
+
+<sub><em>Incident Detection to Blameless Postmortem. <a href="https://thebackendofluck.com/architecture/ch35-incident-management.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Directory Structure
 
 ```

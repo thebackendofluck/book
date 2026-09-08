@@ -18,4 +18,13 @@
 
 ---
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch23c-secrets-management-git-hygiene.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch23c-secrets-management-git-hygiene.png" alt="Secrets Management Defense in Depth" width="100%" /></a>
+
+<sub><em>Secrets Management Defense in Depth. <a href="https://thebackendofluck.com/architecture/ch23c-secrets-management-git-hygiene.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 

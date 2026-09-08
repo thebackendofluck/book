@@ -22,27 +22,11 @@ Comprehensive DevSecOps security pipeline and tools for iGaming platforms, imple
 
 ## Architecture Overview
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                         DevSecOps Pipeline                                   │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐  │
-│  │  Developer  │───▶│  Pre-commit │───▶│    CI/CD    │───▶│  Production │  │
-│  │   Commit    │    │    Hooks    │    │   Pipeline  │    │   Deploy    │  │
-│  └─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘  │
-│         │                  │                  │                  │          │
-│         ▼                  ▼                  ▼                  ▼          │
-│  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │                    Security Scanning Layers                          │   │
-│  │  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────────┐   │   │
-│  │  │  SAST   │ │   SCA   │ │Container│ │   IaC   │ │Secret Detect│   │   │
-│  │  │CodeQL   │ │  Snyk   │ │  Trivy  │ │Checkov  │ │Gitleaks/ML  │   │   │
-│  │  └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────────┘   │   │
-│  └─────────────────────────────────────────────────────────────────────┘   │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch23-devsecops-scanning-layers.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch23-devsecops-scanning-layers.png" alt="DevSecOps pipeline and scanning layers" width="100%" /></a>
+
+<sub><em>DevSecOps pipeline and scanning layers. <a href="https://thebackendofluck.com/architecture/ch23-devsecops-scanning-layers.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
 
 ## Directory Structure
 

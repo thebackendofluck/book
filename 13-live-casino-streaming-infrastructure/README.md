@@ -20,6 +20,15 @@
 
 Enterprise-grade live casino streaming infrastructure supporting Evolution Gaming, Pragmatic Play, and Ezugi studio integrations with sub-500ms latency.
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch13-live-casino-streaming-infrastructure.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch13-live-casino-streaming-infrastructure.png" alt="Live Casino Streaming Infrastructure" width="100%" /></a>
+
+<sub><em>Live Casino Streaming Infrastructure. <a href="https://thebackendofluck.com/architecture/ch13-live-casino-streaming-infrastructure.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Architecture Overview
 
 ```
@@ -184,19 +193,11 @@ result = await processor.process_frame(
 
 ### Protocol Stack
 
-```
-┌─────────────────────────────────────────────┐
-│                Application                   │
-├─────────────────────────────────────────────┤
-│  WebRTC (Primary)  │  HLS (Fallback)        │
-├────────────────────┼────────────────────────┤
-│  SRTP/SRTCP        │  HTTPS                 │
-├────────────────────┼────────────────────────┤
-│  DTLS              │  TLS 1.3               │
-├─────────────────────────────────────────────┤
-│  UDP/TCP           │  TCP                   │
-└─────────────────────────────────────────────┘
-```
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch13-live-streaming-protocol-stack.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch13-live-streaming-protocol-stack.png" alt="Live casino streaming protocol stack" width="100%" /></a>
+
+<sub><em>Live casino streaming protocol stack. <a href="https://thebackendofluck.com/architecture/ch13-live-streaming-protocol-stack.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
 
 ## Deployment
 

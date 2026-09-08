@@ -18,6 +18,15 @@
 
 ---
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch19-anti-fraud-pipeline.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch19-anti-fraud-pipeline.png" alt="Anti-fraud scoring pipeline" width="100%" /></a>
+
+<sub><em>Anti-fraud scoring pipeline. <a href="https://thebackendofluck.com/architecture/ch19-anti-fraud-pipeline.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## System Overview
 
 This project implements a complete end-to-end real-time anti-fraud detection and prevention system for casino operations. The system identifies, analyzes, and responds to fraudulent activities across multiple channels including online gaming, sports betting, slot machines, table games, and financial transactions. It supports both cloud-native deployment on AWS with Databricks and on-premises deployment using containerized microservices architecture.
@@ -1286,25 +1295,11 @@ Elasticsearch-based setup.
 
 ### Pipeline Evolution
 
-```
-Level 1 (baseline — already deployed):
-  Casino (203.0.113.1)
-    → Fraud API (:8180)
-    → Elasticsearch (casino-events-*, fraud-alerts-*)
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch19-fraud-pipeline-evolution.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch19-fraud-pipeline-evolution.png" alt="Anti-fraud pipeline evolution, levels 1 to 3" width="100%" /></a>
 
-Level 2 (lakehouse — deployed to ops-host 10.0.0.11):
-  Elasticsearch
-    → es_to_kafka_bridge.py (cron, every 60s)
-    → Kafka topic: fraud.raw.events (4 partitions)
-    → Flink JobManager (real-time scoring: velocity, geo, device, bonus abuse)
-    → Iceberg tables (bronze/silver/gold)
-    → Spark batch (nightly feature engineering + ensemble scoring)
-
-Level 3 (future — Chapter 43):
-  Iceberg gold layer
-    → ML model serving (XGBoost + LSTM + GNN ensemble)
-    → LLM anomaly narration
-```
+<sub><em>Anti-fraud pipeline evolution, levels 1 to 3. <a href="https://thebackendofluck.com/architecture/ch19-fraud-pipeline-evolution.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
 
 ### Deployed Components (ops-host)
 

@@ -20,6 +20,15 @@
 
 > GDPR/ePrivacy automation: consent lifecycle management, Data Subject Requests, cryptographic shredding, and PII mapping for multi-jurisdiction casino platforms.
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch34b-data-governance-igaming.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch34b-data-governance-igaming.png" alt="DSR Fulfillment Workflow" width="100%" /></a>
+
+<sub><em>DSR Fulfillment Workflow. <a href="https://thebackendofluck.com/architecture/ch34b-data-governance-igaming.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Overview
 
 These scripts implement the data governance layer described in Chapter 34b, with a focus on operator obligations under GDPR, Brazil LGPD, and ePrivacy Directive. Two modules cover the full data subject rights lifecycle (`dsr/`) and cookie/marketing consent management (`consent/`). All code is Python 3.12 and designed to integrate with the Kafka governance event bus described in the chapter.

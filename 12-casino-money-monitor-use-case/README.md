@@ -18,6 +18,15 @@
 
 ---
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch12-casino-money-monitor-use.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch12-casino-money-monitor-use.png" alt="Casino Money Monitor Pipeline" width="100%" /></a>
+
+<sub><em>Casino Money Monitor Pipeline. <a href="https://thebackendofluck.com/architecture/ch12-casino-money-monitor-use.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Overview
 
 Production code for monitoring casino cash positions in real time, calculating financial exposure, and triggering alerts when bank balances approach critical thresholds.

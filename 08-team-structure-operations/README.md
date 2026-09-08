@@ -18,6 +18,15 @@
 
 ---
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch08-team-structure-operations.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch08-team-structure-operations.png" alt="Follow-the-Sun 24/7 Operations" width="100%" /></a>
+
+<sub><em>Follow-the-Sun 24/7 Operations. <a href="https://thebackendofluck.com/architecture/ch08-team-structure-operations.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Overview
 
 Code and configuration samples demonstrating how casino platform teams organize their codebases, manage backoffice tooling across generations, and enforce ownership boundaries in a monorepo.

@@ -38,6 +38,15 @@ scripts/chapter-27d/
     └── tests/               # T11 backup+RTO, T12 chaos, T13 disk resize, matrix/
 ```
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch27d-postgres-aegis-testing.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch27d-postgres-aegis-testing.png" alt="PostgreSQL Aegis Layered Encryption" width="100%" /></a>
+
+<sub><em>PostgreSQL Aegis Layered Encryption. <a href="https://thebackendofluck.com/architecture/ch27d-postgres-aegis-testing.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## How the five pieces fit together
 
 | Piece | Purpose | Where it runs |
