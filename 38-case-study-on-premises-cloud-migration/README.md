@@ -18,6 +18,15 @@
 
 ---
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch38-case-study-on-premises.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch38-case-study-on-premises.png" alt="On-Premises to Cloud: Six-Phase Canary Migration" width="100%" /></a>
+
+<sub><em>On-Premises to Cloud: Six-Phase Canary Migration. <a href="https://thebackendofluck.com/architecture/ch38-case-study-on-premises.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Overview
 
 Real-world tooling from a casino platform migration: from on-premises data center infrastructure (HAProxy, Ansible, Windows/IIS) through cloud migration scripts to blue-green deployment automation.

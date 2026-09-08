@@ -20,6 +20,15 @@
 
 > Smart contracts, multi-chain wallet infrastructure, Lightning Network, and FATF Travel Rule compliance for crypto-gambling platforms.
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch16-cryptocurrency-defi-integration.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch16-cryptocurrency-defi-integration.png" alt="Crypto Payment and Custody Architecture" width="100%" /></a>
+
+<sub><em>Crypto Payment and Custody Architecture. <a href="https://thebackendofluck.com/architecture/ch16-cryptocurrency-defi-integration.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Overview
 
 Production implementations for provably fair on-chain casino logic (Chainlink VRF), hot/cold wallet management across Ethereum, BSC, Polygon and Solana, Lightning Network payment channels, and FATF Travel Rule pipelines. Also includes gas optimisation, stablecoin processing, and Know-Your-Transaction (KYT) monitoring.

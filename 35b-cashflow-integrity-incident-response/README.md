@@ -18,4 +18,13 @@
 
 ---
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch35b-cashflow-integrity-incident-response.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch35b-cashflow-integrity-incident-response.png" alt="Cash-Flow Integrity: The First 30 Minutes" width="100%" /></a>
+
+<sub><em>Cash-Flow Integrity: The First 30 Minutes. <a href="https://thebackendofluck.com/architecture/ch35b-cashflow-integrity-incident-response.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 

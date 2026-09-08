@@ -18,6 +18,15 @@
 
 ---
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch27-data-residency-backup-recovery.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch27-data-residency-backup-recovery.png" alt="Data Residency and Backup/Recovery" width="100%" /></a>
+
+<sub><em>Data Residency and Backup/Recovery. <a href="https://thebackendofluck.com/architecture/ch27-data-residency-backup-recovery.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Overview
 
 Production tooling for data residency compliance, encryption-at-rest and in-transit, mTLS certificate management, and cost-optimized backup strategies across regulated gambling jurisdictions.

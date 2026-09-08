@@ -20,6 +20,15 @@
 
 > Self-hosted GitLab CI on K3s with Semgrep, Trivy, Gitleaks, Checkov, and DAST — unlimited scan minutes at zero licensing cost.
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch23b-devsecops-pipeline.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch23b-devsecops-pipeline.png" alt="DevSecOps pipeline: commit to blue/green production" width="100%" /></a>
+
+<sub><em>DevSecOps pipeline: commit to blue/green production. <a href="https://thebackendofluck.com/architecture/ch23b-devsecops-pipeline.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Overview
 
 Full implementation of a self-hosted GitLab CE CI/CD pipeline with integrated security scanning replacing GitHub Actions. Covers the SAST/SCA/container/IaC scan suite, Grafana OnCall alerting for pipeline failures, DAST against staging environments, and vendor integration shims for Semgrep AppSec.

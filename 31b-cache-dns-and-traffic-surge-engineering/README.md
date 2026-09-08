@@ -18,4 +18,13 @@
 
 ---
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch31b-cache-dns-and-traffic.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch31b-cache-dns-and-traffic.png" alt="Cache, DNS, and Traffic Surge Chain" width="100%" /></a>
+
+<sub><em>Cache, DNS, and Traffic Surge Chain. <a href="https://thebackendofluck.com/architecture/ch31b-cache-dns-and-traffic.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 

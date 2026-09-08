@@ -20,6 +20,15 @@
 
 Complete Real-Time Clock (RTC) infrastructure for iGaming platforms requiring microsecond-precision temporal accuracy, regulatory compliance, and enterprise-grade deployment.
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch18-rtc-module-implementation.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch18-rtc-module-implementation.png" alt="RTC Module: BFT Time Consensus" width="100%" /></a>
+
+<sub><em>RTC Module: BFT Time Consensus. <a href="https://thebackendofluck.com/architecture/ch18-rtc-module-implementation.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Directory Structure
 
 ```

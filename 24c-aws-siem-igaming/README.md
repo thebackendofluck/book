@@ -20,6 +20,15 @@
 
 > Terraform modules wiring GuardDuty, Security Hub, Config, Macie, Inspector, CloudTrail, and WAF into a PCI-DSS / NJ DGE compliant monitoring stack.
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch24c-aws-siem-igaming.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch24c-aws-siem-igaming.png" alt="AWS SIEM for iGaming Compliance" width="100%" /></a>
+
+<sub><em>AWS SIEM for iGaming Compliance. <a href="https://thebackendofluck.com/architecture/ch24c-aws-siem-igaming.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Overview
 
 Production Terraform code for the AWS-native SIEM stack. Each `.tf` file maps to a specific regulatory requirement (NJ DGE, PA PGCB, MGA TSD 4.3.2, PCI-DSS). EventBridge routes findings to CloudWatch, SNS, and Lambda for alerting and 7-year S3 archival.

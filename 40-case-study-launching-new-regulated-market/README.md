@@ -18,6 +18,15 @@
 
 ---
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch40-case-study-launching-new.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch40-case-study-launching-new.png" alt="Launching in a New Regulated Market" width="100%" /></a>
+
+<sub><em>Launching in a New Regulated Market. <a href="https://thebackendofluck.com/architecture/ch40-case-study-launching-new.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Overview
 
 Code supporting the launch of an online casino in a new regulated market (Ontario, Canada case study), including geo-verification, regulatory compliance checks, i18n/l10n, and US market reporting.

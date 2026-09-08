@@ -20,6 +20,15 @@
 
 > Python tooling for competitive intelligence, M&A due diligence, vendor evaluation, and market-positioning strategy.
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch04-market-analysis-industry-players.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch04-market-analysis-industry-players.png" alt="Competitive Intelligence to Strategy Pipeline" width="100%" /></a>
+
+<sub><em>Competitive Intelligence to Strategy Pipeline. <a href="https://thebackendofluck.com/architecture/ch04-market-analysis-industry-players.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Overview
 
 Chapter 4 maps how Bet365, Flutter, Entain, and Tier 2 operators have structured their technology and go-to-market strategies. These scripts provide the analytical machinery to benchmark competitors, evaluate acquisition targets, score vendors, and define a positioning strategy before entering a crowded market.

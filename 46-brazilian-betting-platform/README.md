@@ -20,6 +20,22 @@
 
 > Reference implementation for a Brazilian fixed-odds betting platform: CPF/KYC, permitted payment rails, SIGAP regulatory files, the SIGAP Impediments API, and a sports betting engine.
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch46-brazil-betting-platform.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch46-brazil-betting-platform.png" alt="Brazilian betting platform under Lei 14.790" width="100%" /></a>
+
+<sub><em>Brazilian betting platform under Lei 14.790. <a href="https://thebackendofluck.com/architecture/ch46-brazil-betting-platform.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch46b-bet-placement-lifecycle.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch46b-bet-placement-lifecycle.png" alt="Bet placement request lifecycle" width="100%" /></a>
+
+<sub><em>Bet placement request lifecycle. <a href="https://thebackendofluck.com/architecture/ch46b-bet-placement-lifecycle.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Overview
 
 Brazil's regulated betting market is architecturally distinct from European and US jurisdictions: CPF anchors player identity, account-to-account rails such as PIX are prominent, and operators submit prescribed regulatory files to SIGAP. These scripts demonstrate Brazil-specific controls, including the official SIGAP Impediments query used to block an ineligible CPF. That query does not identify the source of an individual deposit or trace benefit money through PIX.

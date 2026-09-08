@@ -18,6 +18,15 @@
 
 ---
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch15-casino-mathematics-game-economy.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch15-casino-mathematics-game-economy.png" alt="Casino Mathematics and Game Economy Pipeline" width="100%" /></a>
+
+<sub><em>Casino Mathematics and Game Economy Pipeline. <a href="https://thebackendofluck.com/architecture/ch15-casino-mathematics-game-economy.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Overview
 
 Code covering casino game mathematics, jackpot feed systems, game provider integrations, promotional campaign engines, sportsbook financial ledgers, and a prize administration frontend.

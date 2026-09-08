@@ -18,4 +18,13 @@
 
 ---
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch28d-elastic-compute-cluster-autoscaling.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch28d-elastic-compute-cluster-autoscaling.png" alt="Elastic Compute and Cluster Autoscaling on EKS" width="100%" /></a>
+
+<sub><em>Elastic Compute and Cluster Autoscaling on EKS. <a href="https://thebackendofluck.com/architecture/ch28d-elastic-compute-cluster-autoscaling.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 

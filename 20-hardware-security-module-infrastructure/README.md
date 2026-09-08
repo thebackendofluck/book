@@ -20,6 +20,15 @@
 
 > YubiHSM 2 FIPS key management, disk/database encryption, mTLS certificate automation, and HSM-backed API gateway for iGaming.
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch20-hsm-openbao-key-hierarchy.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch20-hsm-openbao-key-hierarchy.png" alt="HSM root of trust and OpenBao key hierarchy" width="100%" /></a>
+
+<sub><em>HSM root of trust and OpenBao key hierarchy. <a href="https://thebackendofluck.com/architecture/ch20-hsm-openbao-key-hierarchy.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Overview
 
 Complete HSM infrastructure for regulated iGaming: LUKS disk encryption with HSM-wrapped keys, PostgreSQL TDE via OpenBao Transit, Docker container encryption, network mTLS setup with WireGuard, and compliance report generation. The chapter includes live validation results against a YubiHSM 2 FIPS (serial 36470346, firmware 2.4.1).

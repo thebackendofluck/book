@@ -20,6 +20,15 @@
 
 > Tilt, Skaffold, Telepresence, and Docker Compose tooling to reduce Kubernetes iteration cycles to under 20 seconds.
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch22b-developer-inner-loop-kubernetes.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch22b-developer-inner-loop-kubernetes.png" alt="Developer Inner Loop and Hotfix Path" width="100%" /></a>
+
+<sub><em>Developer Inner Loop and Hotfix Path. <a href="https://thebackendofluck.com/architecture/ch22b-developer-inner-loop-kubernetes.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Overview
 
 Scripts and configuration for the inner-loop developer workflow on a K3s iGaming cluster: hot-reload FastAPI services (550 ms restart via uvicorn + watchfiles), Tilt for live image sync, Skaffold pipelines, Telepresence intercepts for debugging payment webhooks, and zero-downtime hotfix deployment helpers.

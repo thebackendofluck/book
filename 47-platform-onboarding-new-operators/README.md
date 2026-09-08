@@ -20,6 +20,15 @@
 
 > Automated B2B operator onboarding: market-readiness validation, multi-track provisioning workflows (cloud 6-8 wk / on-prem 12-16 wk), supplier enablement, config-service distribution, and smoke tests.
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch47-platform-onboarding-new-operators.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch47-platform-onboarding-new-operators.png" alt="Operator Onboarding: Contract to First Bet" width="100%" /></a>
+
+<sub><em>Operator Onboarding: Contract to First Bet. <a href="https://thebackendofluck.com/architecture/ch47-platform-onboarding-new-operators.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Overview
 
 Every week of onboarding delay costs an operator $500K–$2M in lost GGR. These scripts implement the automation layer that compresses the industry's 3-6 month average to 6-8 weeks for cloud and 12-16 weeks for on-premises deployments. They cover market readiness validation, Terraform/Ansible-driven environment provisioning, supplier (game provider / PSP / KYC) enablement, config-service setup, and a smoke-test harness that confirms the first bet can be placed before handing over to the operator.

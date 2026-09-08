@@ -20,6 +20,15 @@
 
 > A running reference implementation of a multi-jurisdiction casino platform: hub (global identity + mailer) and spoke-BR (Brazilian wallet), wired by Redis pub/sub event bus.
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch27c-hub-spoke-data-residency.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch27c-hub-spoke-data-residency.png" alt="Hub-and-spoke namespaces with data residency" width="100%" /></a>
+
+<sub><em>Hub-and-spoke namespaces with data residency. <a href="https://thebackendofluck.com/architecture/ch27c-hub-spoke-data-residency.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Overview
 
 This is the companion code for Chapter 27c. It implements the hub-and-spoke pattern described in the migration playbook: a central hub holding the player identity graph and exclusion registry, with jurisdiction-specific spokes handling local wallets, local compliance, and local data residency. The spoke subscribes to hub exclusion events via Redis pub/sub and enforces them locally without ever exposing the global player database to the spoke's jurisdiction.
@@ -51,26 +60,7 @@ Runs on K3s (`ops-host`, 10.0.0.11). Self-contained: uses its own Redis pub/sub 
 
 ## Architecture
 
-```
-┌─────────────── Hub Namespace ───────────────┐
-│                                              │
-│  global-id (FastAPI)  ──publish──▶  Redis    │
-│  mailer    (FastAPI)                pub/sub  │
-│  hub-postgres (identity DB)                  │
-│                                              │
-└────────────────────┬─────────────────────────┘
-                     │ exclusion events
-                     ▼
-┌──────────── Spoke-BR Namespace ──────────────┐
-│                                               │
-│  wallet-br (FastAPI)  ◀──subscribe── Redis    │
-│  spoke-br-postgres (local BR data)            │
-│                                               │
-│  ╳ NetworkPolicy: CANNOT reach hub-postgres   │
-│    (data residency enforcement)               │
-│                                               │
-└───────────────────────────────────────────────┘
-```
+*The Hub-and-spoke namespaces with data residency diagram at the top of this README ("Architecture diagram") replaces the former ASCII sketch; open the interactive version for the full picture.*
 
 ## Technology Stack
 

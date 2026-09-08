@@ -18,6 +18,15 @@
 
 ---
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch01-the-online-casino-ecosystem.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch01-the-online-casino-ecosystem.png" alt="AcmeToCasino Platform Gateway" width="100%" /></a>
+
+<sub><em>AcmeToCasino Platform Gateway. <a href="https://thebackendofluck.com/architecture/ch01-the-online-casino-ecosystem.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Overview
 
 Production code samples illustrating the core architectural patterns of an online casino platform, from the Scala-based backend gateway to legacy PHP backoffice and on-premises staging infrastructure.

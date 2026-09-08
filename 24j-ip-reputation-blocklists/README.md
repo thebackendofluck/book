@@ -20,6 +20,15 @@
 
 > Suricata iprep integration, OPNsense alias management, AbuseIPDB aggregation, and automated false-positive detection for iGaming threat intelligence.
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch24j-ip-reputation-blocklists.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch24j-ip-reputation-blocklists.png" alt="IP Reputation Aggregation Pipeline" width="100%" /></a>
+
+<sub><em>IP Reputation Aggregation Pipeline. <a href="https://thebackendofluck.com/architecture/ch24j-ip-reputation-blocklists.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Overview
 
 Production scripts for integrating multi-source IP reputation feeds (Data-Shield, Emerging Threats, Spamhaus, FireHOL, Tor, blocklist.de, abuse.ch, optionally AbuseIPDB) into Suricata 7.x via the `iprep` system and OPNsense URL table aliases. Includes an aggregation pipeline that merges feeds, deduplicates entries per category, assigns confidence scores, and detects false positives against payment provider whitelists. A systemd timer keeps blocklists updated every 4 hours.

@@ -20,6 +20,15 @@
 
 Comprehensive testing and QA framework for gambling platforms, covering RNG certification, load testing, compliance testing, and continuous integration.
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch32-testing-qa-gambling.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch32-testing-qa-gambling.png" alt="Testing and QA Pipeline for Gambling Platforms" width="100%" /></a>
+
+<sub><em>Testing and QA Pipeline for Gambling Platforms. <a href="https://thebackendofluck.com/architecture/ch32-testing-qa-gambling.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Architecture Overview
 
 ```

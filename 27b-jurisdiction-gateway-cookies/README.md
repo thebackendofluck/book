@@ -20,6 +20,15 @@
 
 > Decide, in real time, whether a cross-border data transfer is legally permitted — and log the decision for regulator evidence.
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch27b-jurisdiction-gateway-cookies.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch27b-jurisdiction-gateway-cookies.png" alt="Jurisdiction Transfer Gateway Decision Flow" width="100%" /></a>
+
+<sub><em>Jurisdiction Transfer Gateway Decision Flow. <a href="https://thebackendofluck.com/architecture/ch27b-jurisdiction-gateway-cookies.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Overview
 
 The Jurisdiction Transfer Gateway (JGW) is a FastAPI microservice that evaluates every data transfer against a YAML rule set encoding GDPR Chapter V mechanisms (adequacy decisions, Standard Contractual Clauses, Data Privacy Framework, derogations, BCRs). It returns an allow/deny decision in O(1) via Redis-cached rules, and appends an immutable audit log entry to SQLite. The fail-safe is **deny**: if Redis is unreachable or a rule is missing, the transfer is blocked.

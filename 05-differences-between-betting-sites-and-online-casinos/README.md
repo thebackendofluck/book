@@ -20,6 +20,15 @@
 
 > Reference implementations contrasting the risk-management and financial models of sportsbooks versus RNG casino platforms.
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch05-differences-between-betting-sites.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch05-differences-between-betting-sites.png" alt="Betting vs. Casino Risk Architecture" width="100%" /></a>
+
+<sub><em>Betting vs. Casino Risk Architecture. <a href="https://thebackendofluck.com/architecture/ch05-differences-between-betting-sites.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Overview
 
 Chapter 5 draws the technical and commercial line between market-making (sportsbook) and house-edge (casino) businesses. These scripts model that distinction concretely: an odds compiler, a real-time liability monitor, a trading-risk engine, a hybrid P&L model, and a platform-architecture evaluator that scores build/buy decisions for each model type.

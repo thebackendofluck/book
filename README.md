@@ -381,6 +381,21 @@ The dashboard's Cloudflare tab is monitoring a real multi-brand edge deployment.
 
 ---
 
+## Interactive architecture diagrams
+
+Every chapter now opens with an **explorable architecture diagram**: pan, zoom, search, guided views, light/dark theme and PNG/SVG export, built from the chapter text and the code in this repository. Browse all of them at **[thebackendofluck.com/architecture](https://thebackendofluck.com/architecture/)**; the static captures live in [`assets/architecture/`](assets/architecture/).
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch10-platform-architecture.html"><img src="assets/architecture/ch10-platform-architecture.png" alt="AcmeToCasino platform architecture (Chapter 10)" width="49%" /></a>
+<a href="https://thebackendofluck.com/architecture/ch20-hsm-openbao-key-hierarchy.html"><img src="assets/architecture/ch20-hsm-openbao-key-hierarchy.png" alt="HSM root of trust and OpenBao key hierarchy (Chapters 20 and 20b)" width="49%" /></a>
+<a href="https://thebackendofluck.com/architecture/ch19-anti-fraud-pipeline.html"><img src="assets/architecture/ch19-anti-fraud-pipeline.png" alt="Anti-fraud scoring pipeline (Chapter 19)" width="49%" /></a>
+<a href="https://thebackendofluck.com/architecture/ch46b-bet-placement-lifecycle.html"><img src="assets/architecture/ch46b-bet-placement-lifecycle.png" alt="Bet placement request lifecycle (Chapter 46b)" width="49%" /></a>
+
+<sub>*Platform architecture, HSM key hierarchy, anti-fraud pipeline and bet placement lifecycle. Click any diagram to open the interactive version.*</sub>
+</div>
+
+---
+
 ## Interactive mind maps
 
 The book ships **12 interactive knowledge maps** — each a zoomable, pan-able force graph of a pillar: Architecture, Security, Kubernetes, Compliance, Games, Financial Ops, Sports Betting, On-Premise, Jurisdictions, Anti-Fraud, Database & HA, Data Governance.

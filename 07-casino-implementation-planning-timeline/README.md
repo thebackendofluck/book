@@ -18,6 +18,15 @@
 
 ---
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch07-casino-implementation-planning-timeline.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch07-casino-implementation-planning-timeline.png" alt="Casino Implementation Planning and Timeline" width="100%" /></a>
+
+<sub><em>Casino Implementation Planning and Timeline. <a href="https://thebackendofluck.com/architecture/ch07-casino-implementation-planning-timeline.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Overview
 
 Reference implementations and configuration templates for planning and executing a casino platform launch, covering infrastructure provisioning, service configuration, financial modeling, and load testing.

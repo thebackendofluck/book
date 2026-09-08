@@ -20,6 +20,15 @@
 
 This directory contains all the code examples and frameworks referenced in Chapter 30 of the iGaming Technical Book.
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch30-finops-deep-dive.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch30-finops-deep-dive.png" alt="FinOps Cost Data Pipeline" width="100%" /></a>
+
+<sub><em>FinOps Cost Data Pipeline. <a href="https://thebackendofluck.com/architecture/ch30-finops-deep-dive.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Directory Structure
 
 ```

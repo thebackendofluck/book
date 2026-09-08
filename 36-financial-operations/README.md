@@ -18,6 +18,15 @@
 
 ---
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch36-financial-operations.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch36-financial-operations.png" alt="Casino Deposit Processing Lifecycle" width="100%" /></a>
+
+<sub><em>Casino Deposit Processing Lifecycle. <a href="https://thebackendofluck.com/architecture/ch36-financial-operations.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Overview
 
 Complete payment and financial operations stack for an online casino, from payment gateway integrations and cashier UIs to withdrawal processing, balance reconciliation, and revenue analytics.

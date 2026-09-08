@@ -20,6 +20,15 @@
 
 This directory contains the artefacts described in Chapter 33e of the book.
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch33e-docker-disk-lifecycle-and.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch33e-docker-disk-lifecycle-and.png" alt="Docker Disk Pressure Lifecycle" width="100%" /></a>
+
+<sub><em>Docker Disk Pressure Lifecycle. <a href="https://thebackendofluck.com/architecture/ch33e-docker-disk-lifecycle-and.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Files
 
 | File | Purpose |

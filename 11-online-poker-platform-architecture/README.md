@@ -18,6 +18,15 @@
 
 ---
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch11-online-poker-platform-architecture.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch11-online-poker-platform-architecture.png" alt="Online Poker Platform Architecture" width="100%" /></a>
+
+<sub><em>Online Poker Platform Architecture. <a href="https://thebackendofluck.com/architecture/ch11-online-poker-platform-architecture.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Overview
 
 Reference implementations for an online poker platform covering the game server, anti-cheat detection, real-time streaming, payment processing, and WebSocket-based client connectivity.

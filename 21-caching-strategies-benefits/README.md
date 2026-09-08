@@ -22,47 +22,11 @@ Enterprise caching infrastructure for iGaming platforms with high-performance re
 
 ## Architecture Overview
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                        iGaming Caching Architecture                          │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐                  │
-│  │   Browser    │    │     CDN      │    │   API GW     │                  │
-│  │   Cache      │────│    Cache     │────│   Cache      │                  │
-│  │  (L1 - 1s)   │    │  (L2 - 5m)   │    │  (L3 - 1m)   │                  │
-│  └──────────────┘    └──────────────┘    └──────────────┘                  │
-│         │                   │                   │                          │
-│         └───────────────────┼───────────────────┘                          │
-│                             │                                              │
-│                  ┌──────────▼──────────┐                                   │
-│                  │  Application Layer  │                                   │
-│                  │   (Cache Manager)   │                                   │
-│                  └──────────┬──────────┘                                   │
-│                             │                                              │
-│              ┌──────────────┼──────────────┐                              │
-│              │              │              │                              │
-│    ┌─────────▼─────────┐   │   ┌─────────▼─────────┐                     │
-│    │ Redis Cluster     │   │   │    Memcached      │                     │
-│    │ (Session, State)  │   │   │  (Static Content) │                     │
-│    │                   │   │   │                   │                     │
-│    │ ┌─────┐ ┌─────┐  │   │   │ ┌─────┐ ┌─────┐  │                     │
-│    │ │Shard│ │Shard│  │   │   │ │Node │ │Node │  │                     │
-│    │ │  1  │ │  2  │  │   │   │ │  1  │ │  2  │  │                     │
-│    │ └──┬──┘ └──┬──┘  │   │   │ └─────┘ └─────┘  │                     │
-│    │    │       │     │   │   │                   │                     │
-│    │ ┌──▼──┐ ┌──▼──┐  │   │   └───────────────────┘                     │
-│    │ │Rep 1│ │Rep 2│  │   │                                             │
-│    │ └─────┘ └─────┘  │   │                                             │
-│    └───────────────────┘   │                                             │
-│                             │                                              │
-│              ┌──────────────▼──────────────┐                              │
-│              │       PostgreSQL/RDS         │                              │
-│              │    (Source of Truth)         │                              │
-│              └──────────────────────────────┘                              │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch21-caching-architecture.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch21-caching-architecture.png" alt="iGaming caching layers" width="100%" /></a>
+
+<sub><em>iGaming caching layers. <a href="https://thebackendofluck.com/architecture/ch21-caching-architecture.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
 
 ## Directory Structure
 

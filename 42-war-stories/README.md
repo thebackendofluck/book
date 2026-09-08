@@ -20,6 +20,15 @@
 
 > Reference implementations of the failure patterns from Chapter 42: RNG seeding bugs, payment cascade collapse, GDPR deletion disasters, and smart-contract exploits.
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch42-war-stories.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch42-war-stories.png" alt="Payment Circuit Breaker Lifecycle" width="100%" /></a>
+
+<sub><em>Payment Circuit Breaker Lifecycle. <a href="https://thebackendofluck.com/architecture/ch42-war-stories.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Overview
 
 These scripts are not templates — they are forensic reconstructions. Each file models the failure mode described in the war story, paired with the circuit-breaker or recovery pattern that contained the damage. Read alongside Chapter 42 to understand what the detection logs looked like and why each fix worked.

@@ -18,4 +18,13 @@
 
 ---
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch24m-security-workflow-automation-n8n.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch24m-security-workflow-automation-n8n.png" alt="Security Workflow Automation Pipeline" width="100%" /></a>
+
+<sub><em>Security Workflow Automation Pipeline. <a href="https://thebackendofluck.com/architecture/ch24m-security-workflow-automation-n8n.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 

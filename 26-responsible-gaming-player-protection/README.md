@@ -18,6 +18,15 @@
 
 ---
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch26-responsible-gaming-player-protection.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch26-responsible-gaming-player-protection.png" alt="Responsible Gaming and Player Protection" width="100%" /></a>
+
+<sub><em>Responsible Gaming and Player Protection. <a href="https://thebackendofluck.com/architecture/ch26-responsible-gaming-player-protection.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Overview
 
 Production implementations of player protection systems including self-exclusion registries, national exclusion list integrations (GAMSTOP, NJ DGE), geo-blocking, and AI-driven addiction detection.

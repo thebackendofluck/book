@@ -20,6 +20,15 @@
 
 Enterprise-grade Random Number Generation implementation for iGaming platforms.
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch17-random-number-generation-rng.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch17-random-number-generation-rng.png" alt="RNG Pipeline" width="100%" /></a>
+
+<sub><em>RNG Pipeline. <a href="https://thebackendofluck.com/architecture/ch17-random-number-generation-rng.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Overview
 
 This module provides cryptographically secure RNG implementations that meet GLI-11 and GLI-19 certification requirements for online gambling platforms.

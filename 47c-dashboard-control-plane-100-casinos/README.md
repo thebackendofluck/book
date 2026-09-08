@@ -20,6 +20,15 @@
 
 > Applied implementations of the versioned config-service patterns from Chapter 47b: multi-tenant feature flags, jurisdiction-rule propagation, and a React/TypeScript app shell with design-token-driven brand theming.
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch47c-dashboard-control-plane-100.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch47c-dashboard-control-plane-100.png" alt="Dashboard Control Plane for 100 Casinos" width="100%" /></a>
+
+<sub><em>Dashboard Control Plane for 100 Casinos. <a href="https://thebackendofluck.com/architecture/ch47c-dashboard-control-plane-100.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Overview
 
 Chapter 47b describes the config-service architecture. This directory contains the working applied artefacts: a TypeScript `AppShell` component that reads brand tokens and jurisdiction rules at runtime, a parity checker that validates edge-layer config against the core config-service, a cutover plan for migrating a live operator to the new distribution model, and a Dockerised test runner.

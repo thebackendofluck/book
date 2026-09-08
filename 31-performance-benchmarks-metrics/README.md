@@ -20,6 +20,15 @@
 
 This directory contains all the code examples and frameworks referenced in Chapter 31 of the iGaming Technical Book.
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch31-performance-benchmarks-metrics.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch31-performance-benchmarks-metrics.png" alt="Performance Benchmarks" width="100%" /></a>
+
+<sub><em>Performance Benchmarks. <a href="https://thebackendofluck.com/architecture/ch31-performance-benchmarks-metrics.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Directory Structure
 
 ```

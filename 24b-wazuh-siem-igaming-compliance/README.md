@@ -20,6 +20,15 @@
 
 > Ansible automation for deploying Wazuh manager and agents across an iGaming fleet, with iGaming-specific FIM and alert rules.
 
+## Architecture diagram
+
+<div align="center">
+<a href="https://thebackendofluck.com/architecture/ch24b-wazuh-siem-igaming-compliance.html"><img src="https://raw.githubusercontent.com/thebackendofluck/book/main/assets/architecture/ch24b-wazuh-siem-igaming-compliance.png" alt="Wazuh SIEM Architecture" width="100%" /></a>
+
+<sub><em>Wazuh SIEM Architecture. <a href="https://thebackendofluck.com/architecture/ch24b-wazuh-siem-igaming-compliance.html">Open the interactive version</a>: pan, zoom, guided views, light/dark theme, export.</em></sub>
+</div>
+
+
 ## Overview
 
 Ansible playbooks and inventory for deploying a Wazuh SIEM cluster (manager + agents) to iGaming production infrastructure. Covers manager initialisation, agent enrollment, file integrity monitoring of game binaries and RNG libraries, PCI-DSS compliance module, and the 5-year log retention policy required by NJ DGE and MGA.
