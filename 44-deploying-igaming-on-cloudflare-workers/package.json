@@ -31,7 +31,7 @@
     "@typescript-eslint/parser": "^6.21.0",
     "eslint": "^8.57.0",
     "typescript": "^5.9.3",
-    "vitest": "^3.0.8",
+    "vitest": "^4.1.11",
     "wrangler": ">=4.59.1"
   },
   "overrides": {
