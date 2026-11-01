@@ -78,7 +78,7 @@ spec:
           # Pinned, not :latest. The tool version and the benchmark version
           # together determine the result, so a floating tag means two runs are
           # not comparable and the evidence trail has an unexplained step in it.
-          image: docker.io/aquasec/kube-bench:v0.10.0
+          image: docker.io/aquasec/kube-bench:v0.16.0
           command: ["/bin/sh", "-c"]
           args:
             - |

@@ -2,7 +2,7 @@
 # Multi-stage: builder installs deps, final image has no build tools
 # Used by CI/CD (Chapter 23) — never by developers for inner-loop work
 
-FROM python:3.14-slim-bookworm AS builder
+FROM python:3.15-slim-bookworm AS builder
 
 WORKDIR /build
 
@@ -17,7 +17,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
 # ─── Final stage ────────────────────────────────────────────────────────────────
-FROM python:3.14-slim-bookworm AS final
+FROM python:3.15-slim-bookworm AS final
 
 # Non-root user — mandatory for PCI-DSS compliance
 RUN groupadd -r appuser && useradd -r -g appuser appuser
