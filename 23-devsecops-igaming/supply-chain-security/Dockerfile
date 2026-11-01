@@ -41,7 +41,7 @@ RUN curl -sSfL -o /tools/cosign \
     && chmod +x /tools/cosign
 
 # --- Stage 2: Final hardened image -------------------------------------------
-FROM python:3.14-slim-bookworm
+FROM python:3.15-slim-bookworm
 
 LABEL maintainer="security-team@acme-casino.io"
 LABEL description="Supply chain security scanner for iGaming platforms"

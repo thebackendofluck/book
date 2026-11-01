@@ -412,7 +412,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: coturn
-          image: coturn/coturn:4.15.0
+          image: coturn/coturn:4.18.0
           args:
             - --listening-port=3478
             - --tls-listening-port=5349

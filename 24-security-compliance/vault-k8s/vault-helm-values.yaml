@@ -33,7 +33,7 @@ server:
 
   image:
     repository: hashicorp/vault-enterprise
-    tag: "2.0.3-ent"
+    tag: "2.2.1-ent"
 
   resources:
     requests:

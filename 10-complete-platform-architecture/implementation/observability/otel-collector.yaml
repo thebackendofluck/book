@@ -388,7 +388,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: otel-collector
-          image: otel/opentelemetry-collector-contrib:0.157.0
+          image: otel/opentelemetry-collector-contrib:0.163.2-386
           args:
             - "--config=/conf/collector-config.yaml"
           ports:
@@ -465,7 +465,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: otel-collector
-          image: otel/opentelemetry-collector-contrib:0.157.0
+          image: otel/opentelemetry-collector-contrib:0.163.2-386
           args:
             - "--config=/conf/agent-config.yaml"
           ports:
