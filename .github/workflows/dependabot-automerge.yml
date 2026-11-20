@@ -6,6 +6,12 @@ name: Dependabot auto-merge
 # required "Dependency Gate" check passes, because auto-merge honours branch
 # protection.
 #
+# The "labeled" trigger exists only so a maintainer can add the "retest" label
+# to re-run this by hand. Dependabot adds its own labels right after opening a
+# PR, and those events must not cancel the real run, so the job is skipped for
+# any other label and the concurrency group keeps label events apart from the
+# opened/synchronize runs.
+#
 # Requires, once, on the repository:
 #   * Settings > Actions > General > "Allow GitHub Actions to create and
 #     approve pull requests" (REST: can_approve_pull_request_reviews=true)
@@ -22,7 +28,7 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: dependabot-automerge-${{ github.event.pull_request.number }}
+  group: dependabot-automerge-${{ github.event.pull_request.number }}-${{ github.event.action == 'labeled' && github.event.label.name == 'retest' && 'retest' || github.event.action == 'labeled' && 'label' || 'push' }}
   cancel-in-progress: true
 
 jobs:
