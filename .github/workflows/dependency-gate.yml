@@ -104,6 +104,16 @@ jobs:
         with:
           toolchain: stable
 
+      # Must run after the toolchain step: the rustc version is part of the
+      # cache key. Scoped to the matrix directory so each crate gets its own
+      # registry and target cache.
+      - name: Cache Rust build
+        if: matrix.ecosystem == 'rust'
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: ${{ matrix.dir }}
+          key: ${{ matrix.dir }}
+
       - name: Install hadolint
         if: matrix.ecosystem == 'docker'
         run: |

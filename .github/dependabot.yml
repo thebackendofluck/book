@@ -69,6 +69,10 @@ updates:
 
   - package-ecosystem: "npm"
     directories: ["**/*"]
+    # Handled by the dedicated entry below, which pins vitest to the major
+    # that @cloudflare/vitest-pool-workers supports.
+    exclude-paths:
+      - "35-incident-management/traffic-classifier/cloudflare/**"
     schedule:
       interval: "monthly"
     open-pull-requests-limit: 3
@@ -86,6 +90,35 @@ updates:
         applies-to: version-updates
         patterns: ["*"]
         update-types: ["minor", "patch"]
+
+  - package-ecosystem: "npm"
+    directory: "/35-incident-management/traffic-classifier/cloudflare"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 3
+    labels: ["dependencies", "javascript"]
+    cooldown:
+      default-days: 7
+      semver-major-days: 30
+      semver-minor-days: 7
+      semver-patch-days: 3
+    groups:
+      cf-npm-security:
+        applies-to: security-updates
+        patterns: ["*"]
+      cf-npm:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    # @cloudflare/vitest-pool-workers (0.22.0 at the time of writing) peers on
+    # vitest ^4.1.0, and vitest 5 breaks `npm ci`. Remove this ignore once a
+    # vitest-pool-workers release supports vitest 5. Security updates are not
+    # affected by `ignore`, so vulnerability fixes still get proposed.
+    ignore:
+      - dependency-name: "vitest"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@vitest/*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "gomod"
     directories: ["**/*"]
