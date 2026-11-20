@@ -11,6 +11,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -92,7 +93,7 @@ func (e *BuilderEngine) AddSelection(slip *BuilderBetslip, req AddSelectionReque
 			if reason != "" {
 				msg += ": " + reason
 			}
-			return fmt.Errorf(msg)
+			return errors.New(msg)
 		}
 	}
 
