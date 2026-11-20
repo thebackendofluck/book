@@ -93,6 +93,7 @@ O que a série cobre, com o Brasil no centro e não como nota de rodapé:
 - [The lab behind the book](#the-lab-behind-the-book)
 - [Live, right now](#live-right-now)
 - [About this repository](#about-this-repository)
+- [Updates](#updates)
 - [What makes this book different](#what-makes-this-book-different)
 - [Who it's for](#who-its-for-and-who-it-isnt)
 - [The six volumes & editions](#the-six-volumes--editions)
@@ -118,6 +119,12 @@ This is the **public showcase** for *The Backend of Luck*. It's a navigator — 
 The [chapter map](#chapter-map) below shows every chapter of the series and which volume it belongs to. The full chapters, scripts, diagrams and runnable examples live in **private content repositories** that buyers receive access to after redeeming a code. Print and Kindle editions are published by **Brainiacs B.V.** under the series' own ISBNs and available on Amazon.
 
 Public showcase = marketing & navigation. Private volumes = the actual book. Live running example = [**new.acmetocasino.com**](https://new.acmetocasino.com).
+
+---
+
+## Updates
+
+- **2026-11-20** · Chapter 23c now covers **commit and tag signing with SSH and GPG keys**: why git identity can't be trusted on its own, SSH signing with `allowed_signers` and YubiKey-backed `ed25519-sk` keys, GPG keys with expiry and revocation, verification, and enforcing signed commits on `main` (including how squash merges and Dependabot fit in). Read it in [Commit and Tag Signing with SSH and GPG](./23c-secrets-management-git-hygiene/README.md#commit-and-tag-signing-with-ssh-and-gpg). This repository now requires signed commits from contributors too; see [CONTRIBUTING.md](CONTRIBUTING.md#signing-your-commits).
 
 ---
 
