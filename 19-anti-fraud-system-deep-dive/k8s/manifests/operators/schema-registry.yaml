@@ -84,7 +84,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: schema-registry
-          image: confluentinc/cp-schema-registry:8.3.0
+          image: confluentinc/cp-schema-registry:8.3.2
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8081

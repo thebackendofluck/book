@@ -210,7 +210,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: redpanda
-          image: redpandadata/redpanda:v26.1.13
+          image: redpandadata/redpanda:v26.2.6
           command:
             - redpanda
             - start
