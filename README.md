@@ -125,6 +125,12 @@ Public showcase = marketing & navigation. Private volumes = the actual book. Liv
 ## Updates
 
 - **2026-11-20** · Chapter 23c now covers **commit and tag signing with SSH and GPG keys**: why git identity can't be trusted on its own, SSH signing with `allowed_signers` and YubiKey-backed `ed25519-sk` keys, GPG keys with expiry and revocation, verification, and enforcing signed commits on `main` (including how squash merges and Dependabot fit in). Read it in [Commit and Tag Signing with SSH and GPG](./23c-secrets-management-git-hygiene/README.md#commit-and-tag-signing-with-ssh-and-gpg). This repository now requires signed commits from contributors too; see [CONTRIBUTING.md](CONTRIBUTING.md#signing-your-commits).
+- **2026-11-20** · Repository and GitHub changes:
+  - `main` now requires signed commits, and rebase merging is off because GitHub can't sign commits it rewrites. Squash and merge commits are signed by GitHub, so Dependabot PRs keep working.
+  - The Dependabot auto-merge workflow had a bug: the label events Dependabot adds right after opening a PR cancelled the run that approves it, so patch, minor and security updates sat open for weeks. That's fixed, and those PRs now merge on their own once the Dependency Gate passes.
+  - Dependency updates merged across the Docker, Go, Rust and Python examples. The OpenTelemetry Collector image now uses the multi-arch `0.163.2` tag instead of a 32-bit-only one, and a `go vet` failure in the Chapter 46 `bet-builder` service is fixed.
+  - The Dependency Gate caches Rust builds per directory, so Rust checks no longer rebuild from scratch.
+  - The Chapter 23 supply-chain scanner image builds again: trivy moved to 0.76.2 (the old release was deleted upstream), downloads are checked against pinned sha256 sums, and every tool picks its binary by architecture, so the image builds on both amd64 and arm64.
 
 ---
 
