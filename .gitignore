@@ -48,3 +48,6 @@ id_rsa*
 
 # Added by ggshield
 .cache_ggshield
+
+# Local tool config
+.claude/

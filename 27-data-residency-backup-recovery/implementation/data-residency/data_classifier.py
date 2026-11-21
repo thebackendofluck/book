@@ -172,8 +172,9 @@ JURISDICTION_RULES: dict[str, JurisdictionRule] = {
         cross_border_allowed=True,  # PIPEDA allows with safeguards
         encryption_required=True,
         classification_overrides={},
-        notes="PIPEDA (federal) + Ontario privacy rules. AGCO Standards "
-              "require player data to be accessible from Canadian soil.",
+        notes="PIPEDA (federal) + Ontario privacy rules. The AGCO Registrar's "
+              "Standards set no data-location rule; Canadian storage is an "
+              "operator choice (confirm with counsel).",
     ),
 }
 

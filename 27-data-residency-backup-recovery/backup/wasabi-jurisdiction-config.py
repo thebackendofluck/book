@@ -94,7 +94,7 @@ class WasabiJurisdictionConfig:
         Included in every backup manifest entry for audit purposes.
     cross_region_replica_allowed : bool
         Whether a secondary copy to another Wasabi region is permitted.
-        False for NJ (strict jurisdiction lock) and Ontario (AGCO prohibition).
+        False for NJ (strict jurisdiction lock) and Ontario (operator policy).
         True for EU spokes where cross-EEA replication is GDPR-compliant.
     secondary_region : str | None
         If cross_region_replica_allowed, the DR Wasabi region.  Must be
@@ -252,8 +252,8 @@ JURISDICTION_BACKUP_CONFIG: dict[Jurisdiction, WasabiJurisdictionConfig] = {
 
     # ------------------------------------------------------------------
     # AGCO ON — Alcohol and Gaming Commission of Ontario
-    # Canadian data must remain on Canadian soil.  AGCO iGO Technical
-    # Standards §8.1.3 prohibits offshore backup without written approval.
+    # Keeping Ontario data on Canadian soil is an operator choice: the AGCO
+    # Registrar's Standards have no data-location rule (confirm with counsel).
     # Wasabi ca-central-1 (Toronto) is the only Canadian Wasabi region.
     # NEVER cross-replicate to a US or EU Wasabi region.
     # Retention: 7 years — AGCO Rules Respecting iGaming §7.4.
@@ -268,11 +268,12 @@ JURISDICTION_BACKUP_CONFIG: dict[Jurisdiction, WasabiJurisdictionConfig] = {
         encryption_algorithm="AES-256",
         legal_basis=(
             "AGCO Rules Respecting iGaming §7.4 (records retention 7 years) + "
-            "AGCO iGO Technical Standards §8.1.3 (data must reside on Canadian soil) + "
-            "PIPEDA / Ontario PHIPA: personal data cannot leave Canada without consent; "
-            "Wasabi ca-central-1 (Toronto) is the sole compliant Wasabi region"
+            "Operator policy: keep player data on Canadian soil (the AGCO Registrar's "
+            "Standards have no data-location rule; confirm with counsel) + "
+            "PIPEDA: cross-border transfers need equivalent protection; "
+            "Wasabi ca-central-1 (Toronto) is the only Canadian Wasabi region"
         ),
-        cross_region_replica_allowed=False,   # AGCO prohibits offshore backup
+        cross_region_replica_allowed=False,   # operator policy, not an AGCO rule
         secondary_region=None,
     ),
 

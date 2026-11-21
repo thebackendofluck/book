@@ -139,21 +139,24 @@ encryption.  Wasabi `us-east-1` satisfies this requirement.
 
 **Legal basis:**
 - AGCO Rules Respecting iGaming §7.4: records must be retained for 7 years.
-- AGCO iGO Technical Standards §8.1.3: all player data must reside on
-  Canadian soil.  Offshore storage requires written AGCO approval — which
-  is routinely denied for player PII and financial records.
+- Data location: the AGCO Registrar's Standards for Internet Gaming do not
+  contain a data-location rule, and iGaming Ontario (an independent Crown
+  agency since 12 May 2025, Order in Council 548/2025) is not the regulator.
+  Keeping player data on Canadian soil is an operator choice, not an AGCO
+  requirement.  Confirm the current position with counsel.
 - PIPEDA (Personal Information Protection and Electronic Documents Act):
   personal data transferred outside Canada must receive equivalent
-  protection.  AGCO interprets this as requiring domestic residency for
-  player data without explicit consent.
+  protection.  Many operators keep player data in Canada to simplify that
+  privacy review.
 
 **Why Toronto:**
 Wasabi `ca-central-1` is the only Canadian Wasabi region.  There is no
 alternative.
 
-**Secondary allowed:** NO — AGCO prohibits offshore backup.  There is no
-second Canadian Wasabi region to replicate to.  If AGCO relaxes this rule,
-a second Wasabi CA region would be the appropriate target.
+**Secondary allowed:** NO (operator policy, not an AGCO rule).  This guide
+keeps Ontario backups in Canada, and there is no second Canadian Wasabi
+region to replicate to.  If the policy changes, a second Wasabi CA region
+would be the appropriate target.
 
 **Retention:** 2,555 days (7 years)
 

@@ -18,6 +18,9 @@ append-only decision log for regulator evidence (Postgres is a later ticket —
 schema is portable).
 
 Design choices (matter for regulator review):
+  * Fail-closed control plane: /v1/reload needs a bearer admin token and is denied when none is
+    configured; the crypto routes need their own bearer secrets; TLS to OpenBao is verified
+    against BAO_CACERT. A decision whose audit line cannot be written is refused (503).
   * Fail-safe-DENY: if Redis is unreachable or a rule is missing, the evaluator
     returns allowed=false. A missing rule is never interpreted as permission.
   * Session-scoped caching: repeated evaluations for the same
@@ -33,12 +36,17 @@ Design choices (matter for regulator review):
 
 from __future__ import annotations
 
+import base64
 import hashlib
+import hmac
 import json
 import logging
 import os
 import signal
 import sqlite3
+import ssl
+import urllib.error
+import urllib.request
 import uuid
 from contextlib import asynccontextmanager, contextmanager
 from datetime import datetime, timezone
@@ -48,8 +56,8 @@ from typing import Any, Iterator
 import redis
 import uvicorn
 import yaml
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
+from fastapi import FastAPI, Header, HTTPException
+from pydantic import BaseModel, Field, ValidationError
 
 LOG_DIR = Path(os.environ.get("JGW_LOG_DIR", "/var/log/jurisdiction-gateway"))
 LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -62,6 +70,9 @@ SQLITE_PATH.parent.mkdir(parents=True, exist_ok=True)
 SESSION_TTL = int(os.environ.get("JGW_SESSION_TTL", "1800"))
 PORT = int(os.environ.get("JGW_PORT", "8210"))
 ADMIN_TOKEN = os.environ.get("JGW_ADMIN_TOKEN", "")
+# Separate bearer secrets for the crypto routes. Unset means that operation is denied.
+CRYPTO_ENCRYPT_TOKEN = os.environ.get("JGW_CRYPTO_ENCRYPT_TOKEN", "")
+CRYPTO_DECRYPT_TOKEN = os.environ.get("JGW_CRYPTO_DECRYPT_TOKEN", "")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s jgw %(levelname)s %(message)s")
 log = logging.getLogger("jgw")
@@ -105,19 +116,19 @@ class EvalResponse(BaseModel):
 
 # ---------- Redis ----------
 
-_r: redis.Redis | None = None
+_r: Any = None
 _loaded_sha: str = ""
 _loaded_at_iso: str = ""
 
 
-def redis_client() -> redis.Redis:
+def redis_client() -> Any:
     global _r
     if _r is None:
         _r = redis.Redis.from_url(REDIS_URL, decode_responses=True)
     return _r
 
 
-def set_redis(client: redis.Redis) -> None:
+def set_redis(client: Any) -> None:
     """Test hook to inject a fake Redis."""
     global _r
     _r = client
@@ -168,28 +179,52 @@ def rule_key(frm: str, to: str, cls: str) -> str:
     return f"jgw:rule:{frm.upper()}:{to}:{cls.upper()}"
 
 
+class RuleFileError(ValueError):
+    """The rules file is unreadable or malformed. The rules in force are left alone."""
+
+
+def parse_rules(raw: bytes) -> list[Rule]:
+    """Parse and validate the whole file. Raises RuleFileError and touches no store."""
+    try:
+        data = yaml.safe_load(raw) or {}
+        if not isinstance(data, dict) or not isinstance(data.get("rules"), list):
+            raise RuleFileError("rules file must be a mapping with a 'rules' list")
+        parsed = [Rule(**item) for item in data["rules"]]
+    except (yaml.YAMLError, ValidationError, TypeError) as e:
+        raise RuleFileError(str(e)) from e
+    if not parsed:
+        raise RuleFileError("rules file holds no rules")
+    return parsed
+
+
 def load_rules(path: Path | None = None) -> dict[str, Any]:
     global _loaded_sha, _loaded_at_iso
     p = path or RULES_PATH
-    raw = p.read_bytes()
+    try:
+        raw = p.read_bytes()
+    except OSError as e:
+        raise RuleFileError(f"cannot read {p}: {e}") from e
     sha = hashlib.sha256(raw).hexdigest()
-    data = yaml.safe_load(raw) or {}
-    rules_list = data.get("rules", [])
+    validated = parse_rules(raw)  # validate everything before the store is touched
 
     r = redis_client()
-    for k in list(r.scan_iter("jgw:rule:*")):
-        r.delete(k)
-    validated = []
-    for raw_rule in rules_list:
-        rule = Rule(**raw_rule)
-        r.set(rule_key(rule.from_jurisdiction, rule.to_destination, rule.data_class),
-              rule.model_dump_json())
-        validated.append(rule.model_dump())
-    r.set("jgw:meta:sha256", sha)
-    r.set("jgw:meta:loaded_at", datetime.now(timezone.utc).isoformat())
-    r.set("jgw:meta:count", str(len(validated)))
+    # Old rules and cached session decisions go in the same transaction as the new rules, so a
+    # reader sees the old set or the new set, never a half-loaded one, and no session keeps a
+    # decision made under a rule that no longer exists.
+    old_keys = list(r.scan_iter("jgw:rule:*")) + list(r.scan_iter("jgw:sess:*"))
+    now_iso = datetime.now(timezone.utc).isoformat()
+    with r.pipeline(transaction=True) as pipe:
+        if old_keys:
+            pipe.delete(*old_keys)
+        for rule in validated:
+            pipe.set(rule_key(rule.from_jurisdiction, rule.to_destination, rule.data_class),
+                     rule.model_dump_json())
+        pipe.set("jgw:meta:sha256", sha)
+        pipe.set("jgw:meta:loaded_at", now_iso)
+        pipe.set("jgw:meta:count", str(len(validated)))
+        pipe.execute()
     _loaded_sha = sha
-    _loaded_at_iso = datetime.now(timezone.utc).isoformat()
+    _loaded_at_iso = now_iso
     log.info("rules loaded: %d rules, sha=%s", len(validated), sha[:12])
     return {"count": len(validated), "sha256": sha, "loaded_at": _loaded_at_iso}
 
@@ -293,8 +328,10 @@ def record_decision(req: EvalRequest, resp: EvalResponse) -> None:
     try:
         with DECISIONS_LOG.open("a") as f:
             f.write(json.dumps(line) + "\n")
-    except OSError:
-        log.exception("decision jsonl append failed")
+    except OSError as e:
+        # A decision nobody can audit is not released.
+        log.exception("decision jsonl append failed; refusing the decision")
+        raise HTTPException(status_code=503, detail="audit log unavailable; refusing") from e
     try:
         with db_cursor() as cur:
             cur.execute(
@@ -321,7 +358,8 @@ async def lifespan(app: FastAPI):
     load_rules()
     def _sighup(_signum, _frame):
         log.info("SIGHUP: reloading rules")
-        try: load_rules()
+        try:
+            load_rules()
         except Exception:
             log.exception("rule reload failed; keeping previous set")
     signal.signal(signal.SIGHUP, _sighup)
@@ -370,7 +408,8 @@ def list_rules():
     out = []
     for k in r.scan_iter("jgw:rule:*"):
         raw = r.get(k)
-        if raw: out.append(json.loads(raw))
+        if raw:
+            out.append(json.loads(raw))
     return {"count": len(out), "sha256": _loaded_sha, "loaded_at": _loaded_at_iso, "rules": out}
 
 
@@ -381,10 +420,12 @@ def expiring_rules(within_days: int = 90):
     out = []
     for k in r.scan_iter("jgw:rule:*"):
         raw = r.get(k)
-        if not raw: continue
+        if not raw:
+            continue
         rule = Rule.model_validate_json(raw)
         pivot = rule.review_by or rule.expires_at
-        if not pivot: continue
+        if not pivot:
+            continue
         try:
             d = datetime.fromisoformat(pivot.replace("Z", "+00:00"))
         except ValueError:
@@ -396,37 +437,78 @@ def expiring_rules(within_days: int = 90):
     return {"within_days": within_days, "count": len(out), "rules": out}
 
 
+def _bearer(authorization: str | None) -> str:
+    if authorization and authorization.lower().startswith("bearer "):
+        return authorization[7:].strip()
+    return ""
+
+
+def _require_bearer(authorization: str | None, secret: str, what: str) -> None:
+    """Deny when the secret is unset (403), when no token is sent or it is wrong (401/403).
+
+    Comparison is constant time. Tokens are read from the Authorization header only, never
+    from the query string, where they would end up in access logs.
+    """
+    if not secret:
+        raise HTTPException(status_code=403, detail=f"{what} disabled: no token configured")
+    presented = _bearer(authorization)
+    if not presented:
+        raise HTTPException(status_code=401, detail="bearer token required",
+                            headers={"WWW-Authenticate": "Bearer"})
+    if not hmac.compare_digest(presented.encode(), secret.encode()):
+        raise HTTPException(status_code=403, detail=f"bad token for {what}")
+
+
 @app.post("/v1/reload")
-def reload_endpoint(token: str = ""):
-    if ADMIN_TOKEN and token != ADMIN_TOKEN:
-        raise HTTPException(status_code=403, detail="bad admin token")
+def reload_endpoint(authorization: str | None = Header(default=None)):
+    """Admin only: `Authorization: Bearer <JGW_ADMIN_TOKEN>`. Fails closed without a token."""
+    _require_bearer(authorization, ADMIN_TOKEN, "reload")
     try:
         return load_rules()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"reload failed: {e}")
-
+    except RuleFileError as e:
+        # Nothing was written to the store; the old rules stay live.
+        raise HTTPException(status_code=422, detail=f"reload failed, old rules kept: {e}") from e
 
 
 # ---------- OpenBao transit crypto proxy ----------
 
-import urllib.request, urllib.error, ssl as _ssl
+_BAO_ADDR   = os.environ.get("BAO_ADDR", "https://127.0.0.1:8200")
+_BAO_TOKEN  = os.environ.get("BAO_TOKEN", "")
+_BAO_KEY    = os.environ.get("BAO_TRANSIT_KEY", "dsr-field-cipher")
+_BAO_CACERT = os.environ.get("BAO_CACERT", "")  # CA that signed the OpenBao listener cert
 
-_BAO_ADDR  = os.environ.get("BAO_ADDR", "https://127.0.0.1:8200")
-_BAO_TOKEN = os.environ.get("BAO_TOKEN", "")
-_BAO_KEY   = os.environ.get("BAO_TRANSIT_KEY", "dsr-field-cipher")
-_BAO_SSL   = _ssl._create_unverified_context()  # ops-host uses self-signed cert on LAN
+
+def _bao_ssl_context() -> ssl.SSLContext:
+    """Verified TLS: certificate checked against BAO_CACERT, hostname checked. No opt-out.
+
+    An ops-host with a self-signed cert is handled by pointing BAO_CACERT at that cert (or at
+    the private CA that issued it), not by switching verification off.
+    """
+    if not _BAO_CACERT:
+        raise HTTPException(status_code=503, detail="BAO_CACERT not configured")
+    if not _BAO_ADDR.startswith("https://"):
+        raise HTTPException(status_code=503, detail="BAO_ADDR must be https")
+    try:
+        ctx = ssl.create_default_context(cafile=_BAO_CACERT)
+    except (OSError, ssl.SSLError) as e:
+        raise HTTPException(status_code=503, detail=f"BAO_CACERT unusable: {e}") from e
+    ctx.verify_mode = ssl.CERT_REQUIRED
+    ctx.check_hostname = True
+    return ctx
+
 
 def _bao_call(path: str, body: dict) -> dict:
     if not _BAO_TOKEN:
         raise HTTPException(status_code=503, detail="BAO_TOKEN not configured")
+    ctx = _bao_ssl_context()
     req = urllib.request.Request(
-        f"{_BAO_ADDR}/v1/{path}",
+        f"{_BAO_ADDR.rstrip('/')}/v1/{path}",
         data=json.dumps(body).encode(),
         headers={"X-Vault-Token": _BAO_TOKEN, "content-type": "application/json"},
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=4, context=_BAO_SSL) as r:
+        with urllib.request.urlopen(req, timeout=4, context=ctx) as r:
             return json.loads(r.read())
     except urllib.error.HTTPError as e:
         raise HTTPException(status_code=502, detail=f"bao http {e.code}")
@@ -440,8 +522,8 @@ class CryptoReq(BaseModel):
 
 
 @app.post("/v1/crypto/encrypt")
-def crypto_encrypt(req: CryptoReq):
-    import base64
+def crypto_encrypt(req: CryptoReq, authorization: str | None = Header(default=None)):
+    _require_bearer(authorization, CRYPTO_ENCRYPT_TOKEN, "encrypt")
     if not req.plaintext:
         return {"ciphertext": ""}
     pt_b64 = base64.b64encode(req.plaintext.encode()).decode()
@@ -450,10 +532,11 @@ def crypto_encrypt(req: CryptoReq):
 
 
 @app.post("/v1/crypto/decrypt")
-def crypto_decrypt(req: CryptoReq):
-    import base64
+def crypto_decrypt(req: CryptoReq, authorization: str | None = Header(default=None)):
+    _require_bearer(authorization, CRYPTO_DECRYPT_TOKEN, "decrypt")
+    # Input that is not a transit ciphertext is an error, never echoed back as plaintext.
     if not req.ciphertext or not req.ciphertext.startswith("vault:"):
-        return {"plaintext": req.ciphertext or ""}
+        raise HTTPException(status_code=422, detail="ciphertext must be a vault: transit value")
     d = _bao_call(f"transit/decrypt/{_BAO_KEY}", {"ciphertext": req.ciphertext})
     pt_b64 = d.get("data", {}).get("plaintext", "")
     return {"plaintext": base64.b64decode(pt_b64).decode() if pt_b64 else ""}
