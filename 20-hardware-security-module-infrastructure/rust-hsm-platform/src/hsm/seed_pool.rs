@@ -313,7 +313,7 @@ impl GameRngSession {
     /// Find the smallest threshold `t = (-range) mod range` such that
     /// values ≥ `t` are uniformly distributed. Reject values < `t`.
     pub fn draw(&mut self, range: u32) -> u32 {
-        use rand::RngCore;
+        use rand::Rng;
         assert!(range > 0, "draw range must be non-zero");
 
         self.draws += 1;
@@ -388,7 +388,7 @@ mod tests {
     #[test]
     fn draw_power_of_two_no_rejection() {
         let mut rng = ChaCha20Rng::from_seed([1u8; 32]);
-        use rand::RngCore;
+        use rand::Rng;
 
         // Threshold for a power-of-two range is always 0.
         let range: u32 = 256;

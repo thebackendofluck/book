@@ -8,7 +8,7 @@
 // your own licence, independent test-lab certification (GLI, eCOGRA or
 // equivalent) and regulator approval.
 
-const glob = require('glob');
+const { globSync } = require('glob');
 const yaml = require('js-yaml');
 const fs = require('fs');
 const swaggerToTS = require('@manifoldco/swagger-to-ts').default;
@@ -16,19 +16,20 @@ const path = require('path');
 
 const dir = __dirname + '/../dist/';
 
-// options is optional
-glob(__dirname + '/../types/*.y?(a)ml', {}, function (er, files) {
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir);
-  }
+const files = globSync(path.join(__dirname, '..', 'types', '*.y?(a)ml'), {
+  windowsPathsNoEscape: true,
+});
 
-  files.forEach((file) => {
-    try {
-      const doc = yaml.safeLoad(fs.readFileSync(file, 'utf8'));
-      const output = swaggerToTS(doc, { wrapper: false });
-      fs.writeFileSync(dir + path.parse(file).name + '.ts', output);
-    } catch (error) {
-      console.log("Unable to generate types for ", file);
-    }
-  });
+if (!fs.existsSync(dir)) {
+  fs.mkdirSync(dir);
+}
+
+files.forEach((file) => {
+  try {
+    const doc = yaml.safeLoad(fs.readFileSync(file, 'utf8'));
+    const output = swaggerToTS(doc, { wrapper: false });
+    fs.writeFileSync(dir + path.parse(file).name + '.ts', output);
+  } catch (error) {
+    console.log("Unable to generate types for ", file);
+  }
 });

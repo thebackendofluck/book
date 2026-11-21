@@ -222,24 +222,23 @@ function makeRequest(
   cf: CfExtras = {},
   method = "GET",
 ): Request {
-  const req = new Request(`https://casino.test${path}`, { method });
-  // Cloudflare injects cf as a non-enumerable property; we approximate this
-  // by using Object.defineProperty so tests match production behaviour.
-  Object.defineProperty(req, "cf", {
-    value: {
+  // Simulate CF headers
+  const headers = new Headers();
+  headers.set("CF-Connecting-IP", ip);
+  headers.set("CF-Ray", "test-ray-001");
+  // workerd accepts `cf` in RequestInit and exposes it as request.cf, the
+  // same shape Cloudflare's edge attaches in production.
+  return new Request(`https://casino.test${path}`, {
+    method,
+    headers,
+    cf: {
       botManagement: cf.botManagement ?? { score: 85, ja3Hash: "" },
       threatScore: cf.threatScore ?? 0,
       asn: cf.asn ?? 12345,
       asOrganization: cf.asOrganization ?? "Test ASN Corp",
       country: cf.country ?? "BR",
     },
-    writable: false,
-  });
-  // Simulate CF headers
-  const headers = new Headers(req.headers);
-  headers.set("CF-Connecting-IP", ip);
-  headers.set("CF-Ray", "test-ray-001");
-  return new Request(req, { headers });
+  } as RequestInit);
 }
 
 function makeAdminRequest(

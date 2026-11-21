@@ -8,31 +8,30 @@
 // your own licence, independent test-lab certification (GLI, eCOGRA or
 // equivalent) and regulator approval.
 
-import { defineWorkersConfig } from "@cloudflare/vitest-pool-workers/config";
+import { cloudflareTest } from "@cloudflare/vitest-plugin";
+import { defineConfig } from "vitest/config";
 
-export default defineWorkersConfig({
-  test: {
-    poolOptions: {
-      workers: {
-        wrangler: { configPath: "./wrangler.toml" },
-        miniflare: {
-          // Provide stub KV namespaces for the test environment.
-          // The test file uses in-memory mocks rather than real KV, so these
-          // are just required to satisfy the Wrangler config binding parser.
-          kvNamespaces: [
-            "RATE_LIMITS",
-            "CAMPAIGNS",
-            "ATTACK_LOG",
-            "JA3_BLOCKLIST",
-          ],
-          durableObjects: {
-            ATTACK_COUNTER: "AttackCounter",
-          },
+export default defineConfig({
+  plugins: [
+    cloudflareTest({
+      wrangler: { configPath: "./wrangler.toml" },
+      miniflare: {
+        // Provide stub KV namespaces for the test environment.
+        // The test file uses in-memory mocks rather than real KV, so these
+        // are just required to satisfy the Wrangler config binding parser.
+        kvNamespaces: [
+          "RATE_LIMITS",
+          "CAMPAIGNS",
+          "ATTACK_LOG",
+          "JA3_BLOCKLIST",
+        ],
+        durableObjects: {
+          ATTACK_COUNTER: "AttackCounter",
         },
       },
-    },
-    // Run tests sequentially to avoid KV state leakage between tests
-    pool: "vitest-pool-workers",
+    }),
+  ],
+  test: {
     globals: true,
     include: ["test/**/*.test.ts"],
   },

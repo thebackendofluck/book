@@ -50,7 +50,7 @@
 
 use std::sync::Arc;
 
-use rand::{RngCore, SeedableRng};
+use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use sha2::{Digest, Sha256};
 use thiserror::Error;
