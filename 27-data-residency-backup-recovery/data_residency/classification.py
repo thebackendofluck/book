@@ -21,7 +21,7 @@ Jurisdictions covered:
   nj  — New Jersey (US)  — N.J.A.C. 13:69O
   pa  — Pennsylvania (US) — 58 Pa. Code §441a.7
   mi  — Michigan (US)    — Mich. Admin. Code R 432.632
-  on  — Ontario (CA)     — AGCO iGO §8.1.3
+  on  — Ontario (CA)     — PIPEDA; Canadian storage is an operator choice
   uk  — United Kingdom   — UK GDPR / UKGC LCCP
   mt  — Malta            — GDPR + MGA Technical Standards
   ph  — Philippines      — PAGCOR Charter §15.2
@@ -111,7 +111,7 @@ POLICIES: list[ResidencyPolicy] = [
             "mt": "eu-central-1",   # Frankfurt (EEA)
         },
         retention_days=2555,        # 7 years — NJ DGE / UKGC / AGCO maximum
-        notes="NJ: N.J.A.C. 13:69O-1.2; UKGC: LCCP SR Code 8.1.1; AGCO: iGO §8.1.3",
+        notes="NJ: N.J.A.C. 13:69O-1.2; UKGC: LCCP SR Code 8.1.1; Ontario: PIPEDA, retention per AGCO standards",
     ),
 
     ResidencyPolicy(

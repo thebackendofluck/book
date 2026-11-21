@@ -50,7 +50,7 @@ This is the running reference implementation discussed in Chapter 27b.
 | `tests/test_main.py` | Pytest suite — rule evaluation, audit log, reload, edge cases |
 | `templates/dsr-ack-en.txt` | DSR acknowledgment template (English) |
 | `templates/dsr-ack-pt.txt` | DSR acknowledgment template (Portuguese / LGPD) |
-| `Dockerfile` | Multi-stage build (python:3.12-slim → distroless) |
+| `Dockerfile` | Multi-stage build (python:3.12-slim by digest, venv copied to the same base, non-root uid 10010) |
 | `requirements.txt` | Python dependencies (FastAPI, Redis, PyYAML, uvicorn) |
 | `policy-diff-fraud.md` | Policy analysis: fraud detection data flows across jurisdictions |
 
@@ -60,7 +60,7 @@ This is the running reference implementation discussed in Chapter 27b.
 - **Cache:** Redis (rule evaluation hot path)
 - **Storage:** SQLite (append-only audit log; Postgres-portable schema)
 - **Orchestration:** Kubernetes (K3s on ops-host) or systemd
-- **Container:** Distroless nonroot base image
+- **Container:** python:3.12-slim pinned by digest, non-root
 
 ## Prerequisites
 
@@ -96,6 +96,10 @@ kubectl apply -f k8s/deployment.yaml
 - The audit log is append-only by design. Do not grant DELETE on the SQLite file to any non-root user.
 - Rule YAML is versioned by SHA-256 hash; every reload logs the old and new hash for provenance.
 - Fail-safe is **DENY** — a Redis outage blocks all transfers until recovery.
+- `POST /v1/reload` needs `Authorization: Bearer <JGW_ADMIN_TOKEN>` and is denied (403) when no token is configured. The token is never read from the query string. A malformed rules file returns 422 and the old rules stay live; a successful reload also clears the session cache.
+- `/v1/crypto/encrypt` and `/v1/crypto/decrypt` need their own bearer secrets (`JGW_CRYPTO_ENCRYPT_TOKEN`, `JGW_CRYPTO_DECRYPT_TOKEN`) and are denied when unset. Decrypt rejects anything that is not a `vault:` ciphertext instead of echoing it.
+- TLS to OpenBao is verified against the CA file in `BAO_CACERT` (hostname checked). For a self-signed listener, point `BAO_CACERT` at that certificate; there is no switch to turn verification off.
+- If the audit line cannot be written, `/v1/evaluate` answers 503 instead of releasing an unrecorded decision.
 
 ## Related
 

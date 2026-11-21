@@ -9,18 +9,36 @@
 # your own licence, independent test-lab certification (GLI, eCOGRA or
 # equivalent) and regulator approval.
 
-"""regulator_notify.py — draft a preliminary regulator notification for a cashflow incident.
+"""regulator_notify.py: draft a preliminary regulator notification for a cashflow incident.
 
-Does NOT send. Drafts to stdout (or --out file) for the compliance team to review,
-fill any gaps, and submit through the regulator's portal/email.
+Does NOT send. Drafts to stdout (or --out file) for the compliance liaison to
+review, fill any gaps, and submit through the regulator's prescribed channel.
+The compliance liaison owns the regulator notice (see Chapter 35b).
 
-Templates per jurisdiction (UKGC, MGA, DGE, AGCO, Spelinspektionen, SIGAP, Curaçao, Gibraltar).
+Deadlines follow the Regulatory Notification Matrix in Chapter 35b:
+
+  UKGC  LCCP 15.2.1: as soon as reasonably practicable and no later than five
+        working days after awareness. Book figure, confirm with counsel.
+  MGA   Player Protection Directive, Article 37(2)(c)-(d): forthwith and no
+        later than three working days. Book figure, confirm with counsel.
+  Any other licence: there is NO universal 24-hour deadline. The deadline is
+        "unknown, confirm with counsel". The script refuses to compute one
+        unless you pass --confirmed-deadline-hours, a figure your regulatory
+        counsel has confirmed for this licence and event type.
+
+The GDPR 72 hour clock applies to personal data breaches only. It is not a
+cash-flow incident deadline and is not used here.
+
+Working days skip Saturday and Sunday only. Public holidays are not modeled,
+so the computed date is an upper bound to check, not a legal determination.
+
+Severity uses the Chapter 35 scale: SEV-1 (highest) to SEV-4 (lowest).
 
 Usage:
   regulator_notify.py --jurisdiction UKGC \
                       --incident-id INC-2026-04-25-001 \
                       --detected-at "2026-04-25T22:15:00Z" \
-                      --severity high \
+                      --severity SEV-2 \
                       --house-loss-eur 1790624 \
                       --rounds-affected 10105 \
                       --action-taken "kill_switch game=slots_pirate_bonanza" \
@@ -30,72 +48,118 @@ from __future__ import annotations
 
 import argparse
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from textwrap import dedent
 
+UNKNOWN_DEADLINE = "unknown, confirm with counsel"
+_OTHER_REF = (
+    "Binding licence condition, regulation, technical standard, "
+    "or regulator direction"
+)
+_OTHER_CHANNEL = "Current regulator portal or prescribed channel"
+
+# sla_unit is "working_days" (book figure, confirm with counsel) or None when
+# the deadline is unknown. sla_value is None whenever sla_unit is None.
 JURISDICTIONS = {
     "UKGC": {
         "name": "UK Gambling Commission",
-        "sla_hours": 24,
-        "ref": "LCCP 5.1.2 (Reporting key events)",
-        "channel": "Key Event Return + email account manager",
+        "sla_unit": "working_days",
+        "sla_value": 5,
+        "sla_text": ("as soon as reasonably practicable and no later than five "
+                     "working days after awareness (book figure, confirm with counsel)"),
+        "ref": "LCCP 15.2.1",
+        "channel": "eServices key-event report",
     },
     "MGA": {
         "name": "Malta Gaming Authority",
-        "sla_hours": 24,
-        "ref": "Player Protection Directive Article 41",
-        "channel": "Compliance reporting portal",
+        "sla_unit": "working_days",
+        "sla_value": 3,
+        "sla_text": ("forthwith and no later than three working days "
+                     "(book figure, confirm with counsel)"),
+        "ref": "Player Protection Directive, Article 37(2)(c)-(d)",
+        "channel": "MGA incident-reporting channel",
     },
     "DGE": {
         "name": "New Jersey Division of Gaming Enforcement",
-        "sla_hours": 24,
-        "ref": "NJAC 13:69O-1.4",
-        "channel": "Form GG-31 + email DGE technical services",
+        "sla_unit": None, "sla_value": None, "sla_text": UNKNOWN_DEADLINE,
+        "ref": _OTHER_REF, "channel": _OTHER_CHANNEL,
     },
     "AGCO": {
         "name": "Alcohol and Gaming Commission of Ontario / iGO",
-        "sla_hours": 24,
-        "ref": "iGaming Ontario Standards 11.06",
-        "channel": "Compliance portal (preliminary), 7-day full report",
+        "sla_unit": None, "sla_value": None, "sla_text": UNKNOWN_DEADLINE,
+        "ref": _OTHER_REF, "channel": _OTHER_CHANNEL,
     },
     "Spelinspektionen": {
         "name": "Spelinspektionen (Sweden)",
-        "sla_hours": 24,
-        "ref": "LIFS 2018:8",
-        "channel": "Authority portal",
+        "sla_unit": None, "sla_value": None, "sla_text": UNKNOWN_DEADLINE,
+        "ref": _OTHER_REF, "channel": _OTHER_CHANNEL,
     },
     "SIGAP": {
         "name": "Secretaria de Prêmios e Apostas (Brasil)",
-        "sla_hours": 24,
-        "ref": "Portaria SPA/MF nº 1.231",
-        "channel": "SIGAP portal + email SPA",
+        "sla_unit": None, "sla_value": None, "sla_text": UNKNOWN_DEADLINE,
+        "ref": _OTHER_REF, "channel": _OTHER_CHANNEL,
     },
     "Curacao": {
         "name": "Curaçao Gaming Control Board",
-        "sla_hours": 72,
-        "ref": "LOK Article 28",
-        "channel": "Master licensee + GCB",
+        "sla_unit": None, "sla_value": None, "sla_text": UNKNOWN_DEADLINE,
+        "ref": _OTHER_REF, "channel": _OTHER_CHANNEL,
     },
     "Gibraltar": {
         "name": "Gibraltar Regulatory Authority",
-        "sla_hours": 24,
-        "ref": "LCCP-aligned",
-        "channel": "Email regulator + risk register entry",
+        "sla_unit": None, "sla_value": None, "sla_text": UNKNOWN_DEADLINE,
+        "ref": _OTHER_REF, "channel": _OTHER_CHANNEL,
     },
 }
+
+SEVERITIES = ("SEV-1", "SEV-2", "SEV-3", "SEV-4")
+
+
+class UnknownDeadlineError(ValueError):
+    """Raised when no confirmed notification deadline exists for a jurisdiction."""
+
+
+def add_working_days(start: datetime, days: int) -> datetime:
+    """Add working days (Mon-Fri) to start. Public holidays are not modeled."""
+    current = start
+    remaining = days
+    while remaining > 0:
+        current += timedelta(days=1)
+        if current.weekday() < 5:
+            remaining -= 1
+    return current
+
+
+def compute_deadline(jurisdiction: str, detected: datetime,
+                     confirmed_hours: float | None = None) -> datetime:
+    """Return the latest notification time, or raise UnknownDeadlineError."""
+    j = JURISDICTIONS[jurisdiction]
+    days = j["sla_value"]
+    if j["sla_unit"] == "working_days" and isinstance(days, int):
+        return add_working_days(detected, days)
+    if confirmed_hours is not None:
+        return detected + timedelta(hours=confirmed_hours)
+    raise UnknownDeadlineError(
+        f"{jurisdiction}: deadline is {UNKNOWN_DEADLINE}. There is no universal "
+        "24-hour rule. Pass --confirmed-deadline-hours with a figure confirmed "
+        "by regulatory counsel for this licence and event type."
+    )
 
 
 def render(args: argparse.Namespace) -> str:
     j = JURISDICTIONS[args.jurisdiction]
     detected = datetime.fromisoformat(args.detected_at.replace("Z", "+00:00"))
-    sla_deadline = detected.timestamp() + j["sla_hours"] * 3600
-    sla_deadline_iso = datetime.fromtimestamp(sla_deadline, tz=detected.tzinfo).isoformat()
+    confirmed = getattr(args, "confirmed_deadline_hours", None)
+    deadline = compute_deadline(args.jurisdiction, detected, confirmed)
+    if j["sla_unit"] is None:
+        sla_text = f"{confirmed:g} hours, confirmed by counsel"
+    else:
+        sla_text = j["sla_text"]
     return dedent(f"""\
-        DRAFT REGULATORY NOTIFICATION — {j['name']}
-        Reference: {j['ref']} (notification SLA: {j['sla_hours']}h)
+        DRAFT REGULATORY NOTIFICATION - {j['name']}
+        Reference: {j['ref']} (notification deadline: {sla_text})
         Channel: {j['channel']}
 
-        Subject: Preliminary notification of operational incident — {args.incident_id}
+        Subject: Preliminary notification of operational incident - {args.incident_id}
 
         To the {j['name']}:
 
@@ -104,7 +168,7 @@ def render(args: argparse.Namespace) -> str:
 
         Incident reference: {args.incident_id}
         Detected at:        {detected.isoformat()}
-        SLA deadline:       {sla_deadline_iso}
+        Latest notice by:   {deadline.isoformat()} (check against counsel's advice)
         Severity:           {args.severity}
         Type:               Cash-flow integrity (RTP / house take anomaly)
 
@@ -127,7 +191,7 @@ def render(args: argparse.Namespace) -> str:
         --------------------
         Investigation is ongoing. Root cause has {'been preliminarily identified' if args.root_cause_known else 'not yet been determined'}.
         We will provide a full incident report and root-cause analysis within
-        {7 if args.jurisdiction in ('AGCO',) else 14} days, in line with our license obligations.
+        the timeline set by our licence conditions or the regulator.
 
         Player impact
         -------------
@@ -138,16 +202,16 @@ def render(args: argparse.Namespace) -> str:
 
         Operator contact for this incident
         ---------------------------------
-        Compliance officer of the day: <NAME>
+        Compliance liaison: <NAME>
         Email: <COMPLIANCE@OPERATOR>
         Phone: <+XX XX XXX XXXX>
 
         Yours sincerely,
-        <DUTY OFFICER NAME>
+        <COMPLIANCE LIAISON NAME>
         <ROLE>
         <OPERATOR LEGAL ENTITY>
 
-        --- END DRAFT — REVIEW BEFORE SENDING ---
+        --- END DRAFT, REVIEW BEFORE SENDING ---
     """)
 
 
@@ -157,15 +221,21 @@ def main() -> int:
     ap.add_argument("--incident-id", required=True)
     ap.add_argument("--detected-at", required=True, help="ISO 8601 UTC timestamp")
     ap.add_argument("--severity", required=True,
-                    choices=("low", "medium", "high", "critical"))
+                    choices=SEVERITIES)
     ap.add_argument("--house-loss-eur", type=float, required=True)
     ap.add_argument("--rounds-affected", type=int, required=True)
     ap.add_argument("--action-taken", required=True)
+    ap.add_argument("--confirmed-deadline-hours", type=float,
+                    help="Deadline in hours confirmed by counsel; required for "
+                         "jurisdictions whose deadline is unknown")
     ap.add_argument("--root-cause-known", action="store_true")
     ap.add_argument("--out", help="Write to file instead of stdout")
     args = ap.parse_args()
 
-    text = render(args)
+    try:
+        text = render(args)
+    except UnknownDeadlineError as exc:
+        ap.error(str(exc))
     if args.out:
         with open(args.out, "w") as f:
             f.write(text)
