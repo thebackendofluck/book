@@ -18,6 +18,11 @@
 
 ---
 
+> [!IMPORTANT]
+> **Status, November 2026.** Provisional Measure (MP) 1.394/2026, published on 25 September 2026, bans fixed-odds betting and online games in Brazil. Sites went offline on 6 October and every authorization issued under Law 14.790/2023 was extinguished on 25 October 2026, without refund of the BRL 30M grant. The MP is in force until Congress votes on it or it lapses on 4 March 2027, and four challenges (ADIs 8024, 8027, 8028 and 8035) are pending at the STF. If the regime returns, the GGR tax schedule in Lei Complementar 224/2025 applies (13% in 2026, 14% in 2027, 15% in 2028).
+>
+> The code here documents the Law 14.790 regime and stays useful for a market that may reopen, and for the wind-down work the MP forced on licensed operators. It is not a guide to operating in Brazil today. Check the current status with counsel before you use any of it.
+
 > Reference implementation for a Brazilian fixed-odds betting platform: CPF/KYC, permitted payment rails, SIGAP regulatory files, the SIGAP Impediments API, and a sports betting engine.
 
 ## Architecture diagram
