@@ -20,6 +20,9 @@
 - **Service**: rustfs-svc NodePort 9000→32536, 9001→32369
 
 ### Helm Command
+
+The access key and secret key below are placeholders. Create your own and load them from your secret store (a Kubernetes Secret or your vault) instead of putting them on the command line or committing them.
+
 ```bash
 helm install rustfs ./helm/rustfs -n storage \
   --set replicaCount=1 \
@@ -28,8 +31,8 @@ helm install rustfs ./helm/rustfs -n storage \
   --set image.rustfs.pullPolicy=Never \
   --set mode.standalone.enabled=true \
   --set mode.distributed.enabled=false \
-  --set secret.rustfs.access_key=acmetocasino \
-  --set secret.rustfs.secret_key=rustfs-secret-2026 \
+  --set secret.rustfs.access_key=<access-key> \
+  --set secret.rustfs.secret_key=<secret-key> \
   --set storageclass.name=local-path \
   --set storageclass.dataStorageSize=5Gi \
   --set storageclass.logStorageSize=1Gi \
@@ -42,7 +45,7 @@ helm install rustfs ./helm/rustfs -n storage \
 ## S3 Compatibility Tests
 
 Endpoint: `http://10.0.10.45:32536`
-Credentials: `acmetocasino` / `rustfs-secret-2026`
+Credentials: `<access-key>` / `<secret-key>` (load from your own secret store)
 
 | # | Test | Result | Notes |
 |---|------|--------|-------|
