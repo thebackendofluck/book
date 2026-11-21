@@ -298,7 +298,7 @@ impl EpochManager {
 // ─────────────────────────────────────────────────────────────────────────────
 
 fn hmac_sha256(key: &[u8; 32], data: &[u8]) -> [u8; 32] {
-    use hmac::{Hmac, Mac};
+    use hmac::{Hmac, KeyInit, Mac};
     let mut mac = Hmac::<sha2::Sha256>::new_from_slice(key)
         .expect("HMAC key is exactly 32 bytes — infallible");
     mac.update(data);

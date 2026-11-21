@@ -30,10 +30,10 @@ structlog==25.5.0
 httpx==0.28.1
 
 # OpenTelemetry tracing (matches the existing chapter-19 instrumentation pattern)
-opentelemetry-api==1.42.1
-opentelemetry-sdk==1.42.1
-opentelemetry-instrumentation-fastapi==0.63b1
-opentelemetry-exporter-otlp==1.42.1
+opentelemetry-api==1.45.2
+opentelemetry-sdk==1.45.2
+opentelemetry-instrumentation-fastapi==0.66b2
+opentelemetry-exporter-otlp==1.45.2
 
 # Prometheus metrics
 prometheus-client==0.25.0

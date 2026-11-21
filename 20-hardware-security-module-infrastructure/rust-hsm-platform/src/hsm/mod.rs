@@ -41,7 +41,7 @@
 use std::sync::Arc;
 
 use cryptoki::{
-    context::{CInitializeArgs, Pkcs11},
+    context::{CInitializeArgs, CInitializeFlags, Pkcs11},
     mechanism::Mechanism,
     object::Attribute,
     session::UserType,
@@ -133,14 +133,14 @@ impl HsmClient {
     /// - `pin`      — Authentication PIN (YubiHSM password), format `0001<password>`.
     ///
     /// # Compliance
-    /// `CInitializeArgs::OsThreads` delegates mutex management to the operating
+    /// `CInitializeFlags::OS_LOCKING_OK` delegates mutex management to the operating
     /// system, satisfying the PKCS#11 multi-thread safety requirement for
     /// concurrent callers.
     pub fn new(lib: &str, slot_idx: u64, pin: &str) -> Result<Self, HsmError> {
         let pkcs11 = Pkcs11::new(lib).map_err(|e| HsmError::Init(e.to_string()))?;
 
         pkcs11
-            .initialize(CInitializeArgs::OsThreads)
+            .initialize(CInitializeArgs::new(CInitializeFlags::OS_LOCKING_OK))
             .map_err(|e| HsmError::Init(e.to_string()))?;
 
         let slots = pkcs11
